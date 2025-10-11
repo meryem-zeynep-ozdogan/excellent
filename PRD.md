@@ -2,12 +2,12 @@
 ## İnşaat Şirketi Finansal Yönetim Masaüstü Uygulaması
 
 ### Proje Özeti
-İnşaat şirketleri için özel olarak tasarlanmış, Excel benzeri masaüstü uygulaması. Uygulama, şirketin finansal işlemlerini takip etmek, faturaları yönetmek ve detaylı finansal raporlar oluşturmak için geliştirilmiştir.
+Şirketler veya kişiler için özel tasarlanmış, Excel benzeri masaüstü uygulaması. Uygulama, şirketin finansal işlemlerini takip etmek, faturaları yönetmek ve detaylı finansal raporlar oluşturmak için geliştirilmiştir.
 
 ### Hedef Kitle
-- İnşaat şirketlerinin muhasebe departmanları
+- şirketlerin muhasebe departmanları
 - Mali müşavirler
-- İnşaat proje yöneticileri
+-  proje yöneticileri
 - Şirket sahipleri ve yöneticiler
 
 ### Ana Özellikler
@@ -212,8 +212,9 @@
 - **Frontend Developer:** UI/UX uzmanı - PyQt6 masaüstü uygulaması geliştirme ve entegrasyon
 
 ## Başarı Kriterleri (Final Versiyon)
-- Kullanıcılar 1 hafta içinde uygulamayı öğrenebilmeli
+- Kullanıcılar yarım saat içinde uygulamayı öğrenebilmeli
 - Fatura giriş süresi %50 azalmalı
 - Finansal raporlar otomatik oluşturulmalı
 - Veri kaybı olmamalı
 - Uygulama 1000+ fatura ile sorunsuz çalışmalı
+-birden fazla şirket veya kişiye satış yapılmalı

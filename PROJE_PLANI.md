@@ -1,38 +1,12 @@
 # İnşaat Şirketi Finansal Yönetim Uygulaması - Proje Planı
 
-## 🐍 Teknoloji Stack (Python Odaklı)
+## 📚 Dokümantasyon Referansları
 
-### Backend Geliştirme
-- **FastAPI** - Modern, hızlı web framework
-- **SQLAlchemy** - ORM ve veritabanı yönetimi
-- **Pydantic** - Veri validasyonu
-- **Celery** - Asenkron görevler (döviz kuru güncelleme)
-- **Redis** - Cache ve mesaj kuyruğu
+### **Teknoloji Stack Detayları**
+Teknoloji stack'in detaylı açıklamaları için: **[TEKNOLOJI_STACK.md](./TEKNOLOJI_STACK.md)**
 
-### Frontend (Masaüstü)
-- **PyQt6/PySide6** - Modern masaüstü uygulaması
-- **CustomTkinter** - Modern görünümlü Tkinter (alternatif)
-- **Kivy** - Cross-platform UI (alternatif)
-
-### Veritabanı
-- **SQLite** - Geliştirme ve küçük kurulumlar için
-- **PostgreSQL** - Production için (SQLAlchemy ile uyumlu)
-
-### Raporlama ve Excel Entegrasyonu
-- **openpyxl** - Excel dosya işleme
-- **pandas** - Veri analizi ve manipülasyon
-- **matplotlib/plotly** - Grafik oluşturma
-- **reportlab** - PDF rapor oluşturma
-
-### Döviz Kuru ve API
-- **requests** - HTTP istekleri
-- **aiohttp** - Asenkron HTTP
-- **python-decouple** - Konfigürasyon yönetimi
-
-### Test
-- **pytest** - Unit ve integration testler
-- **pytest-qt** - PyQt testleri
-- **factory-boy** - Test verisi oluşturma
+### **Proje Mimarisi Detayları**
+Sistem mimarisi, ekip sorumlulukları ve teknik detaylar için: **[PROJE_MIMARISI.md](./PROJE_MIMARISI.md)**
 
 ## 👥 Ekip Yapısı ve İş Bölümü
 
@@ -77,123 +51,171 @@
 - UI dokümantasyonu
 - API entegrasyonu
 
-## 8 Haftalık Proje Takvimi
+## 🚀 8 Haftalık MVP Odaklı Proje Takvimi
 
-### HAFTA 1: Proje Hazırlığı ve Tasarım
-**Hedef:** Proje altyapısının kurulması ve detaylı tasarım
+### 📋 MVP KRİTERLERİ (3. Hafta Sonu Teslim)
+**PRD.md'ye göre MVP'de olması gerekenler:**
+- ✅ Temel Fatura Yönetimi (kesilen/gelen fatura girişi, listeleme, KDV hesaplama)
+- ✅ Temel Para Birimi Desteği (TL, USD, EUR - manuel kur)
+- ✅ Temel Raporlama (aylık fatura özeti, Excel export)
+- ✅ Temel UI/UX (PyQt6 masaüstü uygulaması, ana menü, navigasyon)
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Proje altyapısı kurulumu
-- [ ] Teknik mimari dokümantasyonu
-- [ ] Geliştirme standartları belirleme
-- [ ] Proje dokümantasyonu
-- [ ] Ekip koordinasyonu
-- [ ] Test stratejisi belirleme
-- [ ] Test altyapısı kurulumu
+---
 
-**Backend Developer:**
-- [ ] Veritabanı şeması tasarımı (SQLAlchemy)
-- [ ] FastAPI proje yapısı kurulumu
-- [ ] Döviz kuru API araştırması
-- [ ] Requirements.txt hazırlama
-- [ ] Backend test altyapısı
-- [ ] API endpoint tasarımı
-- [ ] Veritabanı modelleri
+### HAFTA 1: 🏗️ MVP Temel Altyapı Kurulumu
+**Hedef:** MVP için gerekli minimum altyapının kurulması ve hızlı prototipleme
 
-**Frontend Developer:**
-- [ ] UI/UX tasarım mockup'ları
-- [ ] Kullanıcı akış diyagramları
-- [ ] PyQt6 geliştirme ortamı kurulumu
-- [ ] UI kütüphanesi seçimi
-- [ ] Frontend test altyapısı
-- [ ] UI komponenti tasarımı
-- [ ] Ana pencere tasarımı
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: Proje Kurulumu ve Koordinasyon**
+- [ ] **Proje altyapısı kurulumu** - GitHub repo, development environment setup
+- [ ] **MVP odaklı teknik mimari** - Sadece MVP için gerekli mimariyi belirleme
+- [ ] **MVP test kriterleri dokümantasyonu** - PRD.md'deki MVP kriterlerini test senaryolarına çevirme
+- [ ] **Ekip koordinasyonu ve günlük scrum** - Her gün 15 dk MVP odaklı toplantı
 
-### HAFTA 2: Veritabanı ve Backend Altyapı
-**Hedef:** Veri katmanı ve temel backend servislerinin geliştirilmesi
+**GÜN 3-5: MVP Risk Yönetimi**
+- [ ] **MVP timeline risk analizi** - 3 haftalık MVP için kritik yol analizi
+- [ ] **MVP test stratejisi** - MVP kriterlerinin test edilmesi için plan
+- [ ] **Müşteri iletişimi** - MVP demo tarihi ve beklentileri netleştirme
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Proje ilerleme takibi
-- [ ] Risk değerlendirmesi
-- [ ] Müşteri iletişimi
-- [ ] Test planı koordinasyonu
-- [ ] Entegrasyon testleri
-- [ ] Kalite kontrol
-- [ ] MVP test kriterleri kontrolü
+#### **Backend Developer:**
+**GÜN 1-3: MVP Backend Altyapısı**
+- [ ] **SQLite veritabanı şeması** - Sadece MVP için gerekli tablolar (fatura, para_birimi)
+- [ ] **FastAPI MVP projesi** - Minimal FastAPI setup, sadece MVP endpoint'leri
+- [ ] **SQLAlchemy modelleri** - Fatura ve para birimi modelleri
+- [ ] **Temel CRUD API'leri** - Fatura ekleme, listeleme, düzenleme, silme
 
-**Backend Developer:**
-- [ ] SQLAlchemy modelleri oluşturma
-- [ ] Veritabanı migration'ları
-- [ ] Temel CRUD API'leri
-- [ ] Döviz kuru servisi geliştirme
-- [ ] Backend unit testler yazma
-- [ ] API optimizasyonu
+**GÜN 4-5: MVP Backend Servisleri**
+- [ ] **KDV hesaplama servisi** - Fatura tutarına göre KDV hesaplama
+- [ ] **Para birimi dönüşüm servisi** - Manuel kur ile TL/USD/EUR dönüşümü
+- [ ] **Excel export servisi** - Temel Excel dosyası oluşturma
+- [ ] **Backend unit testler** - MVP kritik fonksiyonlar için testler
 
-**Frontend Developer:**
-- [ ] PyQt6 ana pencere tasarımı
-- [ ] Menü yapısı geliştirme
-- [ ] Temel UI komponentleri
-- [ ] API entegrasyonu
-- [ ] Frontend testleri
-- [ ] UI optimizasyonu
+#### **Frontend Developer:**
+**GÜN 1-3: MVP UI Prototipi**
+- [ ] **PyQt6 ana pencere tasarımı** - Sol menü paneli, ana içerik alanı
+- [ ] **MVP navigasyon menüsü** - Fatura Yönetimi, Para Birimi, Raporlar menüleri
+- [ ] **Fatura giriş formu mockup** - Kesilen/gelen fatura girişi için form tasarımı
+- [ ] **Fatura listesi tablo mockup** - Excel benzeri tablo görünümü
 
-### HAFTA 3: Fatura Yönetimi Modülü
-**Hedef:** Fatura girişi ve düzenleme özelliklerinin geliştirilmesi
+**GÜN 4-5: MVP UI Komponentleri**
+- [ ] **Excel benzeri tablo komponenti** - PyQt6 QTableWidget ile fatura listesi
+- [ ] **Para birimi seçici komponenti** - TL/USD/EUR dropdown
+- [ ] **Döviz kuru girişi komponenti** - Manuel kur girişi için input alanları
+- [ ] **Temel form validasyonu** - Fatura girişi için gerekli alan kontrolü
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Fatura modülü ilerleme takibi
-- [ ] Kullanıcı geri bildirimi toplama
-- [ ] Test planı koordinasyonu
-- [ ] Fatura modülü entegrasyon testleri
-- [ ] MVP kriterleri kontrolü
-- [ ] Kalite kontrol
-- [ ] Test dokümantasyonu
+---
 
-**Backend Developer:**
-- [ ] Fatura CRUD API'leri
-- [ ] Pydantic validasyon modelleri
-- [ ] Veri bütünlüğü kontrolleri
-- [ ] KDV hesaplama servisi
-- [ ] API optimizasyonu
-- [ ] Backend API testleri
+### HAFTA 2: 🔧 MVP Core Özellikler Geliştirme
+**Hedef:** MVP'nin temel özelliklerinin geliştirilmesi ve entegrasyon
 
-**Frontend Developer:**
-- [ ] PyQt6 fatura giriş formu
-- [ ] Fatura listesi görünümü
-- [ ] Arama ve filtreleme UI
-- [ ] Excel benzeri tablo komponenti
-- [ ] Frontend validasyon testleri
-- [ ] UI/UX iyileştirmeleri
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-3: MVP İlerleme Takibi**
+- [ ] **Günlük MVP milestone kontrolü** - Her gün MVP kriterlerinden hangilerinin tamamlandığını kontrol
+- [ ] **MVP risk değerlendirmesi** - Gecikme riski olan görevleri tespit etme
+- [ ] **Backend-Frontend entegrasyon koordinasyonu** - API entegrasyonu için koordinasyon
+- [ ] **MVP test planı koordinasyonu** - Test senaryolarının hazırlanması
 
-### HAFTA 4: 🚀 MVP SÜRÜMÜ TESLİMİ
-**Hedef:** Çalışır durumda MVP sürümü teslimi
+**GÜN 4-5: MVP Kalite Kontrol**
+- [ ] **MVP kod review koordinasyonu** - Kritik kod parçalarının gözden geçirilmesi
+- [ ] **MVP performans testleri** - Temel performans kriterlerinin test edilmesi
+- [ ] **MVP dokümantasyonu** - MVP kullanım kılavuzu hazırlama
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] MVP test koordinasyonu
-- [ ] Müşteri demo hazırlığı
-- [ ] MVP dokümantasyonu
-- [ ] Teslim paketi hazırlama
-- [ ] MVP sonrası planlama
-- [ ] MVP end-to-end testleri
-- [ ] Sistem entegrasyonu testleri
-- [ ] MVP kriterleri final kontrolü
-- [ ] Kalite kontrol
+#### **Backend Developer:**
+**GÜN 1-2: MVP API Geliştirme**
+- [ ] **Fatura CRUD API'leri tamamlama** - POST, GET, PUT, DELETE endpoint'leri
+- [ ] **Pydantic validasyon modelleri** - Fatura girişi için veri validasyonu
+- [ ] **Para birimi API'leri** - Para birimi listesi ve kur güncelleme
+- [ ] **KDV hesaplama API'si** - Fatura tutarına göre KDV hesaplama endpoint'i
 
-**Backend Developer:**
-- [ ] Temel para birimi dönüşüm API'leri (manuel kur)
-- [ ] KDV hesaplama servisi optimizasyonu
-- [ ] Temel Excel export servisi
-- [ ] MVP backend testleri
-- [ ] API dokümantasyonu
-- [ ] Performance optimization
+**GÜN 3-4: MVP Raporlama API'leri**
+- [ ] **Aylık fatura özeti API'si** - Belirli ay için fatura toplamları
+- [ ] **Excel export API'si** - Fatura listesini Excel formatında export
+- [ ] **Basit gelir-gider raporu API'si** - Kesilen vs gelen faturalar karşılaştırması
+- [ ] **API dokümantasyonu** - Swagger/OpenAPI dokümantasyonu
 
-**Frontend Developer:**
-- [ ] PyQt6 para birimi seçici komponenti
-- [ ] Basit döviz kuru girişi
-- [ ] Temel Excel export UI
-- [ ] MVP UI testleri
-- [ ] Kullanıcı kılavuzu hazırlama
-- [ ] UI/UX polish
+**GÜN 5: MVP Backend Optimizasyon**
+- [ ] **API performans optimizasyonu** - Response time iyileştirmeleri
+- [ ] **Backend hata yönetimi** - Proper error handling ve logging
+- [ ] **Backend test coverage** - MVP kritik fonksiyonlar için %90+ test coverage
+
+#### **Frontend Developer:**
+**GÜN 1-2: MVP UI Geliştirme**
+- [ ] **Fatura giriş formu geliştirme** - Kesilen/gelen fatura için tam fonksiyonel form
+- [ ] **Fatura listesi görünümü** - Tablo ile fatura listesi, sıralama, filtreleme
+- [ ] **Para birimi seçici entegrasyonu** - Backend API ile para birimi seçimi
+- [ ] **Döviz kuru girişi UI** - Manuel kur girişi ve güncelleme
+
+**GÜN 3-4: MVP Raporlama UI**
+- [ ] **Aylık rapor görünümü** - Aylık fatura özeti gösterimi
+- [ ] **Excel export UI** - Export butonu ve progress indicator
+- [ ] **Basit grafik komponenti** - Matplotlib ile temel grafik gösterimi
+- [ ] **Rapor filtreleri** - Ay, para birimi, fatura tipi filtreleri
+
+**GÜN 5: MVP UI Polish**
+- [ ] **UI/UX iyileştirmeleri** - Renkler, fontlar, spacing optimizasyonu
+- [ ] **Hata mesajları UI** - Kullanıcı dostu hata mesajları
+- [ ] **Loading states** - API çağrıları sırasında loading göstergeleri
+- [ ] **Responsive tasarım** - Farklı ekran boyutlarına uyum
+
+---
+
+### HAFTA 3: 🎯 MVP Finalizasyon ve Teslim
+**Hedef:** MVP'nin tamamlanması, test edilmesi ve teslim edilmesi
+
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: MVP Test Koordinasyonu**
+- [ ] **MVP end-to-end testleri** - Tüm MVP kriterlerinin test edilmesi
+- [ ] **MVP kullanıcı kabul testleri** - Müşteri ile birlikte MVP testi
+- [ ] **MVP performans testleri** - 100+ fatura ile performans testi
+- [ ] **MVP güvenlik testleri** - Temel güvenlik kontrolleri
+
+**GÜN 3-4: MVP Teslim Hazırlığı**
+- [ ] **MVP demo hazırlığı** - Müşteriye sunulacak demo senaryoları
+- [ ] **MVP dokümantasyonu** - Kullanım kılavuzu ve teknik dokümantasyon
+- [ ] **MVP teslim paketi** - Kurulum dosyaları ve gerekli dokümantasyon
+- [ ] **MVP sonrası planlama** - 5-8. hafta planlaması
+
+**GÜN 5: 🚀 MVP TESLİMİ**
+- [ ] **MVP final kontrolü** - Tüm MVP kriterlerinin final kontrolü
+- [ ] **Müşteri MVP demo** - MVP'nin müşteriye sunulması
+- [ ] **MVP geri bildirimi toplama** - Müşteri geri bildirimlerinin alınması
+- [ ] **MVP teslim onayı** - Müşteriden MVP onayının alınması
+
+#### **Backend Developer:**
+**GÜN 1-2: MVP Backend Finalizasyon**
+- [ ] **MVP API optimizasyonları** - Son performans iyileştirmeleri
+- [ ] **MVP hata düzeltmeleri** - Test sırasında tespit edilen hataların düzeltilmesi
+- [ ] **MVP logging sistemi** - Debugging için logging sistemi
+- [ ] **MVP backup sistemi** - Veri yedekleme mekanizması
+
+**GÜN 3-4: MVP Backend Dokümantasyonu**
+- [ ] **API dokümantasyonu tamamlama** - Tüm endpoint'ler için detaylı dokümantasyon
+- [ ] **Kurulum rehberi** - Backend kurulumu için adım adım rehber
+- [ ] **Troubleshooting rehberi** - Yaygın sorunlar ve çözümleri
+- [ ] **Backend test dokümantasyonu** - Test senaryoları ve sonuçları
+
+**GÜN 5: MVP Backend Teslim**
+- [ ] **MVP backend paketleme** - Production-ready backend paketi
+- [ ] **MVP backend deployment testi** - Kurulum testi
+- [ ] **MVP backend son kontroller** - Final kod review ve test
+
+#### **Frontend Developer:**
+**GÜN 1-2: MVP Frontend Finalizasyon**
+- [ ] **MVP UI hata düzeltmeleri** - Test sırasında tespit edilen UI hatalarının düzeltilmesi
+- [ ] **MVP UI optimizasyonları** - Son performans iyileştirmeleri
+- [ ] **MVP kullanıcı deneyimi iyileştirmeleri** - Son UX optimizasyonları
+- [ ] **MVP UI testleri** - PyQt6 widget testleri
+
+**GÜN 3-4: MVP Frontend Dokümantasyonu**
+- [ ] **Kullanıcı kılavuzu** - Adım adım kullanım rehberi
+- [ ] **UI dokümantasyonu** - Ekran görüntüleri ile UI rehberi
+- [ ] **Kurulum rehberi** - Frontend kurulumu için rehber
+- [ ] **Troubleshooting rehberi** - UI sorunları ve çözümleri
+
+**GÜN 5: 🚀 MVP Frontend Teslim**
+- [ ] **MVP frontend paketleme** - Executable dosya oluşturma
+- [ ] **MVP frontend deployment testi** - Kurulum ve çalışma testi
+- [ ] **MVP frontend son kontroller** - Final UI review ve test
 
 **🎯 MVP TESLİM KRİTERLERİ:**
 - ✅ Fatura girişi ve listeleme çalışır
@@ -203,435 +225,528 @@
 - ✅ Uygulama çökmeden çalışır
 - ✅ Temel UI responsive
 
-### HAFTA 5: Gelişmiş Raporlama ve PDF Export
-**Hedef:** MVP sonrası gelişmiş raporlama özellikleri
+---
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] MVP geri bildirimi değerlendirme
-- [ ] Gelişmiş özellikler planlama
-- [ ] Müşteri beklentileri analizi
-- [ ] Raporlama entegrasyon testleri
-- [ ] End-to-end testler
-- [ ] Kalite kontrol
-- [ ] Test dokümantasyonu
+## 📈 MVP SONRASI GELİŞTİRME PLANI (5-8. Hafta)
 
-**Backend Developer:**
-- [ ] ReportLab PDF oluşturma servisi
-- [ ] Pandas gelişmiş veri analizi
-- [ ] Kar-zarar hesaplama algoritması
-- [ ] Yıllık rapor servisleri
-- [ ] Gelişmiş Excel export
-- [ ] PDF/Excel API testleri
+### HAFTA 4: 🔄 MVP Geri Bildirimi ve V2.0 Planlama
+**Hedef:** MVP geri bildirimlerinin değerlendirilmesi ve V2.0 özelliklerinin planlanması
 
-**Frontend Developer:**
-- [ ] PyQt6 gelişmiş rapor görünümleri
-- [ ] PDF preview widget'ı
-- [ ] Matplotlib grafik komponentleri
-- [ ] Rapor filtreleri UI
-- [ ] Gelişmiş export arayüzü
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: MVP Geri Bildirimi Analizi**
+- [ ] **Müşteri MVP geri bildirimi toplama** - MVP kullanım deneyimi ve öneriler
+- [ ] **MVP performans analizi** - MVP kullanım istatistikleri ve sorun alanları
+- [ ] **MVP eksik özellikler listesi** - Müşteriden gelen ek özellik talepleri
+- [ ] **V2.0 özellik priorizasyonu** - Müşteri geri bildirimlerine göre özellik sıralaması
 
-### HAFTA 6: Otomatik Döviz Kuru ve Gelişmiş Özellikler
-**Hedef:** Otomatik döviz kuru entegrasyonu ve gelişmiş özellikler
+**GÜN 3-5: V2.0 Planlama ve Koordinasyon**
+- [ ] **V2.0 teknik mimari güncelleme** - Yeni özellikler için mimari güncellemeleri
+- [ ] **V2.0 timeline planlaması** - 5-8. hafta detaylı görev planlaması
+- [ ] **V2.0 risk analizi** - Yeni özellikler için risk değerlendirmesi
+- [ ] **V2.0 test stratejisi** - Gelişmiş özellikler için test planı
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Döviz kuru API araştırması
-- [ ] Gelişmiş özellikler koordinasyonu
-- [ ] Performans kriterleri belirleme
-- [ ] Beta test planı
-- [ ] Döviz kuru entegrasyon testleri
-- [ ] End-to-end testler
-- [ ] Kalite kontrol
+#### **Backend Developer:**
+**GÜN 1-3: MVP Backend İyileştirmeleri**
+- [ ] **MVP backend performans optimizasyonu** - Müşteri geri bildirimlerine göre iyileştirmeler
+- [ ] **MVP API hata düzeltmeleri** - MVP kullanımı sırasında tespit edilen hatalar
+- [ ] **MVP veritabanı optimizasyonu** - Query performansı iyileştirmeleri
+- [ ] **MVP logging sistemi geliştirme** - Daha detaylı logging ve monitoring
 
-**Backend Developer:**
-- [ ] Otomatik döviz kuru güncelleme servisi (Celery)
-- [ ] Redis cache mekanizması
-- [ ] Kurumlar vergisi hesaplama servisi
-- [ ] Performans optimizasyonu (NumPy/Pandas)
-- [ ] Asenkron görev testleri
+**GÜN 4-5: V2.0 Backend Altyapı Hazırlığı**
+- [ ] **V2.0 veritabanı şeması tasarımı** - Yeni özellikler için tablo tasarımları
+- [ ] **V2.0 API endpoint tasarımı** - Gelişmiş özellikler için API planlaması
+- [ ] **V2.0 backend teknoloji araştırması** - PDF, grafik, otomatik kur API'leri
 
-**Frontend Developer:**
-- [ ] PyQt6 otomatik kur güncelleme UI
-- [ ] Gelişmiş filtreleme komponentleri
-- [ ] Kullanıcı deneyimi iyileştirmeleri
-- [ ] Hata yönetimi arayüzü
-- [ ] UI performance tuning
+#### **Frontend Developer:**
+**GÜN 1-3: MVP Frontend İyileştirmeleri**
+- [ ] **MVP UI/UX iyileştirmeleri** - Müşteri geri bildirimlerine göre UI güncellemeleri
+- [ ] **MVP kullanıcı deneyimi optimizasyonu** - Workflow iyileştirmeleri
+- [ ] **MVP hata mesajları iyileştirme** - Daha anlaşılır hata mesajları
+- [ ] **MVP responsive tasarım iyileştirmeleri** - Farklı ekran boyutları için optimizasyon
 
-### HAFTA 7: Entegrasyon ve Sistem Testleri
-**Hedef:** Tüm özelliklerin entegrasyonu ve kapsamlı testler
+**GÜN 4-5: V2.0 Frontend Hazırlığı**
+- [ ] **V2.0 UI/UX tasarım mockup'ları** - Gelişmiş özellikler için UI tasarımları
+- [ ] **V2.0 PyQt6 komponenti araştırması** - PDF preview, grafik widget'ları
+- [ ] **V2.0 frontend teknoloji planlaması** - Matplotlib, ReportLab entegrasyonu
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Entegrasyon test koordinasyonu
-- [ ] Hata takip sistemi
-- [ ] Kullanıcı kabul testleri
-- [ ] Proje dokümantasyonu
-- [ ] Sistem entegrasyon testleri
-- [ ] PyQt6 entegrasyon testleri
-- [ ] End-to-end testler
-- [ ] Teknik dokümantasyon
+---
 
-**Backend Developer:**
-- [ ] API hata düzeltmeleri
-- [ ] Performans iyileştirmeleri
-- [ ] Güvenlik kontrolleri
-- [ ] Backend dokümantasyonu
-- [ ] Backend optimization
+### HAFTA 5: 📊 Gelişmiş Raporlama ve PDF Export
+**Hedef:** Detaylı raporlama özellikleri ve PDF export geliştirme
 
-**Frontend Developer:**
-- [ ] Kullanılabilirlik testleri
-- [ ] Frontend hata düzeltmeleri
-- [ ] UI dokümantasyonu
-- [ ] Cross-platform testleri
-- [ ] Frontend optimization
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: Raporlama Özellikleri Koordinasyonu**
+- [ ] **Gelişmiş raporlama gereksinimleri** - Müşteri raporlama ihtiyaçlarının analizi
+- [ ] **PDF export teknik gereksinimleri** - PDF formatı ve içerik gereksinimleri
+- [ ] **Grafik ve görselleştirme planlaması** - Hangi grafiklerin gerekli olduğunu belirleme
+- [ ] **Raporlama test stratejisi** - PDF ve grafik test senaryoları
 
-### HAFTA 8: Final Optimizasyon ve Teslim
-**Hedef:** Final optimizasyonlar, dokümantasyon ve teslim hazırlıkları
+**GÜN 3-5: Raporlama Entegrasyon Testleri**
+- [ ] **PDF export entegrasyon testleri** - PDF oluşturma ve export testleri
+- [ ] **Grafik komponenti testleri** - Matplotlib grafik testleri
+- [ ] **Raporlama performans testleri** - Büyük veri setleri ile performans testleri
+- [ ] **Cross-platform raporlama testleri** - Farklı işletim sistemlerinde test
 
-**Proje Yöneticisi / Test Koordinatörü:**
-- [ ] Final test koordinasyonu
-- [ ] Teslim paketi hazırlama
-- [ ] Müşteri demo planı
-- [ ] Proje kapanış raporu
-- [ ] Ekip değerlendirmesi
-- [ ] Gelecek projeler planlama
-- [ ] Final end-to-end testler
-- [ ] Teknik dokümantasyon
-- [ ] Sistem deployment testleri
-- [ ] Kalite kontrol
+#### **Backend Developer:**
+**GÜN 1-2: PDF Export Backend Geliştirme**
+- [ ] **ReportLab PDF servisi geliştirme** - PDF oluşturma backend servisi
+- [ ] **PDF template tasarımı** - Fatura, gelir-gider, KDV raporu template'leri
+- [ ] **PDF veri hazırlama servisi** - Rapor verilerini PDF formatına çevirme
+- [ ] **PDF export API endpoint'i** - PDF oluşturma ve download API'si
 
-**Backend Developer:**
-- [ ] Final performans optimizasyonları
-- [ ] Python paket kurulumu
-- [ ] API dokümantasyonu
-- [ ] Deployment rehberi
-- [ ] Kod temizliği ve refactoring
-- [ ] Backend final optimization
+**GÜN 3-4: Gelişmiş Raporlama Backend**
+- [ ] **Pandas gelişmiş veri analizi** - Kar-zarar, trend analizi, istatistiksel hesaplamalar
+- [ ] **Yıllık rapor servisleri** - Yıllık gelir-gider, KDV, kurumlar vergisi raporları
+- [ ] **Gelişmiş Excel export** - Grafikli Excel, pivot tablo, formatlı export
+- [ ] **Rapor caching sistemi** - Büyük raporlar için cache mekanizması
 
-**Frontend Developer:**
-- [ ] Final UI optimizasyonları
-- [ ] Kullanıcı kılavuzu
-- [ ] Demo hazırlıkları
-- [ ] UI dokümantasyonu
-- [ ] Kurulum rehberi
-- [ ] Son kullanıcı testleri
+**GÜN 5: Raporlama Backend Optimizasyon**
+- [ ] **PDF/Excel API performans optimizasyonu** - Büyük dosyalar için optimizasyon
+- [ ] **Raporlama backend testleri** - Unit testler ve integration testler
+- [ ] **Raporlama error handling** - PDF oluşturma hatalarının yönetimi
 
-**🎯 FINAL TESLİM KRİTERLERİ:**
-- ✅ Tüm MVP özellikleri çalışır
-- ✅ Gelişmiş raporlama özellikleri
-- ✅ Otomatik döviz kuru entegrasyonu
-- ✅ PDF export çalışır
-- ✅ Performans optimizasyonları
-- ✅ Kapsamlı dokümantasyon
+#### **Frontend Developer:**
+**GÜN 1-2: PDF Export Frontend Geliştirme**
+- [ ] **PDF preview widget'ı** - PyQt6 ile PDF önizleme komponenti
+- [ ] **PDF export UI** - Rapor seçimi, parametreler, export butonu
+- [ ] **PDF template seçici** - Farklı rapor template'lerini seçme UI'ı
+- [ ] **PDF export progress indicator** - Büyük PDF'ler için progress bar
 
-## Risk Yönetimi
+**GÜN 3-4: Gelişmiş Raporlama UI**
+- [ ] **Matplotlib grafik komponentleri** - PyQt6 entegrasyonu ile grafik widget'ları
+- [ ] **Gelişmiş rapor görünümleri** - Kar-zarar, trend, KDV raporu görünümleri
+- [ ] **Rapor filtreleri UI** - Tarih, para birimi, fatura tipi, müşteri filtreleri
+- [ ] **Gelişmiş export arayüzü** - PDF, Excel, CSV export seçenekleri
 
-### 🚨 MVP İçin Yüksek Risk Faktörleri
-1. **4. Hafta MVP Teslim Riski**
-   - Risk: MVP tesliminde gecikme
-   - Çözüm: Günlük ilerleme takibi, erken test, buffer süreler
-   - Kontrol: Her gün MVP kriterleri kontrolü
+**GÜN 5: Raporlama UI Polish**
+- [ ] **Raporlama UI/UX iyileştirmeleri** - Kullanıcı dostu rapor arayüzü
+- [ ] **Grafik interaktivitesi** - Zoom, pan, tooltip özellikleri
+- [ ] **Raporlama responsive tasarım** - Farklı ekran boyutlarına uyum
+- [ ] **Raporlama frontend testleri** - UI testleri ve kullanıcı deneyimi testleri
 
-2. **Temel Özelliklerin Eksik Kalma Riski**
-   - Risk: MVP'de temel özellikler eksik
-   - Çözüm: Öncelik matrisi, haftalık milestone kontrolleri
-   - Kontrol: Haftalık MVP kriterleri değerlendirmesi
+---
 
-3. **Backend-Frontend Entegrasyon Riski**
-   - Risk: API entegrasyonu gecikmeleri
-   - Çözüm: Erken prototip, mock API'ler
-   - Kontrol: 2. hafta sonunda entegrasyon testi
+### HAFTA 6: 💱 Otomatik Döviz Kuru ve Gelişmiş Özellikler
+**Hedef:** Otomatik döviz kuru entegrasyonu ve kurumlar vergisi hesaplama
 
-### Orta Risk Faktörleri
-1. **PyQt6 Öğrenme Eğrisi**
-   - Risk: UI geliştirme gecikmeleri
-   - Çözüm: Erken UI prototipi, hazır komponentler
-   - Kontrol: 1. hafta sonunda UI mockup'ları
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: Döviz Kuru API Koordinasyonu**
+- [ ] **Döviz kuru API araştırması** - En uygun ve güvenilir API seçimi
+- [ ] **API entegrasyon risk analizi** - API erişim sorunları ve fallback planları
+- [ ] **Otomatik güncelleme stratejisi** - Günlük, haftalık kur güncelleme planı
+- [ ] **Döviz kuru test stratejisi** - API entegrasyonu ve fallback testleri
 
-2. **Veritabanı Performansı**
-   - Risk: SQLite performans sorunları
-   - Çözüm: Erken performans testleri, optimizasyon
-   - Kontrol: 3. hafta sonunda performans testi
+**GÜN 3-5: Gelişmiş Özellikler Koordinasyonu**
+- [ ] **Kurumlar vergisi hesaplama koordinasyonu** - Vergi hesaplama gereksinimleri
+- [ ] **Gelişmiş filtreleme özellikleri planlama** - Karmaşık filtreleme gereksinimleri
+- [ ] **Performans kriterleri belirleme** - 1000+ fatura ile performans hedefleri
+- [ ] **Beta test planı** - Müşteri beta testi planlaması
 
-### MVP Sonrası Risk Faktörleri
-1. **Döviz Kuru API Bağımlılığı**
-   - Risk: API erişim sorunları (5-6. hafta)
-   - Çözüm: Alternatif API'ler ve fallback mekanizması
+#### **Backend Developer:**
+**GÜN 1-2: Otomatik Döviz Kuru Backend**
+- [ ] **Döviz kuru API entegrasyonu** - ExchangeRate-API veya alternatif API entegrasyonu
+- [ ] **Celery asenkron görev sistemi** - Otomatik kur güncelleme için background job
+- [ ] **Redis cache mekanizması** - Döviz kurları için cache sistemi
+- [ ] **Fallback mekanizması** - API erişim sorunlarında manuel kur kullanımı
 
-2. **Gelişmiş Özellikler Karmaşıklığı**
-   - Risk: PDF export ve grafikler gecikmeleri
-   - Çözüm: Hazır kütüphane kullanımı, basitleştirme
+**GÜN 3-4: Gelişmiş Backend Özellikler**
+- [ ] **Kurumlar vergisi hesaplama servisi** - Yıllık kar üzerinden vergi hesaplama
+- [ ] **Gelişmiş filtreleme API'leri** - Karmaşık sorgular ve filtreleme
+- [ ] **Performans optimizasyonu** - NumPy/Pandas ile hızlı hesaplamalar
+- [ ] **Bulk operations** - Toplu fatura işlemleri için API'ler
 
-## İletişim ve Toplantılar
+**GÜN 5: Gelişmiş Backend Test ve Optimizasyon**
+- [ ] **Asenkron görev testleri** - Celery job testleri
+- [ ] **API entegrasyon testleri** - Döviz kuru API testleri
+- [ ] **Performans testleri** - 1000+ fatura ile load testleri
+- [ ] **Backend monitoring** - Logging ve performance monitoring
 
-### MVP Odaklı Haftalık Toplantılar
-- **Pazartesi:** Haftalık planlama + MVP milestone kontrolü
-- **Çarşamba:** İlerleme kontrolü + MVP risk değerlendirmesi
-- **Cuma:** Haftalık değerlendirme + MVP kriterleri kontrolü
+#### **Frontend Developer:**
+**GÜN 1-2: Otomatik Döviz Kuru UI**
+- [ ] **Otomatik kur güncelleme UI** - Kur güncelleme durumu ve manuel güncelleme butonu
+- [ ] **Döviz kuru geçmişi görünümü** - Kur değişim grafikleri ve tablosu
+- [ ] **Kur uyarı sistemi UI** - Belirli eşiklerde kur uyarıları
+- [ ] **Fallback UI** - API erişim sorunlarında manuel kur girişi
 
-### MVP İçin Günlük Scrum
-- Her gün 15 dakikalık kısa toplantılar
+**GÜN 3-4: Gelişmiş Frontend Özellikler**
+- [ ] **Gelişmiş filtreleme komponentleri** - Çoklu kriter filtreleme UI'ı
+- [ ] **Kurumlar vergisi hesaplama UI** - Vergi hesaplama formu ve sonuç görünümü
+- [ ] **Bulk operations UI** - Toplu fatura işlemleri için arayüz
+- [ ] **Advanced search** - Gelişmiş arama ve filtreleme arayüzü
+
+**GÜN 5: Frontend Optimizasyon**
+- [ ] **UI performance tuning** - Büyük veri setleri için UI optimizasyonu
+- [ ] **Lazy loading** - Büyük listeler için lazy loading implementasyonu
+- [ ] **Frontend caching** - UI state caching ve optimization
+- [ ] **Responsive design improvements** - Farklı ekran boyutları için iyileştirmeler
+
+---
+
+### HAFTA 7: 🔧 Entegrasyon ve Sistem Testleri
+**Hedef:** Tüm özelliklerin entegrasyonu, sistem testleri ve hata düzeltmeleri
+
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: Kapsamlı Test Koordinasyonu**
+- [ ] **Sistem entegrasyon testleri koordinasyonu** - Tüm modüller arası entegrasyon testleri
+- [ ] **End-to-end test senaryoları** - Tam kullanıcı akışı testleri
+- [ ] **Performance test planı** - 1000+ fatura, büyük raporlar performans testleri
+- [ ] **Security test planı** - Veri güvenliği ve kullanıcı yetkilendirme testleri
+
+**GÜN 3-5: Kalite Kontrol ve Dokümantasyon**
+- [ ] **Kullanıcı kabul testleri** - Müşteri ile birlikte final testler
+- [ ] **Teknik dokümantasyon koordinasyonu** - API, UI, kurulum dokümantasyonları
+- [ ] **Kullanıcı kılavuzu koordinasyonu** - Detaylı kullanım kılavuzu
+- [ ] **Deployment dokümantasyonu** - Production deployment rehberi
+
+#### **Backend Developer:**
+**GÜN 1-2: Backend Entegrasyon ve Hata Düzeltmeleri**
+- [ ] **API entegrasyon testleri** - Tüm endpoint'ler arası entegrasyon
+- [ ] **Backend hata düzeltmeleri** - Test sırasında tespit edilen hataların düzeltilmesi
+- [ ] **Database migration testleri** - Veritabanı güncelleme testleri
+- [ ] **Backend security kontrolleri** - SQL injection, XSS, authentication kontrolleri
+
+**GÜN 3-4: Backend Performans ve Optimizasyon**
+- [ ] **Backend performans iyileştirmeleri** - Query optimization, caching improvements
+- [ ] **Memory usage optimization** - Büyük veri setleri için memory optimization
+- [ ] **API response time optimization** - Response time iyileştirmeleri
+- [ ] **Backend monitoring implementation** - Logging, metrics, alerting sistemi
+
+**GÜN 5: Backend Dokümantasyon ve Deployment**
+- [ ] **Backend API dokümantasyonu** - Swagger/OpenAPI tam dokümantasyonu
+- [ ] **Backend deployment rehberi** - Production deployment adımları
+- [ ] **Backend troubleshooting rehberi** - Yaygın sorunlar ve çözümleri
+- [ ] **Backend maintenance rehberi** - Düzenli bakım ve güncelleme prosedürleri
+
+#### **Frontend Developer:**
+**GÜN 1-2: Frontend Entegrasyon ve Hata Düzeltmeleri**
+- [ ] **PyQt6 entegrasyon testleri** - Tüm UI komponentleri arası entegrasyon
+- [ ] **Frontend hata düzeltmeleri** - Test sırasında tespit edilen UI hatalarının düzeltilmesi
+- [ ] **Cross-platform testleri** - Windows 10/11, farklı ekran çözünürlükleri
+- [ ] **UI/UX consistency kontrolleri** - Tüm ekranlarda tutarlı tasarım
+
+**GÜN 3-4: Frontend Performans ve Optimizasyon**
+- [ ] **Frontend performance tuning** - UI rendering optimization
+- [ ] **Memory leak prevention** - PyQt6 memory management
+- [ ] **UI responsiveness improvements** - Büyük veri setleri için UI optimization
+- [ ] **Accessibility improvements** - Erişilebilirlik standartlarına uygunluk
+
+**GÜN 5: Frontend Dokümantasyon ve Deployment**
+- [ ] **UI dokümantasyonu** - Tüm ekranlar ve komponentler için dokümantasyon
+- [ ] **Frontend deployment rehberi** - Executable oluşturma ve dağıtım
+- [ ] **Frontend troubleshooting rehberi** - UI sorunları ve çözümleri
+- [ ] **Kullanıcı kılavuzu** - Detaylı kullanım rehberi ve ekran görüntüleri
+
+---
+
+### HAFTA 8: 🚀 Final Optimizasyon ve Tam Ürün Teslimi
+**Hedef:** Final optimizasyonlar, dokümantasyon ve tam ürün teslimi
+
+#### **Proje Yöneticisi / Test Koordinatörü:**
+**GÜN 1-2: Final Test ve Kalite Kontrol**
+- [ ] **Final end-to-end testleri** - Tüm özelliklerin final testi
+- [ ] **Final performance testleri** - Production load testleri
+- [ ] **Final security audit** - Güvenlik açığı taraması
+- [ ] **Final user acceptance test** - Müşteri ile final kabul testleri
+
+**GÜN 3-4: Teslim Hazırlığı**
+- [ ] **Final teslim paketi hazırlama** - Tüm dosyalar, dokümantasyon, kurulum rehberleri
+- [ ] **Müşteri demo planı** - Final ürün demo senaryoları
+- [ ] **Proje kapanış raporu** - Proje başarıları, öğrenilen dersler, öneriler
+- [ ] **Ekip değerlendirmesi** - Performans değerlendirme ve gelecek projeler planlama
+
+**GÜN 5: 🎉 TAM ÜRÜN TESLİMİ**
+- [ ] **Final ürün demo** - Müşteriye tam özellikli ürün sunumu
+- [ ] **Teslim onayı** - Müşteriden final onayın alınması
+- [ ] **Knowledge transfer** - Müşteriye ürün kullanımı eğitimi
+- [ ] **Support planı** - Gelecek destek ve bakım planı
+
+#### **Backend Developer:**
+**GÜN 1-2: Final Backend Optimizasyon**
+- [ ] **Final performans optimizasyonları** - Production-ready optimizasyonlar
+- [ ] **Final security hardening** - Güvenlik açıklarının kapatılması
+- [ ] **Final code cleanup** - Kod temizliği ve refactoring
+- [ ] **Final backend testleri** - Production deployment testleri
+
+**GÜN 3-4: Backend Final Dokümantasyon**
+- [ ] **Production deployment rehberi** - Canlı ortam kurulum rehberi
+- [ ] **Backend maintenance rehberi** - Düzenli bakım prosedürleri
+- [ ] **Backend monitoring setup** - Production monitoring kurulumu
+- [ ] **Backup ve recovery rehberi** - Veri yedekleme ve kurtarma prosedürleri
+
+**GÜN 5: Backend Final Teslim**
+- [ ] **Production backend deployment** - Canlı ortam kurulumu
+- [ ] **Backend monitoring setup** - Monitoring sisteminin aktifleştirilmesi
+- [ ] **Backend final kontroller** - Production ortamında final testler
+
+#### **Frontend Developer:**
+**GÜN 1-2: Final Frontend Optimizasyon**
+- [ ] **Final UI optimizasyonları** - Production-ready UI optimizasyonları
+- [ ] **Final user experience polish** - Son kullanıcı deneyimi iyileştirmeleri
+- [ ] **Final responsive design** - Tüm ekran boyutları için final optimizasyon
+- [ ] **Final accessibility compliance** - Erişilebilirlik standartlarına final uygunluk
+
+**GÜN 3-4: Frontend Final Dokümantasyon**
+- [ ] **Final kullanıcı kılavuzu** - Detaylı kullanım rehberi ve ekran görüntüleri
+- [ ] **Frontend installation rehberi** - Kullanıcı kurulum rehberi
+- [ ] **Frontend troubleshooting rehberi** - Kullanıcı sorunları ve çözümleri
+- [ ] **Feature walkthrough** - Tüm özellikler için adım adım rehber
+
+**GÜN 5: 🎉 Frontend Final Teslim**
+- [ ] **Final executable oluşturma** - Production-ready executable
+- [ ] **Final installation package** - Kurulum paketi hazırlama
+- [ ] **Final frontend testleri** - Production ortamında final testler
+- [ ] **Kullanıcı eğitimi** - Müşteriye ürün kullanımı eğitimi
+
+**🎯 TAM ÜRÜN TESLİM KRİTERLERİ:**
+- ✅ Tüm MVP özellikleri çalışır durumda
+- ✅ Gelişmiş raporlama ve PDF export çalışır
+- ✅ Otomatik döviz kuru entegrasyonu çalışır
+- ✅ Kurumlar vergisi hesaplama çalışır
+- ✅ 1000+ fatura ile sorunsuz performans
+- ✅ Kapsamlı dokümantasyon ve kullanıcı kılavuzu
+- ✅ Production-ready deployment
+- ✅ Güvenlik standartlarına uygunluk
+- ✅ Cross-platform uyumluluk
+- ✅ Kullanıcı kabul testlerinden geçmiş
+
+## 🚨 Risk Yönetimi ve Mitigation Stratejileri
+
+### 🔥 MVP İçin Kritik Risk Faktörleri (1-3. Hafta)
+
+#### **1. 3. Hafta MVP Teslim Riski**
+- **Risk:** MVP tesliminde gecikme
+- **Etki:** Müşteri güven kaybı, proje timeline'ı etkilenmesi
+- **Çözüm Stratejileri:**
+  - Günlük MVP milestone kontrolü (her gün MVP kriterleri checklist)
+  - 2. hafta sonunda MVP prototipi hazır olma zorunluluğu
+  - Buffer süre: Her hafta 1 gün buffer süre ayrılması
+  - Erken test: Her hafta sonunda MVP kriterleri test edilmesi
+- **Kontrol Noktaları:**
+  - Her gün saat 17:00'da MVP ilerleme kontrolü
+  - Haftalık MVP milestone review toplantıları
+  - MVP kritik yol analizi ile gecikme erken tespiti
+
+#### **2. Backend-Frontend Entegrasyon Riski**
+- **Risk:** API entegrasyonu gecikmeleri ve uyumsuzluklar
+- **Etki:** MVP özelliklerinin çalışmaması
+- **Çözüm Stratejileri:**
+  - 1. hafta sonunda API contract'ların belirlenmesi
+  - Mock API'ler ile frontend geliştirme
+  - 2. hafta başında entegrasyon testleri
+  - Günlük backend-frontend sync toplantıları
+- **Kontrol Noktaları:**
+  - 1. hafta sonunda API dokümantasyonu review
+  - 2. hafta başında entegrasyon testi
+  - Her gün backend-frontend uyumluluk kontrolü
+
+#### **3. MVP Temel Özelliklerin Eksik Kalma Riski**
+- **Risk:** MVP kriterlerinden bazılarının tamamlanamaması
+- **Etki:** MVP'nin müşteri beklentilerini karşılamaması
+- **Çözüm Stratejileri:**
+  - MVP kriterleri öncelik matrisi (Must Have, Should Have)
+  - Haftalık MVP kriterleri değerlendirmesi
+  - Feature scope reduction planı hazırlama
+  - Müşteri ile MVP kriterleri netleştirme
+- **Kontrol Noktaları:**
+  - Her hafta sonunda MVP kriterleri checklist kontrolü
+  - 2. hafta sonunda MVP scope review
+  - 3. hafta başında MVP feature freeze
+
+### ⚠️ Orta Risk Faktörleri
+
+#### **4. PyQt6 UI Geliştirme Riski**
+- **Risk:** UI geliştirme gecikmeleri ve karmaşıklık
+- **Etki:** MVP UI'nin tamamlanamaması
+- **Çözüm Stratejileri:**
+  - 1. hafta sonunda UI mockup'larının hazır olması
+  - Basit UI komponentlerinden başlama
+  - UI kütüphanesi alternatifleri hazırlama
+  - UI geliştirme için ekstra buffer süre
+- **Kontrol Noktaları:**
+  - 1. hafta sonunda UI prototipi demo
+  - 2. hafta sonunda UI komponenti testleri
+
+#### **5. SQLite Performans Riski**
+- **Risk:** Büyük veri setleri ile performans sorunları
+- **Etki:** MVP'nin yavaş çalışması
+- **Çözüm Stratejileri:**
+  - 2. hafta sonunda performans testleri
+  - Database indexing optimizasyonu
+  - Query optimization
+  - 100+ fatura ile performans testi
+- **Kontrol Noktaları:**
+  - 2. hafta sonunda performans benchmark
+  - 3. hafta başında performans optimizasyon
+
+### 📈 MVP Sonrası Risk Faktörleri (4-8. Hafta)
+
+#### **6. Döviz Kuru API Bağımlılığı Riski**
+- **Risk:** API erişim sorunları ve rate limiting
+- **Etki:** Otomatik döviz kuru özelliğinin çalışmaması
+- **Çözüm Stratejileri:**
+  - 3 alternatif API sağlayıcısı hazırlama
+  - Fallback mekanizması (manuel kur girişi)
+  - API rate limiting için caching sistemi
+  - API health monitoring sistemi
+
+#### **7. PDF Export ve Grafik Karmaşıklığı Riski**
+- **Risk:** PDF oluşturma ve grafik entegrasyonu gecikmeleri
+- **Etki:** Gelişmiş raporlama özelliklerinin gecikmesi
+- **Çözüm Stratejileri:**
+  - Hazır kütüphane kullanımı (ReportLab, Matplotlib)
+  - Basit PDF template'lerden başlama
+  - PDF export için alternatif çözümler
+  - Grafik özelliklerini basitleştirme
+
+#### **8. 1000+ Fatura Performans Riski**
+- **Risk:** Büyük veri setleri ile performans sorunları
+- **Etki:** Uygulamanın yavaşlaması
+- **Çözüm Stratejileri:**
+  - Database optimization ve indexing
+  - Lazy loading implementasyonu
+  - Pagination sistemi
+  - Performance monitoring ve alerting
+
+## 📞 İletişim ve Toplantı Stratejisi
+
+### 🎯 MVP Odaklı Günlük İletişim
+**Her gün saat 09:00 - 15 dakikalık MVP Daily Standup:**
 - **MVP İlerleme Paylaşımı:**
-  - MVP kriterlerinden hangileri tamamlandı?
+  - MVP kriterlerinden hangileri dün tamamlandı?
   - Hangi MVP görevleri bugün yapılacak?
   - MVP teslimi için risk var mı?
-- Blokaj tespiti ve çözümü
+  - Blokaj var mı, yardıma ihtiyaç var mı?
+- **MVP Milestone Kontrolü:**
+  - Günlük MVP kriterleri checklist kontrolü
+  - MVP timeline risk değerlendirmesi
 - MVP test sonuçları paylaşımı
 
-### MVP Özel Toplantıları
-- **2. Hafta:** MVP backend API prototipi demo
-- **3. Hafta:** MVP frontend prototipi demo
-- **4. Hafta:** MVP teslim öncesi final kontrol
-- **4. Hafta Cuma:** 🚀 MVP TESLİMİ ve demo
+### 📅 Haftalık MVP Toplantıları
 
-### Ara Teslimler
-- **2. Hafta:** Veritabanı şeması ve temel backend API'leri
-- **4. Hafta:** 🚀 **MVP SÜRÜMÜ TESLİMİ** (Çalışır durumda temel özellikler)
-- **6. Hafta:** Gelişmiş özellikler ve raporlama
-- **8. Hafta:** Final teslim (Tam özellikli versiyon)
+#### **Pazartesi - MVP Haftalık Planlama (30 dk)**
+- **MVP Milestone Review:** Geçen hafta MVP kriterleri kontrolü
+- **MVP Haftalık Hedefler:** Bu hafta tamamlanacak MVP görevleri
+- **MVP Risk Değerlendirmesi:** MVP teslimi için risk analizi
+- **MVP Timeline Kontrolü:** 3 haftalık MVP teslimi için progress check
 
-## 🛠️ Geliştirme Ortamı ve Proje Yapısı
+#### **Çarşamba - MVP İlerleme Kontrolü (20 dk)**
+- **MVP Progress Review:** Hafta ortası MVP ilerleme kontrolü
+- **MVP Blokaj Çözümü:** MVP geliştirmesini engelleyen sorunların çözümü
+- **MVP Quality Check:** MVP kod kalitesi ve test sonuçları
+- **MVP Customer Feedback:** Müşteri geri bildirimlerinin değerlendirilmesi
 
-### Geliştirme Ortamı Kurulumu
+#### **Cuma - MVP Haftalık Değerlendirme (45 dk)**
+- **MVP Milestone Completion:** Haftalık MVP kriterleri tamamlanma durumu
+- **MVP Demo:** Tamamlanan MVP özelliklerinin demo'su
+- **MVP Test Results:** MVP test sonuçlarının değerlendirilmesi
+- **MVP Next Week Planning:** Gelecek hafta MVP görevleri planlaması
+
+### 🚀 MVP Özel Toplantıları
+
+#### **1. Hafta Sonu - MVP Teknik Mimari Review**
+- **Katılımcılar:** Tüm ekip
+- **Süre:** 60 dakika
+- **İçerik:** MVP teknik mimarisinin final onayı, API contract'larının belirlenmesi
+
+#### **2. Hafta Sonu - MVP Backend Prototipi Demo**
+- **Katılımcılar:** Backend Developer + Proje Yöneticisi
+- **Süre:** 30 dakika
+- **İçerik:** MVP backend API'lerinin demo'su, entegrasyon testleri
+
+#### **3. Hafta Başı - MVP Frontend Prototipi Demo**
+- **Katılımcılar:** Frontend Developer + Proje Yöneticisi
+- **Süre:** 30 dakika
+- **İçerik:** MVP UI prototipinin demo'su, kullanıcı deneyimi değerlendirmesi
+
+#### **3. Hafta Sonu - 🚀 MVP TESLİMİ ve Müşteri Demo**
+- **Katılımcılar:** Tüm ekip + Müşteri
+- **Süre:** 90 dakika
+- **İçerik:** MVP teslimi, müşteri demo'su, geri bildirim toplama
+
+### 📋 MVP Sonrası Toplantılar (4-8. Hafta)
+
+#### **4. Hafta - MVP Geri Bildirimi Değerlendirme**
+- **MVP kullanım deneyimi analizi**
+- **V2.0 özellik priorizasyonu**
+- **5-8. hafta detaylı planlama**
+
+#### **6. Hafta - V2.0 Beta Demo**
+- **Gelişmiş özellikler demo'su**
+- **Müşteri beta test planı**
+
+#### **8. Hafta - 🎉 TAM ÜRÜN TESLİMİ**
+- **Final ürün demo'su**
+- **Teslim onayı ve knowledge transfer**
+
+### 📊 MVP İletişim Araçları
+
+#### **Günlük İletişim:**
+- **Slack/Teams:** MVP ilerleme paylaşımı, hızlı soru-cevap
+- **MVP Progress Tracker:** Günlük MVP kriterleri takibi
+- **MVP Bug Tracker:** MVP hatalarının takibi ve çözümü
+
+#### **Haftalık İletişim:**
+- **MVP Weekly Report:** Haftalık MVP ilerleme raporu
+- **MVP Demo Videos:** Tamamlanan özelliklerin video demo'ları
+- **MVP Test Reports:** MVP test sonuçları raporları
+
+#### **MVP Özel İletişim:**
+- **MVP Customer Feedback:** Müşteri geri bildirimleri
+- **MVP Risk Alerts:** MVP teslimi için risk uyarıları
+- **MVP Success Metrics:** MVP başarı kriterleri ölçümü
+
+### 🎯 MVP Ara Teslimler ve Milestone'lar
+
+#### **1. Hafta Sonu - MVP Altyapı Teslimi**
+- ✅ Proje altyapısı kurulumu
+- ✅ MVP teknik mimari onayı
+- ✅ MVP API contract'ları
+- ✅ MVP UI mockup'ları
+
+#### **2. Hafta Sonu - MVP Prototip Teslimi**
+- ✅ MVP backend API'leri
+- ✅ MVP frontend prototipi
+- ✅ MVP entegrasyon testleri
+- ✅ MVP performans testleri
+
+#### **3. Hafta Sonu - 🚀 MVP TESLİMİ**
+- ✅ Tüm MVP kriterleri tamamlanmış
+- ✅ MVP end-to-end testleri geçilmiş
+- ✅ MVP müşteri demo'su yapılmış
+- ✅ MVP teslim onayı alınmış
+
+#### **6. Hafta Sonu - V2.0 Beta Teslimi**
+- ✅ Gelişmiş raporlama özellikleri
+- ✅ Otomatik döviz kuru entegrasyonu
+- ✅ PDF export ve grafik özellikleri
+
+#### **8. Hafta Sonu - 🎉 TAM ÜRÜN TESLİMİ**
+- ✅ Tüm özellikler tamamlanmış
+- ✅ Production-ready deployment
+- ✅ Kapsamlı dokümantasyon
+- ✅ Müşteri kabul testleri geçilmiş
+
+## 🛠️ Geliştirme Ortamı Kurulumu
+
+### **Hızlı Başlangıç**
 ```bash
-# Python 3.11+ kurulumu
+# 1. Python 3.11+ kurulumu
 python --version
 
-# Virtual environment oluşturma
+# 2. Virtual environment oluşturma
 python -m venv insaat_finansal_env
 insaat_finansal_env\Scripts\activate  # Windows
 # source insaat_finansal_env/bin/activate  # Linux/Mac
 
-# Gerekli paketlerin kurulumu
+# 3. Gerekli paketlerin kurulumu
 pip install -r requirements.txt
-```
 
-### Proje Yapısı
-```
-insaat_finansal/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                 # FastAPI uygulaması
-│   │   ├── config.py               # Konfigürasyon
-│   │   ├── database.py             # Veritabanı bağlantısı
-│   │   └── models/                 # SQLAlchemy modelleri
-│   │       ├── __init__.py
-│   │       ├── fatura.py
-│   │       ├── para_birimi.py
-│   │       └── rapor.py
-│   ├── api/                        # API endpoint'leri
-│   │   ├── __init__.py
-│   │   ├── fatura.py
-│   │   ├── para_birimi.py
-│   │   └── rapor.py
-│   ├── services/                   # İş mantığı servisleri
-│   │   ├── __init__.py
-│   │   ├── fatura_service.py
-│   │   ├── doviz_service.py
-│   │   └── rapor_service.py
-│   ├── utils/                      # Yardımcı fonksiyonlar
-│   │   ├── __init__.py
-│   │   ├── hesaplamalar.py
-│   │   └── validasyon.py
-│   └── tests/                      # Backend testleri
-│       ├── __init__.py
-│       ├── test_api.py
-│       └── test_services.py
-├── frontend/
-│   ├── main.py                     # PyQt6 ana uygulama
-│   ├── ui/                         # UI sınıfları
-│   │   ├── __init__.py
-│   │   ├── main_window.py
-│   │   ├── fatura_form.py
-│   │   ├── rapor_view.py
-│   │   └── components/             # Yeniden kullanılabilir komponentler
-│   │       ├── __init__.py
-│   │       ├── excel_table.py
-│   │       ├── para_birimi_selector.py
-│   │       └── chart_widget.py
-│   ├── controllers/                # UI kontrolcüleri
-│   │   ├── __init__.py
-│   │   ├── fatura_controller.py
-│   │   └── rapor_controller.py
-│   └── tests/                      # Frontend testleri
-│       ├── __init__.py
-│       └── test_ui.py
-├── shared/                         # Ortak modüller
-│   ├── __init__.py
-│   ├── constants.py                # Sabitler
-│   ├── exceptions.py               # Özel exception'lar
-│   └── types.py                    # Tip tanımları
-├── data/                           # Veritabanı dosyaları
-│   ├── migrations/                 # Alembic migration'ları
-│   └── insaat_finansal.db          # SQLite veritabanı
-├── docs/                           # Dokümantasyon
-│   ├── api.md
-│   ├── user_guide.md
-│   └── development.md
-├── scripts/                        # Yardımcı scriptler
-│   ├── setup_db.py
-│   ├── seed_data.py
-│   └── backup.py
-├── requirements.txt                # Python bağımlılıkları
-├── requirements-dev.txt            # Geliştirme bağımlılıkları
-├── .env.example                    # Çevre değişkenleri örneği
-├── .gitignore
-├── README.md
-└── pyproject.toml                  # Proje konfigürasyonu
-```
-
-### requirements.txt
-```
-# Backend
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-sqlalchemy==2.0.23
-alembic==1.12.1
-pydantic==2.5.0
-pydantic-settings==2.1.0
-
-# Frontend
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
-PyQt6-sip==13.6.0
-
-# Veri İşleme
-pandas==2.1.3
-numpy==1.25.2
-openpyxl==3.1.2
-
-# Raporlama
-matplotlib==3.8.2
-plotly==5.17.0
-reportlab==4.0.7
-
-# API ve HTTP
-requests==2.31.0
-aiohttp==3.9.1
-httpx==0.25.2
-
-# Asenkron İşlemler
-celery==5.3.4
-redis==5.0.1
-
-# Konfigürasyon
-python-decouple==3.8
-python-dotenv==1.0.0
-
-# Test
-pytest==7.4.3
-pytest-qt==4.2.0
-pytest-asyncio==0.21.1
-factory-boy==3.3.0
-
-# Veritabanı
-psycopg2-binary==2.9.9  # PostgreSQL için
-```
-
-### requirements-dev.txt
-```
-# Geliştirme araçları
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
-pre-commit==3.6.0
-
-# Debugging
-ipdb==0.13.13
-pdb++==0.10.3
-
-# Profiling
-memory-profiler==0.61.0
-line-profiler==4.1.1
-```
-
-### Konfigürasyon Dosyaları
-
-#### .env.example
-```env
-# Veritabanı
-DATABASE_URL=sqlite:///./data/insaat_finansal.db
-# DATABASE_URL=postgresql://user:password@localhost/insaat_finansal
-
-# API Ayarları
-API_HOST=127.0.0.1
-API_PORT=8000
-API_DEBUG=True
-
-# Döviz Kuru API
-DOVIZ_API_URL=https://api.exchangerate-api.com/v4/latest
-DOVIZ_API_KEY=your_api_key_here
-
-# Redis (Celery için)
-REDIS_URL=redis://localhost:6379/0
-
-# Uygulama Ayarları
-APP_NAME=İnşaat Finansal Yönetim
-APP_VERSION=1.0.0
-LOG_LEVEL=INFO
-```
-
-#### pyproject.toml
-```toml
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "insaat-finansal"
-version = "1.0.0"
-description = "İnşaat şirketi finansal yönetim masaüstü uygulaması"
-authors = [{name = "Development Team", email = "dev@example.com"}]
-license = {text = "MIT"}
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "fastapi>=0.104.1",
-    "uvicorn[standard]>=0.24.0",
-    "sqlalchemy>=2.0.23",
-    "PyQt6>=6.6.1",
-    "pandas>=2.1.3",
-    "openpyxl>=3.1.2",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=7.4.3",
-    "pytest-qt>=4.2.0",
-    "black>=23.11.0",
-    "flake8>=6.1.0",
-    "mypy>=1.7.1",
-]
-
-[tool.black]
-line-length = 88
-target-version = ['py311']
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-```
-
-### Geliştirme Komutları
-```bash
-# Backend başlatma
+# 4. Backend başlatma
 uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 
-# Frontend başlatma
+# 5. Frontend başlatma (yeni terminal)
 python frontend/main.py
-
-# Test çalıştırma
-pytest backend/tests/
-pytest frontend/tests/
-
-# Veritabanı migration
-alembic upgrade head
-
-# Kod formatı
-black .
-flake8 .
-
-# Paket kurulumu
-pip install -e .
 ```
+
+### **Detaylı Kurulum ve Konfigürasyon**
+Geliştirme ortamı, proje yapısı, requirements ve konfigürasyon dosyaları için: **[TEKNOLOJI_STACK.md](./TEKNOLOJI_STACK.md)**
