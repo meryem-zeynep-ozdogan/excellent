@@ -1,0 +1,52 @@
+Proje Adı: ProjeMaliyet: İnşaat Sektörü Finans Yönetim Sistemi 
+
+1. Amaç (Purpose) Bu projenin amacı, küçük ve orta ölçekli inşaat şirketlerinin karmaşık e-tablolar veya pahalı muhasebe yazılımları yerine, özel olarak kendi ihtiyaçları için tasarlanmış bir masaüstü uygulaması aracılığıyla proje bazlı gelir-gider takibi yapmalarını sağlamaktır. Bu sayede finansal verilerin kontrolünü kolaylaştırmak, anlık kâr-zarar analizi ile karar alma süreçlerini hızlandırmak ve operasyonel verimliliği artırmak hedeflenmektedir.
+
+
+
+2. Üst Düzey Proje Tanımı (High-level project description) Proje, Windows işletim sistemlerinde çalışacak bir masaüstü uygulaması geliştirmeyi kapsar. Uygulama, kullanıcıların projelere özel gelir, gider ve vergi kayıtları oluşturmasına, bu kayıtları listelemesine ve düzenlemesine olanak tanıyacaktır. Ana gösterge paneli üzerinden anlık finansal özet sunacak ve seçilen tarih aralığına göre tüm verilerin Excel formatında dışa aktarılmasını sağlayacaktır. Proje, SQLite veritabanı ile çalışacak ve PyInstaller ile tek bir .exe dosyası olarak paketlenecektir.
+
+
+3. Üst Düzey Kilometre Taşı Takvimi (High-level milestone schedule) 
+Projenin toplam süresi 8 haftadır.
+
+2. Hafta Sonu: Temel veri tabanı yapısı ve veri giriş (gelir/gider) ekranlarının tamamlanması.
+
+4. Hafta Sonu: Verilerin listelenmesi, ana gösterge paneli ve temel raporlama fonksiyonlarının tamamlanması.
+
+6. Hafta Sonu: Tüm MVP özelliklerinin tamamlanması, kapsamlı testlerin başlaması ve hata ayıklama.
+
+8. Hafta Sonu: Kurulum paketinin (.exe) oluşturulması, kullanım kılavuzunun hazırlanması ve projenin teslimata hazır hale getirilmesi.
+
+4. Tahmini Maliyet ve Bütçe (Rough cost estimate and budget) 
+Projenin ana maliyet kalemi, 2 ay boyunca çalışacak 3 kişilik geliştirici ekibinin insan kaynağı maliyetidir.
+
+
+Ek Maliyetler: Geliştirme araçları için lisans ücretleri (varsa), uygulama ikon tasarımı ve kurulum paketi için bir kod imzalama sertifikası (Code Signing Certificate) gibi potansiyel düşük bütçeli giderler öngörülmektedir.
+
+5. Paydaşlar (Stakeholders) Projenin başarısından etkilenecek ilk paydaş listesi aşağıdaki gibidir:
+
+
+Proje Sponsoru: Projeyi finanse eden ve nihai onayı veren kişi/kurum.
+
+Proje Ekibi: Proje Lideri ve 2 Geliştirici.
+
+Nihai Kullanıcılar: İnşaat şirketi sahipleri, proje yöneticileri, muhasebe personeli.
+
+6. Proje Yöneticisi ve Yetkileri (Project Manager) 
+
+
+Atanan Proje Yöneticisi: [Sizin Adınız Soyadınız] 
+
+
+Sorumlulukları: Proje planına uyulmasını sağlamak, ekip üyeleri arasında görev dağılımı yapmak, proje takvimini ve bütçesini yönetmek, paydaşlarla iletişimi sürdürmek ve projenin belirlenen hedeflere ulaşmasını sağlamak.
+
+
+Yetkileri: MVP kapsamındaki özelliklerin önceliklendirilmesi, teknik kararların alınması, görevlerin ekibe atanması, bütçe dahilindeki harcamaların onaylanması ve proje sürecindeki anlaşmazlıkların çözülmesi konularında nihai karar verme yetkisine sahiptir.
+
+7. Sponsor Desteğinin Resmi Beyanı (Formal declaration of sponsor's support) 
+Ben, [Sponsorun Adı Soyadı, Ünvanı], bu belgede ana hatları çizilen "ProjeMaliyet: İnşaat Sektörü Finans Yönetim Sistemi" projesini onaylıyor ve tam destek verdiğimi beyan ediyorum. Proje Yöneticisi [Sizin Adınız Soyadınız], yukarıda belirtilen sorumlulukları yerine getirmek ve projeyi başarıyla tamamlamak için listelenen yetkilere sahiptir.
+
+
+Sponsor Adı/İmzası:
+Tarih:
