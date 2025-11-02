@@ -184,6 +184,11 @@ class InvoiceTab(QWidget):
             "outgoing": {"title": "Giden Faturalar (Gelir)", "file_name": "giden_faturalar.xlsx"},
             "incoming": {"title": "Gelen Faturalar (Gider)", "file_name": "gelen_faturalar.xlsx"}
         }
+        # Sayfalama değişkenleri
+        self.current_page = 0
+        self.page_size = 100  # Her sayfada 100 fatura göster
+        self.total_count = 0
+        
         self._setup_ui()
         self._connect_signals()
         self.refresh_table()
@@ -193,6 +198,7 @@ class InvoiceTab(QWidget):
         main_layout.addLayout(self._create_header_layout())
         main_layout.addLayout(self._create_form_layout())
         main_layout.addWidget(self._create_table())
+        main_layout.addLayout(self._create_pagination_layout())
 
     def _create_header_layout(self):
         header_layout = QHBoxLayout()
@@ -252,6 +258,43 @@ class InvoiceTab(QWidget):
         self.invoice_table.setHorizontalHeaderLabels(table_headers); self.invoice_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.invoice_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.invoice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents); self.invoice_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.invoice_table.verticalHeader().setVisible(False)
         return self.invoice_table
+    
+    def _create_pagination_layout(self):
+        """Sayfalama butonları"""
+        pagination_layout = QHBoxLayout()
+        pagination_layout.addStretch()
+        
+        self.prev_button = QPushButton("◀ Önceki")
+        self.prev_button.clicked.connect(self.previous_page)
+        pagination_layout.addWidget(self.prev_button)
+        
+        self.page_label = QLabel("Sayfa 1 / 1")
+        pagination_layout.addWidget(self.page_label)
+        
+        self.next_button = QPushButton("Sonraki ▶")
+        self.next_button.clicked.connect(self.next_page)
+        pagination_layout.addWidget(self.next_button)
+        
+        pagination_layout.addStretch()
+        return pagination_layout
+    
+    def previous_page(self):
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.refresh_table()
+    
+    def next_page(self):
+        max_page = (self.total_count - 1) // self.page_size
+        if self.current_page < max_page:
+            self.current_page += 1
+            self.refresh_table()
+    
+    def update_pagination_controls(self):
+        """Sayfalama kontrollerini güncelle"""
+        max_page = max(0, (self.total_count - 1) // self.page_size)
+        self.page_label.setText(f"Sayfa {self.current_page + 1} / {max_page + 1} (Toplam: {self.total_count:,} fatura)")
+        self.prev_button.setEnabled(self.current_page > 0)
+        self.next_button.setEnabled(self.current_page < max_page)
 
     def _connect_signals(self):
         self.new_button.clicked.connect(self.clear_edit_fields)
@@ -297,8 +340,16 @@ class InvoiceTab(QWidget):
     def refresh_table(self):
         self.invoice_table.setRowCount(0)
         if not self.backend: return
-        invoices = self.backend.handle_invoice_operation('get', self.invoice_type)
+        
+        # Sayfalama ile veri al
+        offset = self.current_page * self.page_size
+        invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=self.page_size, offset=offset)
         if invoices is None: invoices = []
+        
+        # Toplam kayıt sayısını güncelle
+        self.total_count = self.backend.handle_invoice_operation('count', self.invoice_type) or 0
+        self.update_pagination_controls()
+        
         self.invoice_table.setSortingEnabled(False) # Doldururken sıralamayı kapat
         for inv in invoices:
             row_pos = self.invoice_table.rowCount()

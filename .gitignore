@@ -1,0 +1,34 @@
+# Database dosyaları
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test dosyaları
+stress_test.py
+simple_stress_test.py
+test_gui.py
+transfer_data.py
+*_stress_test.db
+
+# Excel dosyaları
+*.xlsx
+*.xls
+
+# IDE/Editor dosyaları
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS dosyaları
+.DS_Store
+Thumbs.db
