@@ -346,15 +346,26 @@ class Database:
         
         return cursor.rowcount if cursor else 0
 
-    def get_all_invoices(self, table_name):
-        """Belirtilen tablodaki tüm faturaları getirir."""
-        query = f"SELECT * FROM {table_name} ORDER BY tarih DESC"
+    def get_all_invoices(self, table_name, limit=None, offset=0):
+        """Belirtilen tablodaki tüm faturaları getirir (sayfalama destekli)."""
+        if limit:
+            query = f"SELECT * FROM {table_name} ORDER BY tarih DESC LIMIT {limit} OFFSET {offset}"
+        else:
+            query = f"SELECT * FROM {table_name} ORDER BY tarih DESC"
         cursor = self._execute_query(query)
         if cursor:
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description]
             return [dict(zip(columns, row)) for row in rows]
         return []
+    
+    def get_invoice_count(self, table_name):
+        """Tablodaki toplam fatura sayısını döndürür."""
+        query = f"SELECT COUNT(*) FROM {table_name}"
+        cursor = self._execute_query(query)
+        if cursor:
+            return cursor.fetchone()[0]
+        return 0
 
     def get_invoice_by_id(self, table_name, invoice_id):
         """Belirtilen tablodan ID'ye göre tek bir fatura getirir."""
@@ -603,7 +614,7 @@ class Backend(QObject):
             logging.error(f"Fatura veri işleme hatası: {e} - Veri: {invoice_data}")
             return None
 
-    def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None):
+    def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None, limit=None, offset=None):
         """Frontend için tekil fatura işlem merkezi."""
         table_name = f"{invoice_type}_invoices"
         
@@ -631,7 +642,10 @@ class Backend(QObject):
             return False
         
         elif operation == 'get':
-            return self.db.get_all_invoices(table_name)
+            return self.db.get_all_invoices(table_name, limit=limit, offset=offset)
+        
+        elif operation == 'count':
+            return self.db.get_invoice_count(table_name)
         
         elif operation == 'get_by_id':
             return self.db.get_invoice_by_id(table_name, record_id)
@@ -653,49 +667,59 @@ class Backend(QObject):
             return 0
 
     def get_summary_data(self):
-        """Gelir, gider ve kar/zarar özetini hesaplar."""
-        outgoing_invoices = self.db.get_all_invoices('outgoing_invoices')
-        incoming_invoices = self.db.get_all_invoices('incoming_invoices')
-
-        # Toplam değerleri hesapla
-        total_revenue = sum(inv.get('toplam_tutar_tl', 0) for inv in outgoing_invoices)
-        total_expense = sum(inv.get('toplam_tutar_tl', 0) for inv in incoming_invoices)
+        """Gelir, gider ve kar/zarar özetini hesaplar (SQL ile optimize edildi)."""
+        # SQL ile toplam hesapla (çok daha hızlı!)
+        cursor = self.db.conn.cursor()
         
-        # Aylık dağılım
+        # Toplam gelir
+        cursor.execute("SELECT SUM(toplam_tutar_tl) FROM outgoing_invoices")
+        total_revenue = cursor.fetchone()[0] or 0
+        
+        # Toplam gider
+        cursor.execute("SELECT SUM(toplam_tutar_tl) FROM incoming_invoices")
+        total_expense = cursor.fetchone()[0] or 0
+        
+        # Aylık dağılım için SQL kullan
         monthly_income = [0] * 12
         monthly_expenses = [0] * 12
         current_year = datetime.now().year
-        current_month = datetime.now().month
-        active_months = set()
         
-        # Gelir faturalarını aylara dağıt
-        for inv in outgoing_invoices:
+        # Gelir aylık dağılım (sadece bu yıl)
+        cursor.execute("""
+            SELECT tarih, toplam_tutar_tl FROM outgoing_invoices 
+            WHERE tarih LIKE ?
+        """, (f"%.{current_year}",))
+        
+        for row in cursor.fetchall():
             try:
-                inv_date = datetime.strptime(inv['tarih'], "%d.%m.%Y")
-                if inv_date.year == current_year:
-                    month_idx = inv_date.month - 1
-                    monthly_income[month_idx] += inv.get('toplam_tutar_tl', 0)
-                    if monthly_income[month_idx] > 0:
-                        active_months.add(inv_date.month)
-            except (ValueError, KeyError):
+                parts = row[0].split('.')
+                if len(parts) == 3:
+                    month = int(parts[1]) - 1
+                    monthly_income[month] += row[1]
+            except:
                 continue
-
-        # Gider faturalarını aylara dağıt
-        for inv in incoming_invoices:
+        
+        # Gider aylık dağılım (sadece bu yıl)
+        cursor.execute("""
+            SELECT tarih, toplam_tutar_tl FROM incoming_invoices 
+            WHERE tarih LIKE ?
+        """, (f"%.{current_year}",))
+        
+        for row in cursor.fetchall():
             try:
-                inv_date = datetime.strptime(inv['tarih'], "%d.%m.%Y")
-                if inv_date.year == current_year:
-                    monthly_expenses[inv_date.month - 1] += inv.get('toplam_tutar_tl', 0)
-            except (ValueError, KeyError):
+                parts = row[0].split('.')
+                if len(parts) == 3:
+                    month = int(parts[1]) - 1
+                    monthly_expenses[month] += row[1]
+            except:
                 continue
-
-        # Aylık ortalama hesapla
-        # Sadece gelir olan ayları sayarak daha doğru bir ortalama bulalım
+        
+        # Aylık ortalama
         active_income_months = sum(1 for income in monthly_income if income > 0)
         total_income_this_year = sum(monthly_income)
         monthly_average = total_income_this_year / active_income_months if active_income_months > 0 else 0
         
-        # Net kar hesapla
+        # Net kar
         net_profit = total_revenue - total_expense
 
         return {
@@ -731,24 +755,32 @@ class Backend(QObject):
         return sorted(list(years_set), reverse=True)
 
     def get_calculations_for_year(self, year):
-        """Belirli bir yıl için aylık ve çeyrek dönem hesaplamaları."""
-        outgoing = self.db.get_all_invoices('outgoing_invoices')
-        incoming = self.db.get_all_invoices('incoming_invoices')
+        """Belirli bir yıl için aylık ve çeyrek dönem hesaplamaları (SQL ile optimize edildi)."""
+        cursor = self.db.conn.cursor()
         tax_rate = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0) / 100.0
         
-        # Aylık sonuçlar
+        # Aylık sonuçlar - SQL ile topla
         monthly_results = []
         for month in range(1, 13):
-            kesilen = sum(inv.get('toplam_tutar_tl', 0) for inv in outgoing 
-                         if self._is_in_month_year(inv.get('tarih', ''), month, year))
-            gelen = sum(inv.get('toplam_tutar_tl', 0) for inv in incoming 
-                       if self._is_in_month_year(inv.get('tarih', ''), month, year))
+            # Gelir
+            cursor.execute("""
+                SELECT SUM(toplam_tutar_tl), SUM(kdv_tutari) 
+                FROM outgoing_invoices 
+                WHERE tarih LIKE ?
+            """, (f"%.{month:02d}.{year}",))
+            out_row = cursor.fetchone()
+            kesilen = out_row[0] or 0
+            kesilen_kdv = out_row[1] or 0
             
-            # KDV farkı
-            kesilen_kdv = sum(inv.get('kdv_tutari', 0) for inv in outgoing 
-                             if self._is_in_month_year(inv.get('tarih', ''), month, year))
-            gelen_kdv = sum(inv.get('kdv_tutari', 0) for inv in incoming 
-                           if self._is_in_month_year(inv.get('tarih', ''), month, year))
+            # Gider
+            cursor.execute("""
+                SELECT SUM(toplam_tutar_tl), SUM(kdv_tutari) 
+                FROM incoming_invoices 
+                WHERE tarih LIKE ?
+            """, (f"%.{month:02d}.{year}",))
+            in_row = cursor.fetchone()
+            gelen = in_row[0] or 0
+            gelen_kdv = in_row[1] or 0
             
             monthly_results.append({
                 'kesilen': kesilen,
@@ -784,12 +816,23 @@ class Backend(QObject):
         return monthly_results, quarterly_results
     
     def get_yearly_summary(self, year):
-        """Belirli bir yıl için yıllık özet."""
-        outgoing = self.db.get_all_invoices('outgoing_invoices')
-        incoming = self.db.get_all_invoices('incoming_invoices')
+        """Belirli bir yıl için yıllık özet (SQL ile optimize edildi)."""
+        cursor = self.db.conn.cursor()
         
-        gelir = sum(inv.get('toplam_tutar_tl', 0) for inv in outgoing if self._is_in_year(inv.get('tarih', ''), year))
-        gider = sum(inv.get('toplam_tutar_tl', 0) for inv in incoming if self._is_in_year(inv.get('tarih', ''), year))
+        # Gelir toplamı
+        cursor.execute("""
+            SELECT SUM(toplam_tutar_tl) FROM outgoing_invoices 
+            WHERE tarih LIKE ?
+        """, (f"%.{year}",))
+        gelir = cursor.fetchone()[0] or 0
+        
+        # Gider toplamı
+        cursor.execute("""
+            SELECT SUM(toplam_tutar_tl) FROM incoming_invoices 
+            WHERE tarih LIKE ?
+        """, (f"%.{year}",))
+        gider = cursor.fetchone()[0] or 0
+        
         brut_kar = gelir - gider
         
         # Vergi hesapla
@@ -808,18 +851,24 @@ class Backend(QObject):
         """Tarihin belirtilen ay ve yılda olup olmadığını kontrol eder."""
         try:
             if not date_str: return False
-            date_obj = datetime.strptime(date_str, "%d.%m.%Y")
-            return date_obj.month == month and date_obj.year == year
-        except ValueError:
+            # Manuel parse (locale sorunu önleme)
+            parts = date_str.split('.')
+            if len(parts) == 3:
+                return int(parts[1]) == month and int(parts[2]) == year
+            return False
+        except (ValueError, IndexError):
             return False
     
     def _is_in_year(self, date_str, year):
         """Tarihin belirtilen yılda olup olmadığını kontrol eder."""
         try:
             if not date_str: return False
-            date_obj = datetime.strptime(date_str, "%d.%m.%Y")
-            return date_obj.year == year
-        except ValueError:
+            # Manuel parse (locale sorunu önleme)
+            parts = date_str.split('.')
+            if len(parts) == 3:
+                return int(parts[2]) == year
+            return False
+        except (ValueError, IndexError):
             return False
     
     def export_to_excel(self, file_path, sheets_data):
