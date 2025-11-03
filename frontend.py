@@ -79,12 +79,47 @@ def update_styles(palette):
     STYLES["notes_drawing_label_bg"] = f"background-color: {palette['notes_drawing_label_bg']}; color: {palette['notes_drawing_text_color']}; font-weight: bold; padding: 5px; border-radius: 5px;"
     STYLES["notes_list_item_drawing_style"] = f"QListWidget {{ border: none; background-color: transparent; }} QListWidget::item {{ padding: 8px 5px; color: {palette['notes_drawing_text_color']}; background-color: transparent; border-bottom: 1px dashed {palette['notes_drawing_border']}; }} QListWidget::item:selected {{ background-color: {palette['notes_drawing_border']}; color: {palette['notes_list_item_selected_text']}; }}"
     STYLES["notes_buttons_drawing_style"] = "QPushButton { padding: 6px 10px; border-radius: 4px; font-size: 12px; } QPushButton#new_button_notes { background-color: #6c757d; color: white; } QPushButton#delete_button_notes { background-color: #dc3545; color: white; } QPushButton#save_button_notes { background-color: #28a745; color: white; }"
+    
+    # YENİ: Form kontrol stilleri
+    STYLES["kdv_checkbox_style"] = "QCheckBox { font-weight: 600; padding: 5px; } QCheckBox:checked { color: #28a745; }"
+    STYLES["preview_button_style"] = "QPushButton { padding: 8px 12px; background-color: #6c757d; color: white; border-radius: 6px; font-weight: 600; font-size: 12px; } QPushButton:hover { background-color: #5a6268; }"
 
 
 def show_styled_message_box(parent, icon, title, text, buttons):
-    """ Temaya uygun (sabit açık tema) QMessageBox gösterir. """
-    msg_box = QMessageBox(parent); msg_box.setWindowTitle(title); msg_box.setText(text); msg_box.setStandardButtons(buttons); msg_box.setIcon(icon)
-    palette = LIGHT_THEME_PALETTE; bg_color = palette.get('main_card_frame', '#ffffff'); text_color = palette.get('text_primary', '#0b2d4d'); input_border = palette.get('input_border', '#D0D0D0'); menu_checked = palette.get('menu_checked', '#e0e0e0'); btn_bg = "#f0f0f0"; btn_text = "#333333"; btn_border = input_border
+    """ Temaya uygun (sabit açık tema) QMessageBox gösterir ve buton metinlerini Türkçeleştirir. """
+    msg_box = QMessageBox(parent)
+    msg_box.setWindowTitle(title)
+    msg_box.setText(text)
+    msg_box.setStandardButtons(buttons)
+    msg_box.setIcon(icon)
+    
+    # Buton metinlerini Türkçeleştir
+    for button in msg_box.buttons():
+        button_role = msg_box.buttonRole(button)
+        if button_role == QMessageBox.ButtonRole.AcceptRole:
+            if buttons & QMessageBox.StandardButton.Ok:
+                button.setText("Tamam")
+            elif buttons & QMessageBox.StandardButton.Yes:
+                button.setText("Evet")
+        elif button_role == QMessageBox.ButtonRole.RejectRole:
+            if buttons & QMessageBox.StandardButton.No:
+                button.setText("Hayır")
+            elif buttons & QMessageBox.StandardButton.Cancel:
+                button.setText("İptal")
+        elif button_role == QMessageBox.ButtonRole.ApplyRole:
+            button.setText("Uygula")
+        elif button_role == QMessageBox.ButtonRole.ResetRole:
+            button.setText("Sıfırla")
+    
+    palette = LIGHT_THEME_PALETTE
+    bg_color = palette.get('main_card_frame', '#ffffff')
+    text_color = palette.get('text_primary', '#0b2d4d')
+    input_border = palette.get('input_border', '#D0D0D0')
+    menu_checked = palette.get('menu_checked', '#e0e0e0')
+    btn_bg = "#f0f0f0"
+    btn_text = "#333333"
+    btn_border = input_border
+    
     msg_box.setStyleSheet(
         f"QMessageBox {{ background-color: {bg_color}; }} "
         f"QMessageBox QLabel {{ color: {text_color}; font-size: 14px; }} "
@@ -93,6 +128,26 @@ def show_styled_message_box(parent, icon, title, text, buttons):
         f"QMessageBox QPushButton:pressed {{ background-color: {menu_checked}; }}"
     )
     return msg_box.exec()
+
+
+def get_save_file_name_turkish(parent, title, default_name, file_filter):
+    """
+    Türkçeleştirilmiş dosya kaydetme dialogu.
+    """
+    dialog = QFileDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+    dialog.setNameFilter(file_filter)
+    dialog.selectFile(default_name)
+    dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Kaydet")
+    dialog.setLabelText(QFileDialog.DialogLabel.Reject, "İptal")
+    dialog.setLabelText(QFileDialog.DialogLabel.FileName, "Dosya Adı")
+    dialog.setLabelText(QFileDialog.DialogLabel.FileType, "Dosya Türü")
+    
+    if dialog.exec() == QFileDialog.DialogCode.Accepted:
+        selected_files = dialog.selectedFiles()
+        return selected_files[0] if selected_files else None, file_filter
+    return None, None
 
 # --- Donut Grafik Widget ---
 class DonutChartWidget(QWidget):
@@ -219,6 +274,8 @@ class InvoiceTab(QWidget):
 
     def _create_form_layout(self):
         form_layout = QVBoxLayout()
+        
+        # İlk satır: Ana alanlar
         fields_layout = QHBoxLayout()
         self.edit_fields = {}
         headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM TUTAR", "BİRİM", "KDV %"]
@@ -239,9 +296,41 @@ class InvoiceTab(QWidget):
                     widget.setValidator(validator)
             self.edit_fields[key] = widget
             fields_layout.addWidget(widget)
-        self.kdv_dahil_checkbox = QCheckBox("KDV Dahil")
-        fields_layout.addWidget(self.kdv_dahil_checkbox)
+        
         form_layout.addLayout(fields_layout)
+        
+        # İkinci satır: KDV kontrolü ve opsiyonel KDV tutarı
+        kdv_control_layout = QHBoxLayout()
+        
+        self.kdv_dahil_checkbox = QCheckBox("✓ KDV Dahil")
+        self.kdv_dahil_checkbox.setToolTip("Girdiğiniz tutar KDV dahil mi, KDV hariç mi?\n\n• İŞARETLİ: Girilen tutar KDV dahildir (matrah hesaplanacak)\n• İŞARETSİZ: Girilen tutar matrah (KDV hariç) tutardır")
+        self.kdv_dahil_checkbox.setStyleSheet(STYLES.get("kdv_checkbox_style", ""))
+        kdv_control_layout.addWidget(self.kdv_dahil_checkbox)
+        
+        kdv_label = QLabel("KDV Tutarı:")
+        kdv_label.setToolTip("Opsiyonel alan")
+        kdv_control_layout.addWidget(kdv_label)
+        
+        self.kdv_tutari_field = QLineEdit()
+        self.kdv_tutari_field.setPlaceholderText("Opsiyonel - Biliniyorsa girebilirsiniz")
+        self.kdv_tutari_field.setToolTip("🔍 Eğer KDV tutarını biliyorsanız buraya girebilirsiniz.\n\n• GİRİLİRSE: Sistem bu değeri kullanır ve KDV yüzdesini kontrol eder\n• BOŞ BIRAKILIRSA: KDV tutarı otomatik hesaplanır")
+        self.kdv_tutari_field.setStyleSheet(STYLES.get("input_style", ""))
+        kdv_validator = QDoubleValidator()
+        kdv_validator.setLocale(tr_locale)
+        kdv_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+        self.kdv_tutari_field.setValidator(kdv_validator)
+        kdv_control_layout.addWidget(self.kdv_tutari_field)
+        
+        # Hesaplama önizleme butonu
+        self.preview_calc_button = QPushButton("🧮 Hesaplamayı Önizle")
+        self.preview_calc_button.setToolTip("💡 Girilen değerlere göre KDV hesaplamasını gösterir\n\nFaturayı kaydetmeden önce hesaplamaları kontrol edin!")
+        self.preview_calc_button.setStyleSheet(STYLES.get("preview_button_style", ""))
+        self.preview_calc_button.clicked.connect(self.preview_kdv_calculation)
+        kdv_control_layout.addWidget(self.preview_calc_button)
+        
+        kdv_control_layout.addStretch()
+        form_layout.addLayout(kdv_control_layout)
+        
         form_layout.addLayout(self._create_button_layout())
         return form_layout
 
@@ -308,18 +397,119 @@ class InvoiceTab(QWidget):
             self.backend.data_updated.connect(self.refresh_table)
 
     def gather_data_from_fields(self):
+        """Form alanlarından veri toplar ve backend'in beklediği formata dönüştürür."""
         data = {}
         numeric_keys_map = {"miktar": "miktar", "toplam_tutar": "toplam_tutar", "kdv_yuzdesi": "kdv_yuzdesi"}
+        
         for key, field in self.edit_fields.items():
-            if isinstance(field, QComboBox): data[key] = field.currentText()
+            if isinstance(field, QComboBox): 
+                data[key] = field.currentText()
             else:
                 text_value = field.text()
                 if key in numeric_keys_map:
                     backend_key = numeric_keys_map[key]
+                    # Türk formatını (1.234,56) standart formata (1234.56) çevir
                     data[backend_key] = text_value.replace('.', '').replace(',', '.')
-                else: data[key] = text_value
+                else: 
+                    data[key] = text_value
+        
+        # KDV kontrol alanları
         data['kdv_dahil'] = self.kdv_dahil_checkbox.isChecked()
+        
+        # Opsiyonel KDV tutarı
+        kdv_tutari_text = self.kdv_tutari_field.text().strip()
+        if kdv_tutari_text:
+            data['kdv_tutari'] = kdv_tutari_text.replace('.', '').replace(',', '.')
+        else:
+            data['kdv_tutari'] = 0  # Backend bunu 0 olarak algılayıp otomatik hesaplayacak
+        
         return data
+    
+    def preview_kdv_calculation(self):
+        """Girilen değerlere göre KDV hesaplamasını önizler."""
+        try:
+            # Verileri topla
+            toplam_tutar_text = self.edit_fields["toplam_tutar"].text().strip()
+            kdv_yuzdesi_text = self.edit_fields["kdv_yuzdesi"].text().strip()
+            kdv_tutari_text = self.kdv_tutari_field.text().strip()
+            kdv_dahil = self.kdv_dahil_checkbox.isChecked()
+            birim = self.edit_fields["birim"].currentText()
+            
+            if not toplam_tutar_text:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Eksik Bilgi", 
+                                      "Lütfen önce 'Toplam Tutar' alanını doldurun.", 
+                                      QMessageBox.StandardButton.Ok)
+                return
+            
+            # Float'a çevir
+            toplam_tutar = float(toplam_tutar_text.replace('.', '').replace(',', '.'))
+            kdv_yuzdesi = float(kdv_yuzdesi_text.replace(',', '.')) if kdv_yuzdesi_text else (self.backend.settings.get('kdv_yuzdesi', 20.0) if self.backend else 20.0)
+            kdv_tutari_input = float(kdv_tutari_text.replace('.', '').replace(',', '.')) if kdv_tutari_text else 0.0
+            
+            # Hesaplama senaryosu belirle
+            matrah = 0.0
+            kdv_tutari = 0.0
+            senaryo = ""
+            
+            if toplam_tutar > 0 and kdv_tutari_input > 0:
+                if kdv_dahil:
+                    matrah = toplam_tutar - kdv_tutari_input
+                    kdv_tutari = kdv_tutari_input
+                    senaryo = "KDV Dahil + KDV Tutarı Girildi"
+                else:
+                    matrah = toplam_tutar
+                    kdv_tutari = kdv_tutari_input
+                    senaryo = "KDV Hariç + KDV Tutarı Girildi"
+            elif toplam_tutar > 0:
+                if kdv_dahil:
+                    kdv_katsayisi = 1 + (kdv_yuzdesi / 100)
+                    matrah = toplam_tutar / kdv_katsayisi
+                    kdv_tutari = toplam_tutar - matrah
+                    senaryo = "Sadece KDV Dahil Tutar"
+                else:
+                    matrah = toplam_tutar
+                    kdv_tutari = matrah * (kdv_yuzdesi / 100)
+                    senaryo = "Sadece KDV Hariç Tutar (Matrah)"
+            
+            genel_toplam = matrah + kdv_tutari
+            
+            # Sonuçları göster
+            locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
+            mesaj = f"""
+<b>📊 KDV HESAPLAMA ÖNİZLEMESİ</b><br><br>
+
+<b>🎯 Senaryo:</b> {senaryo}<br><br>
+
+<b>📥 Girilen Değerler:</b><br>
+• Toplam Tutar: {locale.toString(toplam_tutar, 'f', 2)} {birim}<br>
+• KDV Oranı: %{kdv_yuzdesi}<br>
+{f"• KDV Tutarı: {locale.toString(kdv_tutari_input, 'f', 2)} {birim}<br>" if kdv_tutari_input > 0 else ""}
+• KDV Durumu: {'KDV Dahil' if kdv_dahil else 'KDV Hariç'}<br><br>
+
+<b>📊 Hesaplanan Değerler:</b><br>
+• Matrah (KDV Hariç): <span style='color: #007bff; font-weight: bold;'>{locale.toString(matrah, 'f', 2)} {birim}</span><br>
+• KDV Tutarı: <span style='color: #28a745; font-weight: bold;'>{locale.toString(kdv_tutari, 'f', 2)} {birim}</span><br>
+• Genel Toplam (KDV Dahil): <span style='color: #dc3545; font-weight: bold;'>{locale.toString(genel_toplam, 'f', 2)} {birim}</span><br><br>
+
+<i>💡 Not: Bu önizlemedir. 'Ekle' veya 'Güncelle' butonuna bastığınızda bu değerler kaydedilecektir.</i>
+"""
+            
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("KDV Hesaplama Önizlemesi")
+            msg_box.setTextFormat(Qt.TextFormat.RichText)
+            msg_box.setText(mesaj)
+            msg_box.setIcon(QMessageBox.Icon.Information)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg_box.exec()
+            
+        except ValueError as e:
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hesaplama Hatası", 
+                                  f"Sayısal değerler geçersiz. Lütfen kontrol edin.\n\nHata: {e}", 
+                                  QMessageBox.StandardButton.Ok)
+        except Exception as e:
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "Beklenmeyen Hata", 
+                                  f"Bir hata oluştu: {e}", 
+                                  QMessageBox.StandardButton.Ok)
 
     def _handle_invoice_operation(self, operation):
         if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
@@ -408,6 +598,7 @@ class InvoiceTab(QWidget):
             
             birim = invoice_data.get('birim', 'TL')
             matrah_tl = float(invoice_data.get('toplam_tutar_tl', 0))
+            kdv_tutari_tl = float(invoice_data.get('kdv_tutari', 0))
             kdv_dahil = invoice_data.get('kdv_dahil', 0)
             
             # Orijinal tutarı, kaydedildiği birim ve KDV durumuna göre göster
@@ -416,11 +607,15 @@ class InvoiceTab(QWidget):
                 original_total_amount_tl = matrah_tl * (1 + float(kdv_yuzdesi) / 100)
             
             original_amount_in_currency = self.backend.convert_currency(original_total_amount_tl, 'TRY', birim)
+            kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
             
-            # Sayıyı lokalize formatta göster (örn: 1.234,56)
+            # Sayıları lokalize formatta göster (örn: 1.234,56)
             locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
             formatted_amount = locale.toString(original_amount_in_currency, 'f', 2)
+            formatted_kdv = locale.toString(kdv_tutari_in_currency, 'f', 2)
+            
             self.edit_fields["toplam_tutar"].setText(formatted_amount)
+            self.kdv_tutari_field.setText(formatted_kdv)
             
             birim_index = self.edit_fields["birim"].findText(birim)
             self.edit_fields["birim"].setCurrentIndex(birim_index if birim_index != -1 else 0)
@@ -432,10 +627,12 @@ class InvoiceTab(QWidget):
             if isinstance(field, QComboBox): field.setCurrentIndex(0)
             else: field.clear()
         self.kdv_dahil_checkbox.setChecked(False)
+        self.kdv_tutari_field.clear()  # YENİ: KDV tutarı alanını temizle
         self.current_invoice_id = None
 
     def export_table_data(self):
-        config = self.config[self.invoice_type]; file_path, _ = QFileDialog.getSaveFileName(self, f"{config['title']} Listesini Kaydet", config['file_name'], "Excel Dosyaları (*.xlsx)");
+        config = self.config[self.invoice_type]
+        file_path, _ = get_save_file_name_turkish(self, f"{config['title']} Listesini Kaydet", config['file_name'], "Excel Dosyaları (*.xlsx)")
         if not file_path: return
         if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
         invoices_data = self.backend.handle_invoice_operation('get', self.invoice_type);
@@ -928,7 +1125,7 @@ class HomePage(QWidget):
         converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v); income = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('income', [0]*12)]; expenses = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('expenses', [0]*12)]; months_indices = list(range(12)); self.income_line.setData(x=months_indices, y=income); self.expenses_line.setData(x=months_indices, y=expenses); graph_fg = '#404040'; self.plot_widget.setLabel('left', f"Tutar ({self.current_currency})", color=graph_fg); self.plot_widget.autoRange()
         
     def export_graph_data(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Grafik Verisini Kaydet", f"{self.current_graph_year}_analiz_grafiği.xlsx", "Excel Dosyaları (*.xlsx)")
+        file_path, _ = get_save_file_name_turkish(self, "Grafik Verisini Kaydet", f"{self.current_graph_year}_analiz_grafiği.xlsx", "Excel Dosyaları (*.xlsx)")
         if not file_path: return
         if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
         monthly_data_to_export = self._get_monthly_data_for_year(self.current_graph_year)
@@ -1022,13 +1219,27 @@ class InvoicesPage(QWidget):
             return
 
         # 1. Klasör Seçimi
-        folder_path = QFileDialog.getExistingDirectory(self, "QR Kodlu Fatura Dosyalarının Bulunduğu Klasörü Seçin")
+        file_dialog = QFileDialog(self)
+        file_dialog.setWindowTitle("QR Kodlu Fatura Dosyalarının Bulunduğu Klasörü Seçin")
+        file_dialog.setFileMode(QFileDialog.FileMode.Directory)
+        file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
+        # Dialog butonlarını Türkçeleştir (Qt'nin kendi butonları)
+        file_dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Seç")
+        file_dialog.setLabelText(QFileDialog.DialogLabel.Reject, "İptal")
+        
+        if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
+            return
+        
+        folder_path = file_dialog.selectedFiles()[0] if file_dialog.selectedFiles() else None
         if not folder_path:
             return
 
         # 2. Backend ile QR'ları Oku
         progress = QProgressDialog("QR kodlar okunuyor...", "İptal", 0, 0, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButtonText("İptal")
+        progress.setAutoClose(True)
+        progress.setAutoReset(True)
         progress.show()
         QApplication.processEvents() # Dialogun görünmesini sağla
 
@@ -1049,11 +1260,17 @@ class InvoicesPage(QWidget):
             return
 
         # 3. Kullanıcıdan Onay Al
-        invoice_type_text, ok = QInputDialog.getItem(self, "Fatura Türü Seçimi", 
-                                                     f"{success_count} adet fatura bulundu.\nBu faturalar hangi türe eklensin?",
-                                                     ["Gelen Fatura (Gider)", "Giden Fatura (Gelir)"], 0, False)
-        if not ok:
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Fatura Türü Seçimi")
+        dialog.setLabelText(f"{success_count} adet fatura bulundu.\nBu faturalar hangi türe eklensin?")
+        dialog.setComboBoxItems(["Gelen Fatura (Gider)", "Giden Fatura (Gelir)"])
+        dialog.setOkButtonText("Tamam")
+        dialog.setCancelButtonText("İptal")
+        
+        if dialog.exec() != QInputDialog.DialogCode.Accepted:
             return
+        
+        invoice_type_text = dialog.textValue()
             
         invoice_type = "incoming" if "Gelen" in invoice_type_text else "outgoing"
 
@@ -1261,7 +1478,7 @@ class MonthlyIncomePage(QWidget):
         if not self.backend:
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok)
             return
-        file_path, _ = QFileDialog.getSaveFileName(self, f"{year_str} Yılı Raporunu Kaydet", f"{year_str}_gelir_gider_raporu.xlsx", "Excel Dosyaları (*.xlsx)")
+        file_path, _ = get_save_file_name_turkish(self, f"{year_str} Yılı Raporunu Kaydet", f"{year_str}_gelir_gider_raporu.xlsx", "Excel Dosyaları (*.xlsx)")
         if not file_path:
             return
         try:
@@ -1334,17 +1551,28 @@ class MainWindow(QMainWindow):
             self.backend.start_timers()
 
     def setup_fonts(self):
-        font_dir = os.path.join(os.path.dirname(__file__), '..', 'fonts')
-        font_path = os.path.join(font_dir, "Poppins-Regular.ttf")
-        if os.path.exists(font_path):
-            font_id = QFontDatabase.addApplicationFont(font_path)
-            if font_id != -1:
-                family = QFontDatabase.applicationFontFamilies(font_id)[0]
-                self.setFont(QFont(family, 10))
-            else:
-                print("UYARI: Poppins fontu yüklenemedi.")
-        else:
-            print(f"UYARI: Font dosyası bulunamadı: {font_path}")
+        """Özel font yükleme - opsiyonel, yoksa sistem fontları kullanılır."""
+        try:
+            # Birkaç olası font konumunu dene
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Poppins-Regular.ttf'),
+                os.path.join(os.path.dirname(__file__), 'fonts', 'Poppins-Regular.ttf'),
+                'fonts/Poppins-Regular.ttf'
+            ]
+            
+            for font_path in possible_paths:
+                if os.path.exists(font_path):
+                    font_id = QFontDatabase.addApplicationFont(font_path)
+                    if font_id != -1:
+                        family = QFontDatabase.applicationFontFamilies(font_id)[0]
+                        self.setFont(QFont(family, 10))
+                        return
+            
+            # Font bulunamazsa varsayılan sistem fontunu kullan
+            self.setFont(QFont("Segoe UI", 10))
+        except Exception:
+            # Hiçbir şey yapma, sistem varsayılanları kullanılsın
+            pass
 
     def setup_ui(self):
         central_widget = QWidget()
@@ -1358,9 +1586,26 @@ class MainWindow(QMainWindow):
         self.menu_layout.setContentsMargins(15, 15, 15, 15)
         self.menu_layout.setSpacing(10)
         logo_layout = QHBoxLayout()
-        logo_pixmap = QPixmap(os.path.join(os.path.dirname(__file__), '..', 'fonts', 'logo.png')).scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        
+        # Logo yükleme - hata durumunda boş bırak
         logo_label = QLabel()
-        logo_label.setPixmap(logo_pixmap)
+        try:
+            possible_logo_paths = [
+                os.path.join(os.path.dirname(__file__), '..', 'fonts', 'logo.png'),
+                os.path.join(os.path.dirname(__file__), 'fonts', 'logo.png'),
+                'fonts/logo.png'
+            ]
+            
+            for logo_path in possible_logo_paths:
+                if os.path.exists(logo_path):
+                    logo_pixmap = QPixmap(logo_path)
+                    if not logo_pixmap.isNull():
+                        logo_pixmap = logo_pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        logo_label.setPixmap(logo_pixmap)
+                        break
+        except Exception:
+            pass  # Logo yüklenemezse devam et
+        
         logo_layout.addWidget(logo_label)
         self.logo_text = QLabel("Excellent MVP")
         logo_layout.addWidget(self.logo_text)

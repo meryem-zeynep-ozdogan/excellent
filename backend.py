@@ -24,6 +24,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # QR işleme için uyarıları kapat
 warnings.filterwarnings("ignore")
 cv2.setNumThreads(4)
+# OpenCV'nin optimize edilmiş fonksiyonlarını kullan
+cv2.setUseOptimized(True)
 
 class FastQRProcessor:
     """HIZLI VE MİNİMAL QR İşlemci"""
@@ -32,18 +34,51 @@ class FastQRProcessor:
         self.opencv_detector = cv2.QRCodeDetector()
     
     def clean_json(self, qr_text):
-        """Hızlı JSON temizleme"""
+        """Geliştirilmiş JSON temizleme ve ayrıştırma"""
         if not qr_text or len(qr_text) < 10:
             return {}
         
         cleaned = qr_text.strip()
-        cleaned = re.sub(r',(\s*\n?\s*})', r'\1', cleaned)
-        cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned)
         
+        # Yaygın JSON hatalarını düzelt
+        cleaned = re.sub(r',(\s*\n?\s*[}\]])', r'\1', cleaned)  # Sonda kalan virgülleri sil
+        cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned)  # Kontrol karakterlerini sil
+        cleaned = re.sub(r'\\x[0-9a-fA-F]{2}', '', cleaned)  # Hex escape karakterlerini sil
+        
+        # JSON parse dene
         try:
-            return json.loads(cleaned)
-        except Exception as e:
-            logging.warning(f"  JSON TEMİZLEME HATASI: {e} - Veri: {cleaned[:50]}...")
+            parsed = json.loads(cleaned)
+            logging.info(f"  ✅ JSON başarıyla ayrıştırıldı. Anahtar sayısı: {len(parsed) if isinstance(parsed, dict) else 'Liste'}")
+            return parsed
+        except json.JSONDecodeError as e:
+            logging.warning(f"  ⚠️ JSON Parse Hatası (1. deneme): {e}")
+            
+            # İkinci deneme: Tek tırnak -> Çift tırnak dönüşümü
+            try:
+                cleaned_v2 = cleaned.replace("'", '"')
+                parsed = json.loads(cleaned_v2)
+                logging.info(f"  ✅ JSON 2. denemede ayrıştırıldı (tek tırnak dönüşümü).")
+                return parsed
+            except:
+                pass
+            
+            # Üçüncü deneme: Key-value çiftlerini manuel parse et
+            try:
+                kv_pairs = {}
+                # Basit key:value eşleşmelerini bul
+                pattern = r'["\']?(\w+)["\']?\s*:\s*["\']?([^,"}\]]+)["\']?'
+                matches = re.findall(pattern, cleaned)
+                for key, value in matches:
+                    kv_pairs[key] = value.strip().strip('"').strip("'")
+                
+                if kv_pairs:
+                    logging.info(f"  ⚠️ JSON manuel olarak ayrıştırıldı. {len(kv_pairs)} anahtar bulundu.")
+                    return kv_pairs
+            except Exception as e2:
+                logging.error(f"  ❌ Manuel parse de başarısız: {e2}")
+            
+            # Hiçbiri işe yaramadıysa ham veriyi döndür
+            logging.error(f"  ❌ JSON TEMİZLEME BAŞARISIZ - Ham veri: {cleaned[:100]}...")
             return {"raw_data": cleaned}
     
     def scan_qr_fast(self, img):
@@ -538,8 +573,19 @@ class Backend(QObject):
         return False
 
     def convert_currency(self, amount, from_currency, to_currency):
-        """Para birimleri arasında dönüşüm yapar."""
-        if from_currency == to_currency or not amount:
+        """
+        Para birimleri arasında dönüşüm yapar.
+        TL ve TRY'yi eşdeğer kabul eder.
+        """
+        if not amount:
+            return 0.0
+        
+        # Para birimlerini normalize et (TL -> TRY)
+        from_currency = self._normalize_currency(from_currency)
+        to_currency = self._normalize_currency(to_currency)
+        
+        # Aynı para birimleri
+        if from_currency == to_currency:
             return amount
         
         # TRY'den diğerlerine
@@ -555,6 +601,19 @@ class Backend(QObject):
         # USD <-> EUR gibi çapraz kur dönüşümleri
         try_amount = self.convert_currency(amount, from_currency, 'TRY')
         return self.convert_currency(try_amount, 'TRY', to_currency)
+    
+    def _normalize_currency(self, currency):
+        """Para birimi kodunu normalize eder (TL -> TRY)."""
+        if not currency:
+            return 'TRY'
+        
+        currency = str(currency).upper().strip()
+        
+        # Türk Lirası varyasyonlarını TRY'ye çevir
+        if currency in ['TL', 'TRL', 'TÜRK LİRASI', 'TURK LIRASI', 'TURKISH LIRA']:
+            return 'TRY'
+        
+        return currency
 
     def format_date(self, date_str):
         """Tarih string'ini 'dd.mm.yyyy' formatına çevirir."""
@@ -578,7 +637,10 @@ class Backend(QObject):
         return datetime.now().strftime("%d.%m.%Y")
 
     def _process_invoice_data(self, invoice_data):
-        """Fatura verilerini işler, doğrular ve KDV/kur hesaplamalarını yapar."""
+        """
+        Fatura verilerini işler, doğrular ve KDV/kur hesaplamalarını yapar.
+        GELİŞTİRİLMİŞ KDV HESAPLAMA LOJİĞİ ile manuel ve QR entegrasyonu.
+        """
         required_fields = ['irsaliye_no', 'firma', 'malzeme']
         if not all(invoice_data.get(field, '').strip() for field in required_fields):
             logging.warning(f"Eksik zorunlu alanlar: {invoice_data}")
@@ -589,29 +651,115 @@ class Backend(QObject):
             processed['tarih'] = self.format_date(processed.get('tarih', ''))
             processed['miktar'] = str(processed.get('miktar', '')).strip()
             
-            toplam_tutar = float(str(processed.get('toplam_tutar', '0')).strip().replace(',', '.') or '0')
-            kdv_yuzdesi = float(str(processed.get('kdv_yuzdesi', '0')).strip().replace(',', '.') or '0')
+            # Güvenli float dönüşümü
+            toplam_tutar = self._to_float(processed.get('toplam_tutar', 0))
+            kdv_yuzdesi = self._to_float(processed.get('kdv_yuzdesi', 0))
+            kdv_tutari_input = self._to_float(processed.get('kdv_tutari', 0))  # Kullanıcı KDV tutarı girdiyse
             kdv_dahil = 1 if processed.get('kdv_dahil', False) else 0
-            
-            matrah = toplam_tutar
-            if kdv_dahil and kdv_yuzdesi > 0:
-                matrah = toplam_tutar / (1 + (kdv_yuzdesi / 100))
-            
             birim = processed.get('birim', 'TL')
+            
+            logging.info(f"\n  💼 MANUEL FATURA İŞLEME BAŞLADI")
+            logging.info(f"  📥 Giriş Verileri:")
+            logging.info(f"     - Toplam Tutar: {toplam_tutar} {birim}")
+            logging.info(f"     - KDV %: {kdv_yuzdesi}")
+            logging.info(f"     - KDV Tutarı (input): {kdv_tutari_input} {birim}")
+            logging.info(f"     - KDV Dahil: {'EVET' if kdv_dahil else 'HAYIR'}")
+            
+            # KDV yüzdesi kontrolü
+            if kdv_yuzdesi <= 0:
+                kdv_yuzdesi = self.settings.get('kdv_yuzdesi', 20.0)
+                logging.info(f"  ⚙️ KDV yüzdesi girilmedi, varsayılan kullanılıyor: {kdv_yuzdesi}%")
+            
+            # === GELİŞTİRİLMİŞ KDV HESAPLAMA LOJİĞİ ===
+            matrah = 0.0
+            kdv_tutari = 0.0
+            
+            # SENARYO 1: Kullanıcı hem tutar hem de KDV tutarı girdiyse
+            if toplam_tutar > 0 and kdv_tutari_input > 0:
+                if kdv_dahil:
+                    # KDV dahil tutar ve KDV tutarı verilmiş → Matrah = Toplam - KDV
+                    matrah = toplam_tutar - kdv_tutari_input
+                    kdv_tutari = kdv_tutari_input
+                    
+                    # KDV yüzdesini kontrol et ve gerekirse güncelle
+                    hesaplanan_kdv_yuzdesi = (kdv_tutari / matrah) * 100 if matrah > 0 else kdv_yuzdesi
+                    if abs(hesaplanan_kdv_yuzdesi - kdv_yuzdesi) > 0.5:  # %0.5'ten fazla fark varsa
+                        logging.warning(f"  ⚠️ KDV yüzdesi tutarsızlığı! Girilen: {kdv_yuzdesi}%, Hesaplanan: {hesaplanan_kdv_yuzdesi:.2f}%")
+                        kdv_yuzdesi = round(hesaplanan_kdv_yuzdesi, 2)
+                    
+                    logging.info(f"  ✅ SENARYO 1a: KDV Dahil + KDV Tutarı Girildi")
+                    logging.info(f"     - Matrah: {matrah:.2f} {birim}")
+                    logging.info(f"     - KDV Tutarı: {kdv_tutari:.2f} {birim}")
+                    logging.info(f"     - Toplam (KDV Dahil): {toplam_tutar:.2f} {birim}")
+                else:
+                    # KDV hariç tutar (matrah) ve KDV tutarı verilmiş
+                    matrah = toplam_tutar
+                    kdv_tutari = kdv_tutari_input
+                    
+                    # KDV yüzdesini kontrol et
+                    hesaplanan_kdv_yuzdesi = (kdv_tutari / matrah) * 100 if matrah > 0 else kdv_yuzdesi
+                    if abs(hesaplanan_kdv_yuzdesi - kdv_yuzdesi) > 0.5:
+                        logging.warning(f"  ⚠️ KDV yüzdesi tutarsızlığı! Girilen: {kdv_yuzdesi}%, Hesaplanan: {hesaplanan_kdv_yuzdesi:.2f}%")
+                        kdv_yuzdesi = round(hesaplanan_kdv_yuzdesi, 2)
+                    
+                    logging.info(f"  ✅ SENARYO 1b: KDV Hariç + KDV Tutarı Girildi")
+                    logging.info(f"     - Matrah: {matrah:.2f} {birim}")
+                    logging.info(f"     - KDV Tutarı: {kdv_tutari:.2f} {birim}")
+                    logging.info(f"     - Toplam (KDV Dahil): {(matrah + kdv_tutari):.2f} {birim}")
+            
+            # SENARYO 2: Sadece toplam tutar girildi (KDV tutarı yok)
+            elif toplam_tutar > 0:
+                if kdv_dahil:
+                    # Girilen tutar KDV dahildir, matrah ve KDV'yi ayır
+                    kdv_katsayisi = 1 + (kdv_yuzdesi / 100)
+                    matrah = toplam_tutar / kdv_katsayisi
+                    kdv_tutari = toplam_tutar - matrah
+                    
+                    logging.info(f"  ✅ SENARYO 2a: Sadece KDV Dahil Tutar Girildi")
+                    logging.info(f"     - Girilen (KDV Dahil): {toplam_tutar:.2f} {birim}")
+                    logging.info(f"     - Hesaplanan Matrah: {matrah:.2f} {birim}")
+                    logging.info(f"     - Hesaplanan KDV: {kdv_tutari:.2f} {birim} (%{kdv_yuzdesi})")
+                else:
+                    # Girilen tutar matrah (KDV hariç), KDV'yi hesapla
+                    matrah = toplam_tutar
+                    kdv_tutari = matrah * (kdv_yuzdesi / 100)
+                    
+                    logging.info(f"  ✅ SENARYO 2b: Sadece KDV Hariç Tutar (Matrah) Girildi")
+                    logging.info(f"     - Matrah: {matrah:.2f} {birim}")
+                    logging.info(f"     - Hesaplanan KDV: {kdv_tutari:.2f} {birim} (%{kdv_yuzdesi})")
+                    logging.info(f"     - Toplam (KDV Dahil): {(matrah + kdv_tutari):.2f} {birim}")
+            
+            # SENARYO 3: Tutar girilmedi (hata durumu)
+            else:
+                logging.error(f"  ❌ HATA: Toplam tutar girilmemiş!")
+                return None
+            
+            # Para birimi dönüşümleri (Matrah üzerinden)
             matrah_tl = self.convert_currency(matrah, birim, 'TRY')
+            kdv_tutari_tl = self.convert_currency(kdv_tutari, birim, 'TRY')
 
-            processed['toplam_tutar_tl'] = matrah_tl
+            # İşlenmiş veriyi hazırla
+            processed['toplam_tutar_tl'] = matrah_tl  # Veritabanına matrah (KDV hariç) kaydedilir
             processed['toplam_tutar_usd'] = self.convert_currency(matrah_tl, 'TRY', 'USD')
             processed['toplam_tutar_eur'] = self.convert_currency(matrah_tl, 'TRY', 'EUR')
             
+            processed['birim'] = birim  # Para birimini koru
             processed['kdv_yuzdesi'] = kdv_yuzdesi
             processed['kdv_dahil'] = kdv_dahil
-            processed['kdv_tutari'] = matrah_tl * (kdv_yuzdesi / 100)
+            processed['kdv_tutari'] = kdv_tutari_tl  # KDV tutarı TL cinsinden
+            
+            # Sonuç özeti
+            logging.info(f"  📊 İŞLEME SONUCU:")
+            logging.info(f"     - Matrah (TL): {matrah_tl:.2f} TL")
+            logging.info(f"     - KDV Tutarı (TL): {kdv_tutari_tl:.2f} TL")
+            logging.info(f"     - KDV Yüzdesi: %{kdv_yuzdesi}")
+            logging.info(f"     - Genel Toplam (KDV Dahil): {(matrah_tl + kdv_tutari_tl):.2f} TL")
+            logging.info(f"  ✅ İşlem başarılı!\n")
             
             return processed
 
         except (ValueError, TypeError) as e:
-            logging.error(f"Fatura veri işleme hatası: {e} - Veri: {invoice_data}")
+            logging.error(f"❌ Fatura veri işleme hatası: {e} - Veri: {invoice_data}")
             return None
 
     def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None, limit=None, offset=None):
@@ -950,23 +1098,39 @@ class Backend(QObject):
             if result.get('durum') == 'BAŞARILI':
                 # QR verisini fatura alanlarına haritala
                 json_data = result.get('json_data', {})
-                logging.info(f"  [{i}] {dosya_adi} - JSON anahtarları: {list(json_data.keys())[:10]}")
+                logging.info(f"\n  📄 [{i}/{len(qr_results)}] {dosya_adi}")
+                logging.info(f"  🔑 JSON Anahtarları: {list(json_data.keys())}")
+                
+                # Önemli alanları logla
+                if 'payableAmount' in json_data or 'totalAmount' in json_data:
+                    logging.info(f"  💰 Tutar alanları bulundu: {[(k, v) for k, v in json_data.items() if 'amount' in k.lower() or 'tutar' in k.lower() or 'matrah' in k.lower()]}")
                 
                 parsed_data = self._parse_qr_to_invoice_fields(json_data)
-                logging.info(f"  [{i}] Parse edildi: Firma={parsed_data.get('firma', 'YOK')}, Malzeme={parsed_data.get('malzeme', 'YOK')}, Tutar={parsed_data.get('toplam_tutar', 0)} TL")
+                
+                # Parse sonuçlarını detaylı logla
+                logging.info(f"  ✏️ Parse Sonucu:")
+                logging.info(f"     - Firma: {parsed_data.get('firma', 'YOK')}")
+                logging.info(f"     - Malzeme: {parsed_data.get('malzeme', 'YOK')}")
+                logging.info(f"     - Toplam Tutar: {parsed_data.get('toplam_tutar', 0)} {parsed_data.get('birim', 'TL')}")
+                logging.info(f"     - KDV %: {parsed_data.get('kdv_yuzdesi', 0)}")
+                logging.info(f"     - KDV Tutarı: {parsed_data.get('kdv_tutari', 0)} TL")
+                logging.info(f"     - KDV Dahil: {parsed_data.get('kdv_dahil', False)}")
                 
                 # Veritabanına ekle
                 if self.handle_invoice_operation('add', invoice_type, data=parsed_data):
                     successful_imports += 1
-                    logging.info(f"  ✅ [{i}] {dosya_adi} - Veritabanına eklendi")
+                    logging.info(f"  ✅ Veritabanına başarıyla eklendi\n")
                 else:
                     failed_imports += 1
-                    logging.error(f"  ❌ [{i}] {dosya_adi} - Veritabanına eklenemedi!")
+                    logging.error(f"  ❌ Veritabanına EKLENEMEDİ!\n")
             else:
                 failed_imports += 1
-                logging.warning(f"  ⚠️ [{i}] {dosya_adi} - Durum: {result.get('durum', 'Bilinmiyor')}")
+                logging.warning(f"  ⚠️ [{i}/{len(qr_results)}] {dosya_adi} - QR Okunamadı: {result.get('durum', 'Bilinmiyor')}\n")
         
-        logging.info(f"✅ Toplam: {successful_imports} başarılı, {failed_imports} başarısız")
+        logging.info(f"\n{'='*50}")
+        logging.info(f"✅ İşlem Tamamlandı: {successful_imports} başarılı, {failed_imports} başarısız")
+        logging.info(f"{'='*50}\n")
+        
         self.data_updated.emit() # Toplu ekleme sonrası sinyal gönder
         return successful_imports, failed_imports
 
@@ -977,25 +1141,39 @@ class Backend(QObject):
         """
         if not qr_json: return {}
 
-        # Olası anahtar isimlerini ve öncelik sırasını tanımla
+        # QR JSON içeriğini logla
+        logging.info(f"  🔍 QR JSON Anahtarları: {list(qr_json.keys())}")
+        
+        # Olası anahtar isimlerini ve öncelik sırasını tanımla (BÜYÜK/küçük harf duyarsız)
         key_map = {
-            'irsaliye_no': ['invoiceId', 'faturaNo', 'belgeno', 'uuid', 'id', 'no', 'invoiceNumber', 'belgeNo', 'seriNo', 'ettn'],
-            'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date'],
-            'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company', 'companyName', 'firmaUnvan', 'aliciUnvan', 'buyerName', 'saticiadi', 'aliciadi', 'satici', 'vkn', 'vkntckn', 'avkntckn'],
+            'irsaliye_no': ['invoiceId', 'faturaNo', 'belgeno', 'uuid', 'id', 'no', 'invoiceNumber', 'belgeNo', 'seriNo', 'ettn', 'faturaid'],
+            'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date', 'invoicedate', 'faturatarihi'],
+            'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company', 'companyName', 'firmaUnvan', 'aliciUnvan', 'buyerName', 'saticiadi', 'aliciadi', 'satici', 'sellername', 'buyername'],
             'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme', 'hizmet', 'urun', 'product', 'service', 'senaryo'],
-            'toplam_tutar': ['payableAmount', 'odenecek', 'vergidahil', 'totalAmount', 'toplamTutar', 'total', 'amount', 'tutar', 'geneltoplam', 'vergidahiltoplam'],
-            'matrah': ['taxableAmount', 'matrah', 'netAmount', 'malhizmettoplam', 'kdvmatrah', 'kdvmatrah(20)', 'kdvmatrah(18)', 'kdvmatrah(10)', 'kdvmatrah(8)', 'kdvmatrah(1)'],
-            'kdv_tutari': ['taxAmount', 'hesaplanankdv', 'kdv', 'kdvtoplam', 'hesaplanan kdv', 'hesaplanankdv(20)', 'hesaplanankdv(18)'],
-            'kdv_yuzdesi': ['taxRate', 'kdvOrani', 'vatRate', 'kdvorani'],
-            'birim': ['currency', 'parabirimi', 'currencyCode', 'paraBirimi']
+            'miktar': ['quantity', 'miktar', 'adet', 'amount', 'qty', 'quantityvalue', 'lineitem', 'kalem'],
+            'toplam_tutar': ['payableAmount', 'odenecek', 'vergidahil', 'totalAmount', 'toplamTutar', 'total', 'amount', 'tutar', 'geneltoplam', 'vergidahiltoplam', 'payableamount', 'totalamount'],
+            'matrah': ['taxableAmount', 'matrah', 'netAmount', 'malhizmettoplam', 'kdvmatrah', 'kdvmatrah(20)', 'kdvmatrah(18)', 'kdvmatrah(10)', 'kdvmatrah(8)', 'kdvmatrah(1)', 'taxableamount', 'netamount'],
+            'kdv_tutari': ['taxAmount', 'hesaplanankdv', 'kdv', 'kdvtoplam', 'hesaplanan kdv', 'hesaplanankdv(20)', 'hesaplanankdv(18)', 'taxamount', 'kdvtutari'],
+            'kdv_yuzdesi': ['taxRate', 'kdvOrani', 'vatRate', 'kdvorani', 'taxrate', 'vatrate'],
+            'birim': ['currency', 'parabirimi', 'currencyCode', 'paraBirimi', 'currencycode']
         }
 
         parsed = {}
 
         def get_value(keys):
+            """Büyük/küçük harf duyarsız arama yapar"""
+            # Önce direkt eşleşme dene
             for key in keys:
                 if key in qr_json and qr_json[key]:
                     return qr_json[key]
+            
+            # Bulamazsa case-insensitive arama yap
+            qr_json_lower = {k.lower(): v for k, v in qr_json.items()}
+            for key in keys:
+                key_lower = key.lower()
+                if key_lower in qr_json_lower and qr_json_lower[key_lower]:
+                    return qr_json_lower[key_lower]
+            
             return None
 
         # Değerleri haritala
@@ -1049,41 +1227,146 @@ class Backend(QObject):
         else:
             parsed['malzeme'] = 'QR Kodlu E-Fatura'
         
-        parsed['miktar'] = '1'
+        # Miktar bilgisini al (QR'dan gelmişse kullan, yoksa 1)
+        miktar_value = get_value(key_map['miktar'])
+        if miktar_value:
+            # Miktar string içinde olabilir, temizle
+            try:
+                miktar_str = str(miktar_value).strip()
+                # Sadece sayıyı al (örn: "5 Adet" -> "5")
+                miktar_clean = re.sub(r'[^\d.,]', '', miktar_str)
+                if miktar_clean:
+                    parsed['miktar'] = miktar_clean.replace(',', '.')
+                else:
+                    parsed['miktar'] = '1'
+            except:
+                parsed['miktar'] = '1'
+        else:
+            parsed['miktar'] = '1'
         
+        # Para birimi - TRY'yi TL'ye çevir
         birim = str(get_value(key_map['birim']) or 'TRY').upper()
-        parsed['birim'] = 'TL' if birim == 'TRY' else birim
+        # TRY, TRL gibi Türk Lirası varyasyonlarını TL'ye çevir
+        if birim in ['TRY', 'TRL', 'TÜRK LİRASI', 'TURK LIRASI']:
+            birim = 'TL'
+        parsed['birim'] = birim
+        
+        logging.info(f"  📝 Temel Alanlar - Miktar: {parsed['miktar']}, Birim: {parsed['birim']}, Malzeme: {parsed['malzeme'][:30]}")
 
-        # Tutar ve KDV hesaplaması
+        # Tutar ve KDV hesaplaması - GELİŞTİRİLMİŞ LOJİK
         toplam_tutar = self._to_float(get_value(key_map['toplam_tutar']))
         matrah = self._to_float(get_value(key_map['matrah']))
         kdv_tutari = self._to_float(get_value(key_map['kdv_tutari']))
         kdv_yuzdesi = self._to_float(get_value(key_map['kdv_yuzdesi']))
 
-        parsed['kdv_dahil'] = False
-        if toplam_tutar > 0:
-            parsed['toplam_tutar'] = toplam_tutar
-            parsed['kdv_dahil'] = True # Genellikle 'odenecek' KDV dahil olur
-        elif matrah > 0:
-            parsed['toplam_tutar'] = matrah
-            parsed['kdv_dahil'] = False
-        else:
-            parsed['toplam_tutar'] = 0
+        logging.info(f"  💰 QR Tutar Bilgileri - Toplam: {toplam_tutar}, Matrah: {matrah}, KDV Tutarı: {kdv_tutari}, KDV%: {kdv_yuzdesi}")
 
+        # 1. KDV yüzdesini belirle
         if kdv_yuzdesi > 0:
             parsed['kdv_yuzdesi'] = kdv_yuzdesi
         elif matrah > 0 and kdv_tutari > 0:
-            parsed['kdv_yuzdesi'] = round((kdv_tutari / matrah) * 100)
+            # KDV yüzdesi yoksa matrah ve KDV tutarından hesapla
+            parsed['kdv_yuzdesi'] = round((kdv_tutari / matrah) * 100, 2)
         else:
-            # Varsayılan KDV oranını ayarlardan al
+            # Hiçbiri yoksa varsayılan
             parsed['kdv_yuzdesi'] = self.settings.get('kdv_yuzdesi', 20.0)
+
+        # 2. Ana tutarı ve KDV dahil durumunu belirle
+        if toplam_tutar > 0 and matrah > 0:
+            # Her iki tutar da varsa, toplam KDV dahil, matrah KDV hariçtir
+            parsed['toplam_tutar'] = matrah  # Sisteme matrahı (KDV hariç) gönder
+            parsed['kdv_dahil'] = False
+            # KDV tutarını hesapla veya doğrula
+            if kdv_tutari > 0:
+                parsed['kdv_tutari'] = kdv_tutari
+            else:
+                parsed['kdv_tutari'] = matrah * (parsed['kdv_yuzdesi'] / 100)
+            
+            logging.info(f"  ✅ Matrah ve Toplam var - Matrah kullanılıyor: {matrah} TL, KDV: {parsed['kdv_tutari']} TL")
+            
+        elif toplam_tutar > 0:
+            # Sadece toplam tutar varsa (KDV dahil olabilir)
+            parsed['toplam_tutar'] = toplam_tutar
+            
+            # KDV tutarı verilmişse, bu KDV dahil demektir
+            if kdv_tutari > 0:
+                parsed['kdv_dahil'] = True
+                parsed['kdv_tutari'] = kdv_tutari
+                # Matrahı ters hesapla
+                matrah_calculated = toplam_tutar - kdv_tutari
+                logging.info(f"  ✅ Toplam ve KDV Tutarı var - KDV Dahil: {toplam_tutar} TL, KDV: {kdv_tutari} TL, Hesaplanan Matrah: {matrah_calculated} TL")
+            else:
+                # KDV tutarı yok, toplam tutarın KDV dahil olup olmadığını anlamak zor
+                # Güvenli taraf: KDV dahil kabul et ve matrahı hesapla
+                parsed['kdv_dahil'] = True
+                parsed['kdv_tutari'] = toplam_tutar * (parsed['kdv_yuzdesi'] / (100 + parsed['kdv_yuzdesi']))
+                matrah_calculated = toplam_tutar - parsed['kdv_tutari']
+                logging.info(f"  ⚠️ Sadece Toplam var - KDV Dahil varsayıldı: {toplam_tutar} TL, Hesaplanan KDV: {parsed['kdv_tutari']:.2f} TL")
+            
+        elif matrah > 0:
+            # Sadece matrah varsa (KDV hariç)
+            parsed['toplam_tutar'] = matrah
+            parsed['kdv_dahil'] = False
+            
+            if kdv_tutari > 0:
+                parsed['kdv_tutari'] = kdv_tutari
+            else:
+                parsed['kdv_tutari'] = matrah * (parsed['kdv_yuzdesi'] / 100)
+            
+            logging.info(f"  ✅ Sadece Matrah var - KDV Hariç: {matrah} TL, Hesaplanan KDV: {parsed['kdv_tutari']:.2f} TL")
+            
+        else:
+            # Hiçbir tutar bilgisi yok
+            parsed['toplam_tutar'] = 0
+            parsed['kdv_dahil'] = False
+            parsed['kdv_tutari'] = 0
+            logging.warning(f"  ❌ QR'da hiçbir tutar bilgisi bulunamadı!")
+
+        logging.info(f"  📊 Sonuç - Tutar: {parsed.get('toplam_tutar', 0)} {parsed.get('birim', 'TL')}, KDV%: {parsed.get('kdv_yuzdesi', 0)}, KDV Tutarı: {parsed.get('kdv_tutari', 0)}, KDV Dahil: {parsed.get('kdv_dahil', False)}")
+        logging.info(f"  📦 Diğer Alanlar - Miktar: {parsed.get('miktar', 'YOK')}, Birim: {parsed.get('birim', 'YOK')}, Firma: {parsed.get('firma', 'YOK')[:30]}")
 
         return parsed
 
     def _to_float(self, value):
         """Bir değeri güvenli bir şekilde float'a çevirir."""
-        if value is None: return 0.0
+        if value is None or value == '': 
+            return 0.0
+        
         try:
-            return float(str(value).replace(',', '.'))
-        except (ValueError, TypeError):
+            # String'e çevir ve temizle
+            str_value = str(value).strip()
+            
+            # Boş string kontrolü
+            if not str_value or str_value.lower() in ['none', 'null', 'n/a']:
+                return 0.0
+            
+            # Para birimi sembollerini ve diğer karakterleri temizle
+            str_value = re.sub(r'[^\d.,\-+]', '', str_value)
+            
+            # Binlik ayırıcıları kaldır (1.234,56 veya 1,234.56 formatları)
+            if ',' in str_value and '.' in str_value:
+                # Her iki ayırıcı da varsa, sonuncusu ondalık ayırıcıdır
+                last_comma = str_value.rfind(',')
+                last_dot = str_value.rfind('.')
+                
+                if last_comma > last_dot:
+                    # Virgül ondalık ayırıcı (Türk formatı: 1.234,56)
+                    str_value = str_value.replace('.', '').replace(',', '.')
+                else:
+                    # Nokta ondalık ayırıcı (US formatı: 1,234.56)
+                    str_value = str_value.replace(',', '')
+            elif ',' in str_value:
+                # Sadece virgül var - ondalık ayırıcı olabilir
+                # Eğer virgülden sonra 2 hane varsa, ondalık ayırıcıdır
+                parts = str_value.split(',')
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    str_value = str_value.replace(',', '.')
+                else:
+                    # Binlik ayırıcı
+                    str_value = str_value.replace(',', '')
+            
+            return float(str_value)
+            
+        except (ValueError, TypeError, AttributeError) as e:
+            logging.warning(f"  ⚠️ Float dönüşüm hatası: '{value}' -> Hata: {e}")
             return 0.0
