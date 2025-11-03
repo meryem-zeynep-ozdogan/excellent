@@ -16,6 +16,7 @@ stress_test.py
 simple_stress_test.py
 test_gui.py
 transfer_data.py
+delete_incoming_invoices.py
 *_stress_test.db
 
 # Excel dosyaları
