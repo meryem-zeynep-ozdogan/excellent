@@ -1596,7 +1596,7 @@ class MainWindow(QMainWindow):
                     logo_pixmap = QPixmap(logo_path)
                     if not logo_pixmap.isNull():
                         # Logonun 60x60 piksel boyutunu KORUYORUZ
-                        logo_pixmap = logo_pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        logo_pixmap = logo_pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                         logo_label.setPixmap(logo_pixmap)
                         logo_found = True
                         break
@@ -1693,6 +1693,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
 
