@@ -1,3 +1,5 @@
+# --- BU KODUN TAMAMINI KOPYALAYIP frontend.py İÇİNE YAPIŞTIRIN ---
+
 # -*- coding: utf-8 -*-
 import sys
 import os
@@ -25,10 +27,40 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtCore import Qt, QDate, QLocale, QTimer, QRectF, QPointF, QSize
 
-import pyqtgraph as pg
+# pyqtgraph'ı import et (eğer backend'den ayrıldıysa)
+try:
+    import pyqtgraph as pg
+except ImportError:
+    print("UYARI: pyqtgraph kütüphanesi eksik. 'pip install pyqtgraph' komutuyla kurun.")
+    pg = None
 
 # Backend'i import et
-from backend import Backend
+try:
+    from backend import Backend
+except ImportError as e:
+    print(f"HATA: backend.py dosyası bulunamadı veya import edilemedi: {e}")
+    # Backend olmadan çalışabilmek için sahte bir sınıf oluştur
+    class Backend:
+        data_updated = pyqtSignal()
+        status_updated = pyqtSignal(str, int)
+        def __init__(self, parent=None):
+            print("SAHTE BACKEND BAŞLATILDI")
+        def start_timers(self):
+            pass # Hiçbir şey yapma
+        def handle_invoice_operation(self, *args, **kwargs):
+            return [] # Boş liste döndür
+        def get_summary_data(self):
+            return {}, {"income": [0]*12, "expenses": [0]*12} # Boş veri döndür
+        def get_year_range(self):
+            return [str(datetime.now().year)] # Geçerli yılı döndür
+        def get_calculations_for_year(self, year):
+            return [], [] # Boş veri döndür
+        def get_yearly_summary(self, year):
+            return {} # Boş veri döndür
+        def convert_currency(self, amount, from_curr, to_curr):
+            return amount # Dönüşüm yapma
+        def save_setting(self, key, value):
+            pass # Hiçbir şey yapma
 
 
 # --- Stil ve Tema Tanımlamaları ---
@@ -67,20 +99,15 @@ def update_styles(palette):
     STYLES["logo_text_style"] = f"font-size: 20px; font-weight: 600; color: {palette['text_primary']}; padding-left: 10px;"
     STYLES["notes_list_style"] = f"QListWidget {{ border: 1px solid {palette['notes_list_border']}; border-radius: 6px; padding: 5px; background-color: {palette['notes_list_bg']}; color: {palette['text_primary']}; }} QListWidget::item {{ padding: 8px; margin: 2px 0; border-radius: 4px; color: {palette['text_primary']}; }} QListWidget::item:selected {{ background-color: {palette['notes_list_item_selected_bg']}; color: {palette['notes_list_item_selected_text']}; }} QListWidget::item:hover {{ background-color: {palette['menu_hover']}; }}"
 
-    # <<< DÜZENLEME 2: Yıllık kâr etiketi stilleri kaldırıldı (artık tabloda) >>>
-    # STYLES["yearly_profit_label_style"] = ...
-    # STYLES["yearly_profit_value_style"] = ...
     STYLES["notes_date_label_style"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 5px;"
     STYLES["notes_section_title_style"] = f"font-size: 14px; font-weight: 600; color: {palette['text_secondary']}; margin-top: 10px; margin-bottom: 5px;"
     STYLES["donut_label_style"] = f"font-size: 12px; color: {palette.get('text_secondary', '#505050')}; font-weight: 500;"
 
-    # <<< YENİ/GÜNCEL STİLLER: Not Defteri ve Takvim için >>>
     STYLES["notes_drawing_frame"] = f"QFrame {{ background-color: {palette['notes_drawing_bg']}; border: 2px solid {palette['notes_drawing_border']}; border-radius: 8px; }}"
     STYLES["notes_drawing_label_bg"] = f"background-color: {palette['notes_drawing_label_bg']}; color: {palette['notes_drawing_text_color']}; font-weight: bold; padding: 5px; border-radius: 5px;"
     STYLES["notes_list_item_drawing_style"] = f"QListWidget {{ border: none; background-color: transparent; }} QListWidget::item {{ padding: 8px 5px; color: {palette['notes_drawing_text_color']}; background-color: transparent; border-bottom: 1px dashed {palette['notes_drawing_border']}; }} QListWidget::item:selected {{ background-color: {palette['notes_drawing_border']}; color: {palette['notes_list_item_selected_text']}; }}"
     STYLES["notes_buttons_drawing_style"] = "QPushButton { padding: 6px 10px; border-radius: 4px; font-size: 12px; } QPushButton#new_button_notes { background-color: #6c757d; color: white; } QPushButton#delete_button_notes { background-color: #dc3545; color: white; } QPushButton#save_button_notes { background-color: #28a745; color: white; }"
     
-    # YENİ: Form kontrol stilleri
     STYLES["kdv_checkbox_style"] = "QCheckBox { font-weight: 600; padding: 5px; } QCheckBox:checked { color: #28a745; }"
     STYLES["preview_button_style"] = "QPushButton { padding: 8px 12px; background-color: #6c757d; color: white; border-radius: 6px; font-weight: 600; font-size: 12px; } QPushButton:hover { background-color: #5a6268; }"
 
@@ -239,9 +266,8 @@ class InvoiceTab(QWidget):
             "outgoing": {"title": "Giden Faturalar (Gelir)", "file_name": "giden_faturalar.xlsx"},
             "incoming": {"title": "Gelen Faturalar (Gider)", "file_name": "gelen_faturalar.xlsx"}
         }
-        # Sayfalama değişkenleri
         self.current_page = 0
-        self.page_size = 100  # Her sayfada 100 fatura göster
+        self.page_size = 100  
         self.total_count = 0
         
         self._setup_ui()
@@ -261,7 +287,6 @@ class InvoiceTab(QWidget):
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
         
-        # Çoklu silme butonu
         self.delete_selected_button = QPushButton("🗑️ Seçilenleri Sil")
         self.delete_selected_button.setToolTip("Seçili faturaları sil")
         self.delete_selected_button.clicked.connect(self.delete_selected_invoices)
@@ -275,7 +300,6 @@ class InvoiceTab(QWidget):
     def _create_form_layout(self):
         form_layout = QVBoxLayout()
         
-        # İlk satır: Ana alanlar
         fields_layout = QHBoxLayout()
         self.edit_fields = {}
         headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM TUTAR", "BİRİM", "KDV %"]
@@ -299,7 +323,6 @@ class InvoiceTab(QWidget):
         
         form_layout.addLayout(fields_layout)
         
-        # İkinci satır: KDV kontrolü ve opsiyonel KDV tutarı
         kdv_control_layout = QHBoxLayout()
         
         self.kdv_dahil_checkbox = QCheckBox("✓ KDV Dahil")
@@ -321,7 +344,6 @@ class InvoiceTab(QWidget):
         self.kdv_tutari_field.setValidator(kdv_validator)
         kdv_control_layout.addWidget(self.kdv_tutari_field)
         
-        # Hesaplama önizleme butonu
         self.preview_calc_button = QPushButton("🧮 Hesaplamayı Önizle")
         self.preview_calc_button.setToolTip("💡 Girilen değerlere göre KDV hesaplamasını gösterir\n\nFaturayı kaydetmeden önce hesaplamaları kontrol edin!")
         self.preview_calc_button.setStyleSheet(STYLES.get("preview_button_style", ""))
@@ -345,7 +367,9 @@ class InvoiceTab(QWidget):
         self.invoice_table = QTableWidget(); self.invoice_table.setColumnCount(10)
         table_headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TUTAR (TL)", "TUTAR (USD)", "TUTAR (EUR)", "KDV %", "KDV TUTARI"]
         self.invoice_table.setHorizontalHeaderLabels(table_headers); self.invoice_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.invoice_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
-        self.invoice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents); self.invoice_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.invoice_table.verticalHeader().setVisible(False)
+        # --- İSTEĞİNİZ ÜZERİNE DEĞİŞİKLİK ---
+        # Sütunları içeriğe göre değil, PENCEREYE GÖRE ESNETECEK şekilde ayarla
+        self.invoice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.invoice_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.invoice_table.verticalHeader().setVisible(False)
         return self.invoice_table
     
     def _create_pagination_layout(self):
@@ -408,27 +432,23 @@ class InvoiceTab(QWidget):
                 text_value = field.text()
                 if key in numeric_keys_map:
                     backend_key = numeric_keys_map[key]
-                    # Türk formatını (1.234,56) standart formata (1234.56) çevir
                     data[backend_key] = text_value.replace('.', '').replace(',', '.')
                 else: 
                     data[key] = text_value
         
-        # KDV kontrol alanları
         data['kdv_dahil'] = self.kdv_dahil_checkbox.isChecked()
         
-        # Opsiyonel KDV tutarı
         kdv_tutari_text = self.kdv_tutari_field.text().strip()
         if kdv_tutari_text:
             data['kdv_tutari'] = kdv_tutari_text.replace('.', '').replace(',', '.')
         else:
-            data['kdv_tutari'] = 0  # Backend bunu 0 olarak algılayıp otomatik hesaplayacak
+            data['kdv_tutari'] = 0 
         
         return data
     
     def preview_kdv_calculation(self):
         """Girilen değerlere göre KDV hesaplamasını önizler."""
         try:
-            # Verileri topla
             toplam_tutar_text = self.edit_fields["toplam_tutar"].text().strip()
             kdv_yuzdesi_text = self.edit_fields["kdv_yuzdesi"].text().strip()
             kdv_tutari_text = self.kdv_tutari_field.text().strip()
@@ -437,16 +457,14 @@ class InvoiceTab(QWidget):
             
             if not toplam_tutar_text:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "Eksik Bilgi", 
-                                      "Lütfen önce 'Toplam Tutar' alanını doldurun.", 
-                                      QMessageBox.StandardButton.Ok)
+                                        "Lütfen önce 'Toplam Tutar' alanını doldurun.", 
+                                        QMessageBox.StandardButton.Ok)
                 return
             
-            # Float'a çevir
             toplam_tutar = float(toplam_tutar_text.replace('.', '').replace(',', '.'))
             kdv_yuzdesi = float(kdv_yuzdesi_text.replace(',', '.')) if kdv_yuzdesi_text else (self.backend.settings.get('kdv_yuzdesi', 20.0) if self.backend else 20.0)
             kdv_tutari_input = float(kdv_tutari_text.replace('.', '').replace(',', '.')) if kdv_tutari_text else 0.0
             
-            # Hesaplama senaryosu belirle
             matrah = 0.0
             kdv_tutari = 0.0
             senaryo = ""
@@ -473,24 +491,19 @@ class InvoiceTab(QWidget):
             
             genel_toplam = matrah + kdv_tutari
             
-            # Sonuçları göster
             locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
             mesaj = f"""
 <b>📊 KDV HESAPLAMA ÖNİZLEMESİ</b><br><br>
-
 <b>🎯 Senaryo:</b> {senaryo}<br><br>
-
 <b>📥 Girilen Değerler:</b><br>
 • Toplam Tutar: {locale.toString(toplam_tutar, 'f', 2)} {birim}<br>
 • KDV Oranı: %{kdv_yuzdesi}<br>
 {f"• KDV Tutarı: {locale.toString(kdv_tutari_input, 'f', 2)} {birim}<br>" if kdv_tutari_input > 0 else ""}
 • KDV Durumu: {'KDV Dahil' if kdv_dahil else 'KDV Hariç'}<br><br>
-
 <b>📊 Hesaplanan Değerler:</b><br>
 • Matrah (KDV Hariç): <span style='color: #007bff; font-weight: bold;'>{locale.toString(matrah, 'f', 2)} {birim}</span><br>
 • KDV Tutarı: <span style='color: #28a745; font-weight: bold;'>{locale.toString(kdv_tutari, 'f', 2)} {birim}</span><br>
 • Genel Toplam (KDV Dahil): <span style='color: #dc3545; font-weight: bold;'>{locale.toString(genel_toplam, 'f', 2)} {birim}</span><br><br>
-
 <i>💡 Not: Bu önizlemedir. 'Ekle' veya 'Güncelle' butonuna bastığınızda bu değerler kaydedilecektir.</i>
 """
             
@@ -504,12 +517,12 @@ class InvoiceTab(QWidget):
             
         except ValueError as e:
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Hesaplama Hatası", 
-                                  f"Sayısal değerler geçersiz. Lütfen kontrol edin.\n\nHata: {e}", 
-                                  QMessageBox.StandardButton.Ok)
+                                    f"Sayısal değerler geçersiz. Lütfen kontrol edin.\n\nHata: {e}", 
+                                    QMessageBox.StandardButton.Ok)
         except Exception as e:
             show_styled_message_box(self, QMessageBox.Icon.Critical, "Beklenmeyen Hata", 
-                                  f"Bir hata oluştu: {e}", 
-                                  QMessageBox.StandardButton.Ok)
+                                    f"Bir hata oluştu: {e}", 
+                                    QMessageBox.StandardButton.Ok)
 
     def _handle_invoice_operation(self, operation):
         if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
@@ -523,7 +536,6 @@ class InvoiceTab(QWidget):
         
         if success: 
             self.clear_edit_fields()
-            # Refresh_table sinyal ile tetiklenecek, burada tekrar çağırmaya gerek yok.
         else: 
             show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Veri kaydedilemedi. Lütfen tüm zorunlu alanları (İrsaliye No, Firma, Malzeme) doldurduğunuzdan emin olun.", QMessageBox.StandardButton.Ok)
 
@@ -531,21 +543,18 @@ class InvoiceTab(QWidget):
         self.invoice_table.setRowCount(0)
         if not self.backend: return
         
-        # Sayfalama ile veri al
         offset = self.current_page * self.page_size
         invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=self.page_size, offset=offset)
         if invoices is None: invoices = []
         
-        # Toplam kayıt sayısını güncelle
         self.total_count = self.backend.handle_invoice_operation('count', self.invoice_type) or 0
         self.update_pagination_controls()
         
-        self.invoice_table.setSortingEnabled(False) # Doldururken sıralamayı kapat
+        self.invoice_table.setSortingEnabled(False) 
         for inv in invoices:
             row_pos = self.invoice_table.rowCount()
             self.invoice_table.insertRow(row_pos)
             
-            # ID'yi her satırın özel verisi olarak sakla
             item_id = QTableWidgetItem()
             item_id.setData(Qt.ItemDataRole.UserRole, inv.get('id'))
             self.invoice_table.setVerticalHeaderItem(row_pos, item_id)
@@ -567,8 +576,8 @@ class InvoiceTab(QWidget):
                 if col_idx >= 5: item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.invoice_table.setItem(row_pos, col_idx, item)
 
-        self.invoice_table.setSortingEnabled(True) # Doldurduktan sonra sıralamayı aç
-        self.invoice_table.resizeColumnsToContents()
+        self.invoice_table.setSortingEnabled(True) 
+        # self.invoice_table.resizeColumnsToContents() # Stretch kullandığımız için buna gerek yok
 
     def on_row_selected(self):
         selected_rows = list(set(item.row() for item in self.invoice_table.selectedItems()))
@@ -601,7 +610,6 @@ class InvoiceTab(QWidget):
             kdv_tutari_tl = float(invoice_data.get('kdv_tutari', 0))
             kdv_dahil = invoice_data.get('kdv_dahil', 0)
             
-            # Orijinal tutarı, kaydedildiği birim ve KDV durumuna göre göster
             original_total_amount_tl = matrah_tl
             if kdv_dahil and kdv_yuzdesi and float(kdv_yuzdesi) > 0:
                 original_total_amount_tl = matrah_tl * (1 + float(kdv_yuzdesi) / 100)
@@ -609,7 +617,6 @@ class InvoiceTab(QWidget):
             original_amount_in_currency = self.backend.convert_currency(original_total_amount_tl, 'TRY', birim)
             kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
             
-            # Sayıları lokalize formatta göster (örn: 1.234,56)
             locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
             formatted_amount = locale.toString(original_amount_in_currency, 'f', 2)
             formatted_kdv = locale.toString(kdv_tutari_in_currency, 'f', 2)
@@ -627,7 +634,7 @@ class InvoiceTab(QWidget):
             if isinstance(field, QComboBox): field.setCurrentIndex(0)
             else: field.clear()
         self.kdv_dahil_checkbox.setChecked(False)
-        self.kdv_tutari_field.clear()  # YENİ: KDV tutarı alanını temizle
+        self.kdv_tutari_field.clear() 
         self.current_invoice_id = None
 
     def export_table_data(self):
@@ -638,7 +645,6 @@ class InvoiceTab(QWidget):
         invoices_data = self.backend.handle_invoice_operation('get', self.invoice_type);
         if not invoices_data: show_styled_message_box(self, QMessageBox.Icon.Warning, "Veri Yok", f"Dışa aktarılacak {self.invoice_type} faturası bulunamadı.", QMessageBox.StandardButton.Ok); return;
         
-        # Sadece dışa aktarılacak sütunları seç
         export_data = []
         for inv in invoices_data:
             export_data.append({
@@ -675,8 +681,8 @@ class InvoiceTab(QWidget):
 
         count = len(selected_items)
         reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                      f"{count} faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
-                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                        f"{count} faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply != QMessageBox.StandardButton.Yes:
             return
 
@@ -691,12 +697,10 @@ class InvoiceTab(QWidget):
             return
 
         try:
-            # YENİ: Backend'deki tekil metodu çağır
             deleted_count = self.backend.delete_multiple_invoices(self.invoice_type, invoice_ids)
             
             if deleted_count > 0:
                 show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} fatura başarıyla silindi.", QMessageBox.StandardButton.Ok)
-                # Sinyal ile refresh_table tetiklenecek
             else:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Faturalar silinemedi veya hiç fatura seçilmedi.", QMessageBox.StandardButton.Ok)
         except Exception as e:
@@ -719,7 +723,6 @@ class NotesDatabase:
     def delete_note(self, note_id): self.conn.execute("DELETE FROM notes WHERE id = ?", (note_id,)); self.conn.commit()
     def update_note(self, note_id, title, content): self.conn.execute("UPDATE notes SET title = ?, content = ? WHERE id = ?", (title, content, note_id)); self.conn.commit()
 
-# <<< YENİ: NotesWidget tamamen çizime göre düzenlendi >>>
 class NotesWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -739,56 +742,48 @@ class NotesWidget(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(10)
 
-        # Takvim başlığı
         calendar_title = QLabel("takvim")
         calendar_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.calendar_title_label = calendar_title # restyle için sakla
+        self.calendar_title_label = calendar_title 
         main_layout.addWidget(calendar_title)
 
-        # Takvim
         self.calendar = QCalendarWidget()
         self.calendar.setLocale(self.locale)
         self.calendar.setHorizontalHeaderFormat(QCalendarWidget.HorizontalHeaderFormat.ShortDayNames)
         self.calendar.setGridVisible(True)
         self.calendar.setNavigationBarVisible(True)
-        self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader) # Hafta numaralarını gizle
+        self.calendar.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader) 
 
-        # Takvim için QFrame kapsayıcı
         calendar_frame = QFrame()
-        self.calendar_frame = calendar_frame # restyle için sakla
+        self.calendar_frame = calendar_frame 
         calendar_layout = QVBoxLayout(calendar_frame)
         calendar_layout.setContentsMargins(5, 5, 5, 5)
         calendar_layout.addWidget(self.calendar)
         main_layout.addWidget(calendar_frame)
 
-        # Notlar başlığı
         notes_title = QLabel("notlar başlığı")
         notes_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.notes_title_label = notes_title # restyle için sakla
+        self.notes_title_label = notes_title 
         main_layout.addWidget(notes_title)
 
-        # Not Listesi ve Giriş Alanı için QFrame kapsayıcı
         notes_content_frame = QFrame()
-        self.notes_content_frame = notes_content_frame # restyle için sakla
+        self.notes_content_frame = notes_content_frame 
         notes_content_layout = QVBoxLayout(notes_content_frame)
         notes_content_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Not listesi
         self.notes_list = QListWidget()
-        self.notes_list.setAlternatingRowColors(False) # Alternatif renkleri kaldır
-        self.notes_list.setMaximumHeight(150) # Yüksekliği sınırla
+        self.notes_list.setAlternatingRowColors(False) 
+        self.notes_list.setMaximumHeight(150) 
         notes_content_layout.addWidget(self.notes_list)
 
-        # Giriş alanları
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("Not başlığı...")
         notes_content_layout.addWidget(self.title_input)
         self.content_input = QTextEdit()
         self.content_input.setPlaceholderText("Not içeriği...")
-        self.content_input.setFixedHeight(60) # Yüksekliği sabitle
+        self.content_input.setFixedHeight(60) 
         notes_content_layout.addWidget(self.content_input)
 
-        # Butonlar
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(8)
         self.new_button = QPushButton("Yeni"); self.new_button.setObjectName("new_button_notes")
@@ -808,17 +803,15 @@ class NotesWidget(QWidget):
 
     def apply_styles(self):
         palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
-        # Çerçeveler ve Başlıklar
         self.calendar_frame.setStyleSheet(STYLES.get("notes_drawing_frame", ""))
         self.notes_content_frame.setStyleSheet(STYLES.get("notes_drawing_frame", ""))
         self.calendar_title_label.setStyleSheet(STYLES.get("notes_drawing_label_bg", ""))
         self.notes_title_label.setStyleSheet(STYLES.get("notes_drawing_label_bg", ""))
 
-        # Takvim İç Stili (Çerçeve dışında kalanlar)
         calendar_widget_style = f"""
             QCalendarWidget {{ background-color: transparent; border: none; }}
             QCalendarWidget QToolButton {{ color: {palette['notes_drawing_text_color']}; background-color: transparent; border: none; border-radius: 4px; font-size: 13px; padding: 4px 6px; margin: 1px; }}
-            QCalendarWidget QToolButton:hover {{ background-color: rgba(255, 255, 255, 0.2); }} /* Hafif beyaz overlay */
+            QCalendarWidget QToolButton:hover {{ background-color: rgba(255, 255, 255, 0.2); }}
             QWidget#qt_calendar_navigationbar {{ background-color: transparent; border-bottom: 1px solid {palette['notes_drawing_border']}; }}
             QCalendarWidget QAbstractItemView:enabled {{ font-size: 11px; color: {palette['notes_drawing_text_color']}; background-color: transparent; selection-background-color: {palette['notes_drawing_border']}; selection-color: {palette['notes_list_item_selected_text']}; }}
             QCalendarWidget QTableView {{ gridline-color: {palette['notes_drawing_border']}; }}
@@ -827,16 +820,14 @@ class NotesWidget(QWidget):
         """
         self.calendar.setStyleSheet(calendar_widget_style)
 
-        # Input ve Liste Stilleri
-        self.title_input.setStyleSheet(STYLES.get("input_style", "").replace(palette['card_frame'], 'transparent')) # Arkaplanı şeffaf yap
-        self.content_input.setStyleSheet(STYLES.get("input_style", "").replace(palette['card_frame'], 'transparent')) # Arkaplanı şeffaf yap
+        self.title_input.setStyleSheet(STYLES.get("input_style", "").replace(palette['card_frame'], 'transparent')) 
+        self.content_input.setStyleSheet(STYLES.get("input_style", "").replace(palette['card_frame'], 'transparent')) 
         self.notes_list.setStyleSheet(STYLES.get("notes_list_item_drawing_style", ""))
 
-        # Buton Stilleri
         self.new_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", ""))
         self.delete_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", ""))
         self.save_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", ""))
-        self.new_button.setObjectName("new_button_notes") # Emin olmak için tekrar ata
+        self.new_button.setObjectName("new_button_notes") 
         self.delete_button.setObjectName("delete_button_notes")
         self.save_button.setObjectName("save_button_notes")
 
@@ -869,14 +860,13 @@ class NotesWidget(QWidget):
             self.title_input.setText(note['title'])
             self.content_input.setPlainText(note['content'])
             self.save_button.setText("Güncelle")
-            # Güncelle butonu stilini ayarla (isteğe bağlı, şimdilik aynı kalabilir)
-            self.save_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", "").replace("#28a745", "#007bff")) # Yeşil yerine mavi
+            self.save_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", "").replace("#28a745", "#007bff")) 
             self.save_button.setObjectName("save_button_notes")
         else: self.clear_selection_and_inputs()
 
     def clear_selection_and_inputs(self):
         self.notes_list.clearSelection(); self.title_input.clear(); self.content_input.clear(); self.current_note_id = None; self.save_button.setText("Kaydet");
-        self.save_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", "")) # Orijinal stile dön
+        self.save_button.setStyleSheet(STYLES.get("notes_buttons_drawing_style", "")) 
         self.save_button.setObjectName("save_button_notes")
 
     def save_or_update_note(self):
@@ -899,7 +889,7 @@ class NotesWidget(QWidget):
         dates_with_notes = self.db.get_dates_with_notes()
         palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
         note_format = QTextCharFormat()
-        note_format.setBackground(QBrush(QColor(palette.get("notes_drawing_border", "#FF9999")))) # Notlu gün rengi
+        note_format.setBackground(QBrush(QColor(palette.get("notes_drawing_border", "#FF9999")))) 
         note_format.setForeground(QBrush(QColor(palette.get("notes_list_item_selected_text", "#FFFFFF"))))
         for date_str in dates_with_notes:
             try:
@@ -947,7 +937,6 @@ class HomePage(QWidget):
         
         card_layout.addLayout(self._create_header())
         
-        # Donutlar ve Altındaki Etiketler (Tek sıra halinde)
         all_donuts_layout = QHBoxLayout(); all_donuts_layout.setSpacing(15)
         self.donut_profit = DonutChartWidget(color="#a2d5f2"); all_donuts_layout.addWidget(self.donut_profit)
         self.donut_income = DonutChartWidget(color="#fceecb"); all_donuts_layout.addWidget(self.donut_income)
@@ -1009,7 +998,11 @@ class HomePage(QWidget):
             if currency_info["code"] == self.current_currency: btn.setChecked(True)
         return self.currency_selector_frame
         
-    def _create_financial_graph_widget(self): plot_widget = pg.PlotWidget(); months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]; ticks = [(i, month) for i, month in enumerate(months)]; plot_widget.getAxis('bottom').setTicks([ticks]); self.legend = plot_widget.addLegend(offset=(10, 10)); self.income_line = pg.PlotDataItem(pen=pg.mkPen(color=(40, 167, 69), width=2.5), symbol='o', symbolBrush=(40, 167, 69), symbolSize=7, name='Gelir'); self.expenses_line = pg.PlotDataItem(pen=pg.mkPen(color=(220, 53, 69), width=2.5), symbol='o', symbolBrush=(220, 53, 69), symbolSize=7, name='Gider'); plot_widget.addItem(self.income_line); plot_widget.addItem(self.expenses_line); return plot_widget
+    def _create_financial_graph_widget(self): 
+        if pg:
+            plot_widget = pg.PlotWidget(); months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]; ticks = [(i, month) for i, month in enumerate(months)]; plot_widget.getAxis('bottom').setTicks([ticks]); self.legend = plot_widget.addLegend(offset=(10, 10)); self.income_line = pg.PlotDataItem(pen=pg.mkPen(color=(40, 167, 69), width=2.5), symbol='o', symbolBrush=(40, 167, 69), symbolSize=7, name='Gelir'); self.expenses_line = pg.PlotDataItem(pen=pg.mkPen(color=(220, 53, 69), width=2.5), symbol='o', symbolBrush=(220, 53, 69), symbolSize=7, name='Gider'); plot_widget.addItem(self.income_line); plot_widget.addItem(self.expenses_line); return plot_widget
+        else:
+            return QLabel("Grafik kütüphanesi (pyqtgraph) yüklenemedi.") # Kütüphane yoksa
     
     def _connect_signals(self): 
         self.currency_group.buttonClicked.connect(self.update_currency)
@@ -1045,22 +1038,22 @@ class HomePage(QWidget):
         palette = STYLES.get("palette", LIGHT_THEME_PALETTE); self.main_content_card.setStyleSheet(STYLES.get("main_card_frame")); self.title_label.setStyleSheet(STYLES.get("title")); self.export_button.setStyleSheet(STYLES.get("export_button")); self.currency_selector_frame.setStyleSheet("background-color: #f0f5fa; border-radius: 8px; padding: 3px;");
         for btn in self.currency_group.buttons(): btn.setStyleSheet("QPushButton { background-color: transparent; border: none; padding: 6px 18px; color: #505050; font-weight: 500; border-radius: 6px; font-size: 13px; } QPushButton:checked { background-color: #ffffff; color: #0066CC; font-weight: 600; }")
         
-        # Donut altı etiket stilleri
         if hasattr(self, 'donut_profit_label'):
             self.donut_profit_label.setStyleSheet(STYLES.get("donut_label_style"))
             self.donut_avg_label.setStyleSheet(STYLES.get("donut_label_style"))
             self.donut_income_label.setStyleSheet(STYLES.get("donut_label_style"))
             self.donut_expense_label.setStyleSheet(STYLES.get("donut_label_style"))
-                
+                    
         self.load_donuts()
         
         self.graph_title_label.setStyleSheet(STYLES.get("info_panel_title"))
         self.graph_year_dropdown.setStyleSheet(STYLES.get("input_style"))
-        graph_bg = STYLES.get("palette", {}).get("graph_background", 'w'); graph_fg = STYLES.get("palette", {}).get("graph_foreground", '#404040')
-        pg.setConfigOption('background', graph_bg); pg.setConfigOption('foreground', graph_fg); self.plot_widget.setBackground(graph_bg); self.plot_widget.getAxis('left').setTextPen(graph_fg); self.plot_widget.getAxis('bottom').setTextPen(graph_fg); self.plot_widget.showGrid(x=True, y=True, alpha=0.2);
-        if hasattr(self, 'legend'): self.legend.setLabelTextColor(graph_fg)
         
-        # NotesWidget restyle
+        if pg and isinstance(self.plot_widget, pg.PlotWidget):
+            graph_bg = STYLES.get("palette", {}).get("graph_background", 'w'); graph_fg = STYLES.get("palette", {}).get("graph_foreground", '#404040')
+            pg.setConfigOption('background', graph_bg); pg.setConfigOption('foreground', graph_fg); self.plot_widget.setBackground(graph_bg); self.plot_widget.getAxis('left').setTextPen(graph_fg); self.plot_widget.getAxis('bottom').setTextPen(graph_fg); self.plot_widget.showGrid(x=True, y=True, alpha=0.2);
+            if hasattr(self, 'legend'): self.legend.setLabelTextColor(graph_fg)
+        
         if hasattr(self, 'notes_widget') and hasattr(self.notes_widget, 'restyle'):
             self.notes_widget.restyle()
         
@@ -1121,6 +1114,7 @@ class HomePage(QWidget):
         return converted_value, symbol
         
     def update_graph(self):
+        if not pg or not isinstance(self.plot_widget, pg.PlotWidget): return
         if not self.backend: self.income_line.setData([], []); self.expenses_line.setData([], []); return
         converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v); income = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('income', [0]*12)]; expenses = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('expenses', [0]*12)]; months_indices = list(range(12)); self.income_line.setData(x=months_indices, y=income); self.expenses_line.setData(x=months_indices, y=expenses); graph_fg = '#404040'; self.plot_widget.setLabel('left', f"Tutar ({self.current_currency})", color=graph_fg); self.plot_widget.autoRange()
         
@@ -1137,7 +1131,7 @@ class HomePage(QWidget):
         data = {"Ay": months, f"Gelir ({self.current_currency})": income_converted, f"Gider ({self.current_currency})": expenses_converted}
         sheets_data = {f"{self.current_graph_year} Grafik Verisi": {"data": data, "headers": list(data.keys())}}; self.backend.export_to_excel(file_path, sheets_data); show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{self.current_graph_year} yılı grafik verisi başarıyla dışa aktarıldı.", QMessageBox.StandardButton.Ok)
 
-# --- Fatura Sayfası (Yeniden Düzenlendi) ---
+# --- Fatura Sayfası ---
 class InvoicesPage(QWidget):
     def __init__(self, backend, parent=None):
         super().__init__(parent)
@@ -1153,7 +1147,6 @@ class InvoicesPage(QWidget):
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
         
-        # Ana QR İşleme butonu
         self.qr_button = QPushButton("📷 Otomatik Fatura Ekle (QR)")
         self.qr_button.setToolTip("Bir klasördeki tüm faturaları QR kodlarını okuyarak otomatik olarak sisteme ekler.")
         self.qr_button.clicked.connect(self.start_qr_processing_flow)
@@ -1218,12 +1211,10 @@ class InvoicesPage(QWidget):
             show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "Backend modülü bulunamadı.", QMessageBox.StandardButton.Ok)
             return
 
-        # 1. Klasör Seçimi
         file_dialog = QFileDialog(self)
         file_dialog.setWindowTitle("QR Kodlu Fatura Dosyalarının Bulunduğu Klasörü Seçin")
         file_dialog.setFileMode(QFileDialog.FileMode.Directory)
         file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
-        # Dialog butonlarını Türkçeleştir (Qt'nin kendi butonları)
         file_dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Seç")
         file_dialog.setLabelText(QFileDialog.DialogLabel.Reject, "İptal")
         
@@ -1234,21 +1225,20 @@ class InvoicesPage(QWidget):
         if not folder_path:
             return
 
-        # 2. Backend ile QR'ları Oku
         progress = QProgressDialog("QR kodlar okunuyor...", "İptal", 0, 0, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setCancelButtonText("İptal")
         progress.setAutoClose(True)
         progress.setAutoReset(True)
         progress.show()
-        QApplication.processEvents() # Dialogun görünmesini sağla
+        QApplication.processEvents() 
 
         qr_results = self.backend.process_qr_files_in_folder(folder_path)
         
         progress.close()
 
         if qr_results is None:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "QR kodları işlenirken bir hata oluştu. Lütfen terminal çıktılarını kontrol edin.", QMessageBox.StandardButton.Ok)
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "QR kodları işlenirken bir hata oluştu. Kütüphaneler eksik olabilir.", QMessageBox.StandardButton.Ok)
             return
         
         successful_qrs = [r for r in qr_results if r.get('durum') == 'BAŞARILI']
@@ -1259,7 +1249,6 @@ class InvoicesPage(QWidget):
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Sonuç", f"{total_files} dosyadan hiç birinde geçerli QR kod bulunamadı.", QMessageBox.StandardButton.Ok)
             return
 
-        # 3. Kullanıcıdan Onay Al
         dialog = QInputDialog(self)
         dialog.setWindowTitle("Fatura Türü Seçimi")
         dialog.setLabelText(f"{success_count} adet fatura bulundu.\nBu faturalar hangi türe eklensin?")
@@ -1274,7 +1263,6 @@ class InvoicesPage(QWidget):
             
         invoice_type = "incoming" if "Gelen" in invoice_type_text else "outgoing"
 
-        # 4. Backend ile Faturaları Ekle
         progress.setLabelText("Faturalar veritabanına ekleniyor...")
         progress.show()
         QApplication.processEvents()
@@ -1283,7 +1271,6 @@ class InvoicesPage(QWidget):
 
         progress.close()
 
-        # 5. Sonuçları Göster
         show_styled_message_box(self, QMessageBox.Icon.Information, "İşlem Tamamlandı",
                                 f"Otomatik fatura ekleme işlemi tamamlandı.\n\n"
                                 f"✅ Başarıyla eklenen: {imported_count}\n"
@@ -1292,8 +1279,6 @@ class InvoicesPage(QWidget):
                                 f"Toplam Okunan QR: {success_count}",
                                 QMessageBox.StandardButton.Ok)
         
-        # İlgili sekme yenilenecek (sinyal ile)
-
 
 # --- Dönemsel/Yıllık Gelir Sayfası ---
 class MonthlyIncomePage(QWidget):
@@ -1350,6 +1335,9 @@ class MonthlyIncomePage(QWidget):
         self.income_table.setItem(13, 0, kar_zarar_item)
         self.income_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.income_table.verticalHeader().setVisible(False)
+        # --- İSTEĞİNİZ ÜZERİNE DEĞİŞİKLİK ---
+        # Tablonun dikeyde tüm alanı kaplamasını sağla
+        self.income_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         tables_layout.addWidget(self.income_table)
         main_layout.addLayout(tables_layout)
         main_layout.setStretchFactor(tables_layout, 1)
@@ -1538,7 +1526,12 @@ class MonthlyIncomePage(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.backend = Backend(self)
+        try:
+            self.backend = Backend(self)
+        except Exception as e:
+            print(f"KRİTİK HATA: Backend başlatılamadı: {e}")
+            self.backend = None # Backend olmadan devam etmeyi dene
+            
         self.setWindowTitle("Excellent MVP - nşaat Finans Yönetimi")
         self.setGeometry(100, 100, 1600, 900)
         self.setup_fonts()
@@ -1568,10 +1561,8 @@ class MainWindow(QMainWindow):
                         self.setFont(QFont(family, 10))
                         return
             
-            # Font bulunamazsa varsayılan sistem fontunu kullan
             self.setFont(QFont("Segoe UI", 10))
         except Exception:
-            # Hiçbir şey yapma, sistem varsayılanları kullanılsın
             pass
 
     def setup_ui(self):
@@ -1585,39 +1576,56 @@ class MainWindow(QMainWindow):
         self.menu_layout = QVBoxLayout(menu_frame)
         self.menu_layout.setContentsMargins(15, 15, 15, 15)
         self.menu_layout.setSpacing(10)
-        logo_layout = QHBoxLayout()
         
-        # Logo yükleme - hata durumunda boş bırak
+        # --- YENİ LOGO DÜZENİ (LOGO SOLDA, YAZI SAĞDA - 60px) ---
+        logo_layout = QHBoxLayout() # Düzeni QHBoxLayout (Yatay) olarak değiştirdik
+        logo_layout.setSpacing(10) # Logo ile yazı arasına boşluk koyduk
+
+        # 1. Logoyu (logo.png) sola ekliyoruz
         logo_label = QLabel()
+        logo_found = False
         try:
+            # Logo dosyasını ANA DİZİNDE arayacak
             possible_logo_paths = [
-                os.path.join(os.path.dirname(__file__), '..', 'fonts', 'logo.png'),
-                os.path.join(os.path.dirname(__file__), 'fonts', 'logo.png'),
-                'fonts/logo.png'
+                os.path.join(os.path.dirname(__file__), 'logo.png'),
+                'logo.png'
             ]
             
             for logo_path in possible_logo_paths:
                 if os.path.exists(logo_path):
                     logo_pixmap = QPixmap(logo_path)
                     if not logo_pixmap.isNull():
-                        logo_pixmap = logo_pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        # Logonun 60x60 piksel boyutunu KORUYORUZ
+                        logo_pixmap = logo_pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                         logo_label.setPixmap(logo_pixmap)
+                        logo_found = True
                         break
-        except Exception:
-            pass  # Logo yüklenemezse devam et
+            if not logo_found:
+                logo_label.setText("[Logo Yok]") # Hata durumunda
+                print("UYARI: 'logo.png' dosyası ana dizinde bulunamadı.")
+                
+        except Exception as e:
+            print(f"Logo yükleme hatası: {e}")
+            logo_label.setText("[Hata]")
         
-        logo_layout.addWidget(logo_label)
+        logo_layout.addWidget(logo_label) # Logoyu önce ekle
+
+        # 2. Metni (Excellent MVP) sağa ekliyoruz
         self.logo_text = QLabel("Excellent MVP")
-        logo_layout.addWidget(self.logo_text)
-        logo_layout.addStretch()
+        logo_layout.addWidget(self.logo_text) 
+
+        logo_layout.addStretch() # Öğeleri sola yaslamak için sona esneme ekle
+        
         self.menu_layout.addLayout(logo_layout)
+        # --- YENİ DÜZENİN SONU ---
+
         self.menu_layout.addSpacing(20)
         self.menu_button_group = QButtonGroup(self)
         self.menu_button_group.setExclusive(True)
         self.menu_buttons = []
         menu_items = [("🏠", "Genel Durum"), ("📄", "Faturalar"), ("📅", "Dönemsel Gelir")]
         for icon, text in menu_items:
-            button = QPushButton(f"{icon}   {text}")
+            button = QPushButton(f"{icon}    {text}")
             button.setCheckable(True)
             self.menu_buttons.append(button)
             self.menu_layout.addWidget(button)
@@ -1645,17 +1653,21 @@ class MainWindow(QMainWindow):
     def connect_signals(self):
         for i, button in enumerate(self.menu_buttons):
             button.clicked.connect(lambda checked, idx=i: self.on_menu_button_clicked(idx))
-        self.backend.status_updated.connect(self.update_status_bar)
-        self.backend.data_updated.connect(self.refresh_all_pages)
+        if self.backend:
+            self.backend.status_updated.connect(self.update_status_bar)
+            self.backend.data_updated.connect(self.refresh_all_pages)
 
     def on_menu_button_clicked(self, index):
         self.stacked_widget.setCurrentIndex(index)
         self.refresh_all_pages()
 
     def refresh_all_pages(self):
-        self.home_page.refresh_data()
-        self.invoices_page.refresh_data()
-        self.monthly_income_page.refresh_data()
+        try:
+            self.home_page.refresh_data()
+            self.invoices_page.refresh_data()
+            self.monthly_income_page.refresh_data()
+        except Exception as e:
+            print(f"Sayfa yenileme hatası: {e}")
 
     def update_status_bar(self, message, timeout=3000):
         self.status_label.setText(f"Durum: {message}")
@@ -1681,3 +1693,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
