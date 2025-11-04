@@ -305,19 +305,33 @@ class InvoiceTab(QWidget):
         headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM TUTAR", "BİRİM", "KDV %"]
         tr_locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
         for header in headers:
-            key = header.replace("İ", "I").replace(" ", "_").replace("%", "yuzdesi").lower()
-            if header == "BİRİM":
+            key = header.replace("İ", "I").replace("Ğ", "G").replace("Ü", "U").replace("Ş", "S").replace("Ç", "C").replace("Ö", "O").replace(" ", "_").replace("%", "yuzdesi").lower()
+            if key == "birim":
                 widget = QComboBox()
                 widget.addItems(["TL", "USD", "EUR"])
             else:
                 widget = QLineEdit()
-                placeholders = {"TARİH": "gg.aa.yyyy", "KDV %": "Örn: 20"}
+                placeholders = {"TARİH": "gg.aa.yyyy", "KDV %": "Örn: 20", "TOPLAM TUTAR": "ZORUNLU - Tutar girin"}
                 widget.setPlaceholderText(placeholders.get(header, header))
-                if header in ["MİKTAR", "TOPLAM TUTAR", "KDV %"]:
+                if key in ["miktar", "toplam_tutar", "kdv_yuzdesi"]:
                     validator = QDoubleValidator()
                     validator.setLocale(tr_locale)
                     validator.setNotation(QDoubleValidator.Notation.StandardNotation)
                     widget.setValidator(validator)
+            
+            # Tooltip'leri ekle
+            tooltips = {
+                "İRSALİYE NO": "İrsaliye/Fatura numarası\nBoş bırakılabilir",
+                "TARİH": "Fatura tarihi\nBoş bırakılırsa bugünün tarihi kullanılır\nFormat: gg.aa.yyyy",
+                "FİRMA": "Firma/müşteri adı\nBoş bırakılabilir",
+                "MALZEME": "Ürün/hizmet açıklaması\nBoş bırakılabilir",
+                "MİKTAR": "Miktar bilgisi\nBoş bırakılabilir",
+                "TOPLAM TUTAR": "ZORUNLU ALAN\nToplam tutar mutlaka girilmelidir\nVirgül veya nokta kullanabilirsiniz",
+                "BİRİM": "Para birimi seçimi",
+                "KDV %": "KDV yüzdesi\nBoş bırakılırsa varsayılan %20 kullanılır"
+            }
+            widget.setToolTip(tooltips.get(header, header))
+            
             self.edit_fields[key] = widget
             fields_layout.addWidget(widget)
         
@@ -537,7 +551,7 @@ class InvoiceTab(QWidget):
         if success: 
             self.clear_edit_fields()
         else: 
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Veri kaydedilemedi. Lütfen tüm zorunlu alanları (İrsaliye No, Firma, Malzeme) doldurduğunuzdan emin olun.", QMessageBox.StandardButton.Ok)
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Veri kaydedilemedi. Lütfen en az toplam tutar alanını doldurduğunuzdan emin olun.", QMessageBox.StandardButton.Ok)
 
     def refresh_table(self):
         self.invoice_table.setRowCount(0)
@@ -983,7 +997,7 @@ class HomePage(QWidget):
         page_layout.addStretch(); page_layout.addWidget(self.main_content_card); page_layout.addStretch()
 
     def _create_header(self):
-        header_layout = QHBoxLayout(); self.title_label = QLabel(self.CONFIG["page_title"]); header_layout.addWidget(self.title_label); header_layout.addStretch(); self.exchange_rate_label = QLabel(); self.update_exchange_rate_display(); header_layout.addWidget(self.exchange_rate_label); header_layout.addSpacing(15); header_layout.addWidget(self._create_currency_selector()); self.export_button = QPushButton("Excel'e Aktar"); header_layout.addWidget(self.export_button)
+        header_layout = QHBoxLayout(); self.title_label = QLabel(self.CONFIG["page_title"]); header_layout.addWidget(self.title_label); header_layout.addStretch(); self.exchange_rate_label = QLabel(); self.update_exchange_rate_display(); header_layout.addWidget(self.exchange_rate_label); header_layout.addSpacing(15); header_layout.addWidget(self._create_currency_selector())
         return header_layout
 
     def _create_currency_selector(self):
@@ -1006,7 +1020,6 @@ class HomePage(QWidget):
     
     def _connect_signals(self): 
         self.currency_group.buttonClicked.connect(self.update_currency)
-        self.export_button.clicked.connect(self.export_graph_data)
         self.graph_year_dropdown.currentTextChanged.connect(self.on_graph_year_changed)
         if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'): self.backend.data_updated.connect(self.refresh_data)
         
@@ -1035,7 +1048,7 @@ class HomePage(QWidget):
             except Exception as e: print(f"Grafik yılı değiştirme hatası: {e}")
         
     def restyle(self):
-        palette = STYLES.get("palette", LIGHT_THEME_PALETTE); self.main_content_card.setStyleSheet(STYLES.get("main_card_frame")); self.title_label.setStyleSheet(STYLES.get("title")); self.export_button.setStyleSheet(STYLES.get("export_button")); self.currency_selector_frame.setStyleSheet("background-color: #f0f5fa; border-radius: 8px; padding: 3px;");
+        palette = STYLES.get("palette", LIGHT_THEME_PALETTE); self.main_content_card.setStyleSheet(STYLES.get("main_card_frame")); self.title_label.setStyleSheet(STYLES.get("title")); self.currency_selector_frame.setStyleSheet("background-color: #f0f5fa; border-radius: 8px; padding: 3px;");
         for btn in self.currency_group.buttons(): btn.setStyleSheet("QPushButton { background-color: transparent; border: none; padding: 6px 18px; color: #505050; font-weight: 500; border-radius: 6px; font-size: 13px; } QPushButton:checked { background-color: #ffffff; color: #0066CC; font-weight: 600; }")
         
         if hasattr(self, 'donut_profit_label'):
@@ -1118,19 +1131,6 @@ class HomePage(QWidget):
         if not self.backend: self.income_line.setData([], []); self.expenses_line.setData([], []); return
         converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v); income = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('income', [0]*12)]; expenses = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('expenses', [0]*12)]; months_indices = list(range(12)); self.income_line.setData(x=months_indices, y=income); self.expenses_line.setData(x=months_indices, y=expenses); graph_fg = '#404040'; self.plot_widget.setLabel('left', f"Tutar ({self.current_currency})", color=graph_fg); self.plot_widget.autoRange()
         
-    def export_graph_data(self):
-        file_path, _ = get_save_file_name_turkish(self, "Grafik Verisini Kaydet", f"{self.current_graph_year}_analiz_grafiği.xlsx", "Excel Dosyaları (*.xlsx)")
-        if not file_path: return
-        if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
-        monthly_data_to_export = self._get_monthly_data_for_year(self.current_graph_year)
-        if not any(monthly_data_to_export.get('income', [])) and not any(monthly_data_to_export.get('expenses', [])): show_styled_message_box(self, QMessageBox.Icon.Warning, "Veri Yok", f"{self.current_graph_year} yılı için dışa aktarılacak grafik verisi bulunamadı.", QMessageBox.StandardButton.Ok); return
-        months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-        converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v)
-        income_converted = [converter(v, 'TRY', self.current_currency) for v in monthly_data_to_export.get('income', [0]*12)]
-        expenses_converted = [converter(v, 'TRY', self.current_currency) for v in monthly_data_to_export.get('expenses', [0]*12)]
-        data = {"Ay": months, f"Gelir ({self.current_currency})": income_converted, f"Gider ({self.current_currency})": expenses_converted}
-        sheets_data = {f"{self.current_graph_year} Grafik Verisi": {"data": data, "headers": list(data.keys())}}; self.backend.export_to_excel(file_path, sheets_data); show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{self.current_graph_year} yılı grafik verisi başarıyla dışa aktarıldı.", QMessageBox.StandardButton.Ok)
-
 # --- Fatura Sayfası ---
 class InvoicesPage(QWidget):
     def __init__(self, backend, parent=None):
@@ -1320,8 +1320,8 @@ class MonthlyIncomePage(QWidget):
         
         tables_layout = QHBoxLayout()
         self.income_table = QTableWidget(14, 5)
-        self.income_table.setHorizontalHeaderLabels(["AYLAR", "GELR (Kesilen)", "GDER (Gelen)", "KDV FARKI", "ÖDENECEK VERG"])
-        months = ["OCAK", "ŞUBAT", "MART", "NSAN", "MAYIS", "HAZRAN", "TEMMUZ", "AUSTOS", "EYLÜL", "EKM", "KASIM", "ARALIK"]
+        self.income_table.setHorizontalHeaderLabels(["AYLAR", "GELİR (Kesilen)", "GİDER (Gelen)", "KDV FARKI", "ÖDENECEK VERGİ"])
+        months = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
         self.colors = {"mavi": "#D4EBF2", "pembe": "#F9E7EF", "sarı": "#FFF2D6", "yeşil": "#D9F2E7"}
         for row, month_name in enumerate(months):
             month_item = QTableWidgetItem(month_name)
@@ -1490,26 +1490,26 @@ class MonthlyIncomePage(QWidget):
                         total_vergi_export += odenecek_vergi
                 row_data = {
                     "AYLAR": month_name,
-                    "GELR (Kesilen)": monthly_data.get('kesilen', 0),
-                    "GDER (Gelen)": monthly_data.get('gelen', 0),
+                    "GELİR (Kesilen)": monthly_data.get('kesilen', 0),
+                    "GİDER (Gelen)": monthly_data.get('gelen', 0),
                     "KDV FARKI": kdv_farki,
-                    "ÖDENECEK VERG": odenecek_vergi
+                    "ÖDENECEK VERGİ": odenecek_vergi
                 }
                 data_to_export.append(row_data)
             data_to_export.append({})
             data_to_export.append({
                 "AYLAR": "GENEL TOPLAM",
-                "GELR (Kesilen)": summary.get('toplam_gelir', 0),
-                "GDER (Gelen)": summary.get('toplam_gider', 0),
+                "GELİR (Kesilen)": summary.get('toplam_gelir', 0),
+                "GİDER (Gelen)": summary.get('toplam_gider', 0),
                 "KDV FARKI": total_kdv_farki_export,
-                "ÖDENECEK VERG": total_vergi_export
+                "ÖDENECEK VERGİ": total_vergi_export
             })
             data_to_export.append({
                 "AYLAR": "YILLIK NET KÂR",
-                "GELR (Kesilen)": None,
-                "GDER (Gelen)": None,
+                "GELİR (Kesilen)": None,
+                "GİDER (Gelen)": None,
                 "KDV FARKI": None,
-                "ÖDENECEK VERG": summary.get('yillik_kar', 0)
+                "ÖDENECEK VERGİ": summary.get('yillik_kar', 0)
             })
             sheets_data = {f"{year_str} Raporu": {"data": data_to_export}}
             if self.backend.export_to_excel(file_path, sheets_data):
