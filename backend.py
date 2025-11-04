@@ -647,13 +647,20 @@ class Backend(QObject):
         """
         Fatura verilerini işler, doğrular ve KDV/kur hesaplamalarını yapar.
         """
-        required_fields = ['irsaliye_no', 'firma', 'malzeme']
-        if not all(invoice_data.get(field, '').strip() for field in required_fields):
-            logging.warning(f"Eksik zorunlu alanlar: {invoice_data}")
+        # Sadece toplam tutar zorunlu olsun, diğer alanlar boş kalabilir
+        toplam_tutar = self._to_float(invoice_data.get('toplam_tutar', 0))
+        if toplam_tutar <= 0:
+            logging.warning(f"Toplam tutar girilmemiş veya geçersiz: {invoice_data}")
             return None
         
         try:            
             processed = invoice_data.copy()
+            
+            # Boş alanları olduğu gibi bırak
+            processed['irsaliye_no'] = processed.get('irsaliye_no', '').strip()
+            processed['firma'] = processed.get('firma', '').strip()
+            processed['malzeme'] = processed.get('malzeme', '').strip()
+            
             processed['tarih'] = self.format_date(processed.get('tarih', ''))
             processed['miktar'] = str(processed.get('miktar', '')).strip()
             
