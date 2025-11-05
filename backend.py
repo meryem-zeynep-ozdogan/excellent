@@ -628,19 +628,43 @@ class Backend(QObject):
     def format_date(self, date_str):
         """Tarih string'ini 'dd.mm.yyyy' formatına çevirir."""
         if not date_str or not isinstance(date_str, str):
-                 return datetime.now().strftime("%d.%m.%Y")
+            return datetime.now().strftime("%d.%m.%Y")
         
-        cleaned_date = re.sub(r'[^0-9]', '', date_str)
-        
-        if len(cleaned_date) == 8: # ggmmyyyy formatı
-            return f"{cleaned_date[:2]}.{cleaned_date[2:4]}.{cleaned_date[4:]}"
-
-        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        # Önce mevcut formatları dene (nokta, tire, slash ile)
+        for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
             try:
-                return datetime.strptime(date_str, fmt).strftime("%d.%m.%Y")
+                parsed_date = datetime.strptime(date_str.strip(), fmt)
+                return parsed_date.strftime("%d.%m.%Y")
             except ValueError:
                 continue
         
+        # Sadece rakamlardan oluşan tarihleri işle (8 karakter: ggaaYYYY veya YYYYaag)
+        cleaned_date = re.sub(r'[^0-9]', '', date_str)
+        
+        if len(cleaned_date) == 8:
+            # İlk 4 karakter yıl gibi görünüyorsa (2000-2099 arası)
+            if cleaned_date[:4] in [str(y) for y in range(2000, 2100)]:
+                # YYYYaag formatı
+                yil = cleaned_date[:4]
+                ay = cleaned_date[4:6]
+                gun = cleaned_date[6:8]
+                try:
+                    parsed_date = datetime(int(yil), int(ay), int(gun))
+                    return parsed_date.strftime("%d.%m.%Y")
+                except ValueError:
+                    pass
+            else:
+                # ggaaYYYY formatı
+                gun = cleaned_date[:2]
+                ay = cleaned_date[2:4]
+                yil = cleaned_date[4:8]
+                try:
+                    parsed_date = datetime(int(yil), int(ay), int(gun))
+                    return parsed_date.strftime("%d.%m.%Y")
+                except ValueError:
+                    pass
+        
+        # Hiçbiri işe yaramazsa bugünün tarihini döndür
         return datetime.now().strftime("%d.%m.%Y")
 
     def _process_invoice_data(self, invoice_data):
@@ -1152,7 +1176,14 @@ class Backend(QObject):
             return None
 
         parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
-        parsed['tarih'] = str(get_value(key_map['tarih']) or datetime.now().strftime("%Y-%m-%d"))
+        
+        # Tarih işleme - QR'dan gelen tarihi doğru formatlayalım
+        qr_tarih = get_value(key_map['tarih'])
+        if qr_tarih:
+            # QR'dan gelen tarihi format_date fonksiyonuyla düzeltelim
+            parsed['tarih'] = self.format_date(str(qr_tarih))
+        else:
+            parsed['tarih'] = datetime.now().strftime("%d.%m.%Y")
         
         firma_adi = get_value(key_map['firma'])
         if not firma_adi or (isinstance(firma_adi, str) and firma_adi.isdigit()):
