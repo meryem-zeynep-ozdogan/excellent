@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
     QSpacerItem, QSizePolicy, QMessageBox, QCalendarWidget,
     QTextEdit, QFileDialog, QStatusBar, QComboBox, QTabWidget,
     QGroupBox, QListWidget, QListWidgetItem, QCheckBox, QProgressDialog,
-    QInputDialog
+    QInputDialog, 
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QPainterPath, QColor, QFont,
-    QFontDatabase, QDoubleValidator, QTextCharFormat, QPixmap
+    QFontDatabase, QDoubleValidator, QTextCharFormat, QPixmap,QIcon
 )
 from PyQt6.QtCore import Qt, QDate, QLocale, QTimer, QRectF, QPointF, QSize
 
@@ -1357,6 +1357,11 @@ class MonthlyIncomePage(QWidget):
             tax_percent = float(self.tax_input.text().replace(',', '.'))
             if 0 <= tax_percent <= 100:
                 self.backend.save_setting('kurumlar_vergisi_yuzdesi', tax_percent)
+                # Ayar kaydedildikten sonra tabloyu yenile
+                self.refresh_data()
+                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
+                                        f"Kurumlar vergisi oranı %{tax_percent:.1f} olarak güncellendi.\nTablo verileri yenilendi.", 
+                                        QMessageBox.StandardButton.Ok)
             else:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Vergi oranı 0-100 arasında olmalıdır.", QMessageBox.StandardButton.Ok)
         except ValueError:
@@ -1532,8 +1537,28 @@ class MainWindow(QMainWindow):
             print(f"KRİTİK HATA: Backend başlatılamadı: {e}")
             self.backend = None # Backend olmadan devam etmeyi dene
             
-        self.setWindowTitle("Excellent MVP - nşaat Finans Yönetimi")
+        self.setWindowTitle("Excellent MVP - Inşaat Finans Yönetimi")
         self.setGeometry(100, 100, 1600, 900)
+        icon_path="favicon.ico"
+        def resource_path(relative_path):
+            """ Get absolute path to resource, works for dev and for PyInstaller """
+            try:
+                # PyInstaller geçici bir klasör oluşturur ve yolu _MEIPASS içine saklar
+                base_path = sys._MEIPASS
+            except Exception:
+                base_path = os.path.abspath(".")
+            return os.path.join(base_path, relative_path)
+
+        app_icon_path = resource_path(icon_path)
+
+        if os.path.exists(app_icon_path):
+            self.setWindowIcon(QIcon(app_icon_path))
+        else:
+            # Geliştirme ortamı için (eğer paketlenmemişse) normal yoldan tekrar dene
+            if os.path.exists(icon_path):
+                 self.setWindowIcon(QIcon(icon_path))
+            else:
+                print(f"UYARI: Simge dosyası bulunamadı: {icon_path} veya {app_icon_path}")
         self.setup_fonts()
         update_styles(LIGHT_THEME_PALETTE)
         self.setup_ui()

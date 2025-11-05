@@ -33,3 +33,7 @@ delete_incoming_invoices.py
 # OS dosyaları
 .DS_Store
 Thumbs.db
+
+#sanal ortam
+venv/
+.venv/  

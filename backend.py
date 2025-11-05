@@ -478,6 +478,14 @@ class Backend(QObject):
         super().__init__(parent)
         self.db = Database()
         self.settings = self.db.get_all_settings()
+        # Vergi oranını float'a dönüştür
+        if 'kurumlar_vergisi_yuzdesi' in self.settings:
+            try:
+                self.settings['kurumlar_vergisi_yuzdesi'] = float(self.settings['kurumlar_vergisi_yuzdesi'])
+            except (ValueError, TypeError):
+                self.settings['kurumlar_vergisi_yuzdesi'] = 22.0
+        else:
+            self.settings['kurumlar_vergisi_yuzdesi'] = 22.0
         self.exchange_rates = {}
         self.qr_processor = FastQRProcessor() # QR işlemciyi oluştur
         
@@ -630,16 +638,37 @@ class Backend(QObject):
         if not date_str or not isinstance(date_str, str):
                  return datetime.now().strftime("%d.%m.%Y")
         
-        cleaned_date = re.sub(r'[^0-9]', '', date_str)
-        
-        if len(cleaned_date) == 8: # ggmmyyyy formatı
-            return f"{cleaned_date[:2]}.{cleaned_date[2:4]}.{cleaned_date[4:]}"
-
-        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
             try:
-                return datetime.strptime(date_str, fmt).strftime("%d.%m.%Y")
+                parsed_date = datetime.strptime(date_str.strip(), fmt)
+                return parsed_date.strftime("%d.%m.%Y")
             except ValueError:
                 continue
+        
+        cleaned_date = re.sub(r'[^0-9]', '', date_str)
+        
+        if len(cleaned_date) == 8:
+            # İlk 4 karakter yıl gibi görünüyorsa (2000-2099 arası)
+            if cleaned_date[:4] in [str(y) for y in range(2000, 2100)]:
+                # YYYYaag formatı
+                yil = cleaned_date[:4]
+                ay = cleaned_date[4:6]
+                gun = cleaned_date[6:8]
+                try:
+                    parsed_date = datetime(int(yil), int(ay), int(gun))
+                    return parsed_date.strftime("%d.%m.%Y")
+                except ValueError:
+                    pass
+            else:
+                # ggaaYYYY formatı
+                gun = cleaned_date[:2]
+                ay = cleaned_date[2:4]
+                yil = cleaned_date[4:8]
+                try:
+                    parsed_date = datetime(int(yil), int(ay), int(gun))
+                    return parsed_date.strftime("%d.%m.%Y")
+                except ValueError:
+                    pass
         
         return datetime.now().strftime("%d.%m.%Y")
 
@@ -878,7 +907,9 @@ class Backend(QObject):
     def get_calculations_for_year(self, year):
         """Belirli bir yıl için aylık ve çeyrek dönem hesaplamaları (SQL ile optimize edildi)."""
         cursor = self.db.conn.cursor()
-        tax_rate = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0) / 100.0
+        # Vergi oranını güvenli şekilde float'a dönüştür
+        tax_rate_raw = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0)
+        tax_rate = float(tax_rate_raw) / 100.0
         
         monthly_results = []
         for month in range(1, 13):
@@ -948,7 +979,9 @@ class Backend(QObject):
         
         brut_kar = gelir - gider
         
-        tax_rate = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0) / 100
+        # Vergi oranını güvenli şekilde float'a dönüştür
+        tax_rate_raw = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0)
+        tax_rate = float(tax_rate_raw) / 100
         vergi = brut_kar * tax_rate if brut_kar > 0 else 0
         
         return {
@@ -980,6 +1013,19 @@ class Backend(QObject):
             return False
         except (ValueError, IndexError):
             return False
+    
+    def save_setting(self, key, value):
+        """Ayarları kaydeder ve cache'i günceller."""
+        # Database'e kaydet
+        self.db.save_setting(key, value)
+        # Cache'i güncelle ve türüne göre dönüştür
+        if key == 'kurumlar_vergisi_yuzdesi':
+            self.settings[key] = float(value)
+        else:
+            self.settings[key] = value
+        # Veri güncellendiği sinyalini yay
+        self.data_updated.emit()
+        return True
     
     def export_to_excel(self, file_path, sheets_data):
         """Verilen verileri bir Excel dosyasına aktarır."""
@@ -1152,7 +1198,13 @@ class Backend(QObject):
             return None
 
         parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
-        parsed['tarih'] = str(get_value(key_map['tarih']) or datetime.now().strftime("%Y-%m-%d"))
+        # Tarih işleme - QR'dan gelen tarihi doğru formatlayalım
+        qr_tarih = get_value(key_map['tarih'])
+        if qr_tarih:
+            # QR'dan gelen tarihi format_date fonksiyonuyla düzeltelim
+            parsed['tarih'] = self.format_date(str(qr_tarih))
+        else:
+            parsed['tarih'] = datetime.now().strftime("%d.%m.%Y")
         
         firma_adi = get_value(key_map['firma'])
         if not firma_adi or (isinstance(firma_adi, str) and firma_adi.isdigit()):
