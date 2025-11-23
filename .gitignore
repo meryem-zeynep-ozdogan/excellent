@@ -36,4 +36,10 @@ Thumbs.db
 
 #sanal ortam
 venv/
-.venv/  
+.venv/ 
+
+dist/
+build/
+
+QR/
+qr/

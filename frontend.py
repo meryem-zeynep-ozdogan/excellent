@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QSpacerItem, QSizePolicy, QMessageBox, QCalendarWidget,
     QTextEdit, QFileDialog, QStatusBar, QComboBox, QTabWidget,
     QGroupBox, QListWidget, QListWidgetItem, QCheckBox, QProgressDialog,
-    QInputDialog, 
+    QInputDialog, QFormLayout,
 )
 from PyQt6.QtGui import (
     QPainter, QPen, QBrush, QPainterPath, QColor, QFont,
@@ -74,11 +74,44 @@ LIGHT_THEME_PALETTE = {
     "notes_list_bg": "#FFFFFF", "notes_list_border": "#E0E0E0", "notes_list_item_selected_bg": "#007bff",
     "notes_list_item_selected_text": "#FFFFFF", "calendar_note_bg": "#28a745", "calendar_note_text": "#FFFFFF",
     "donut_base_color": "#E9ECEF", "donut_text_color": "#495057",
+    # Button colors - light theme
+    "button_bg": "#6c757d", "button_text": "#ffffff", "button_border": "#6c757d",
+    "button_bg_hover": "#5a6268", "button_border_hover": "#545b62", "button_bg_pressed": "#545b62",
+    "button_bg_disabled": "#6c757d", "button_border_disabled": "#6c757d", "button_text_disabled": "#ffffff",
+    "button_success_bg": "#198754", "button_success_text": "#ffffff", "button_success_border": "#198754",
+    "button_success_bg_hover": "#157347", "button_success_border_hover": "#146c43", "button_success_bg_pressed": "#146c43",
+    "button_warning_bg": "#0d6efd", "button_warning_text": "#ffffff", "button_warning_border": "#0d6efd",
+    "button_warning_bg_hover": "#0a58ca", "button_warning_border_hover": "#0951ba", "button_warning_bg_pressed": "#0951ba",
+    "button_danger_bg": "#dc3545", "button_danger_text": "#ffffff", "button_danger_border": "#dc3545",
+    "button_danger_bg_hover": "#c82333", "button_danger_border_hover": "#bd2130", "button_danger_bg_pressed": "#bd2130",
     # <<< YENİ: Not Defteri Renkleri >>>
-    "notes_drawing_bg": "#FFCCCC",
-    "notes_drawing_border": "#FF9999",
-    "notes_drawing_label_bg": "#FF9999",
-    "notes_drawing_text_color": "#333333"
+    "notes_drawing_bg": "#FFCCCC", "notes_drawing_border": "#FF9999",
+    "notes_drawing_label_bg": "#FF9999", "notes_drawing_text_color": "#333333"
+}
+
+DARK_THEME_PALETTE = {
+    "page_background": "#1e1e1e", "main_card_frame": "#2d2d2d", "card_frame": "#2d2d2d",
+    "card_border": "#404040", "text_primary": "#ffffff", "text_secondary": "#cccccc",
+    "text_tertiary": "#aaaaaa", "title_color": "#ffffff", "page_title_color": "#ffffff",
+    "table_background": "#2d2d2d", "table_border": "#404040", "table_header": "#383838",
+    "table_selection": "#0d6efd", "input_border": "#404040", "menu_background": "#2d2d2d",
+    "menu_hover": "#383838", "menu_checked": "#0d6efd", "graph_background": "#2d2d2d", "graph_foreground": "#ffffff",
+    "notes_list_bg": "#2d2d2d", "notes_list_border": "#404040", "notes_list_item_selected_bg": "#0d6efd",
+    "notes_list_item_selected_text": "#ffffff", "calendar_note_bg": "#198754", "calendar_note_text": "#ffffff",
+    "donut_base_color": "#383838", "donut_text_color": "#ffffff",
+    # Button colors - dark theme
+    "button_bg": "#6c757d", "button_text": "#ffffff", "button_border": "#6c757d",
+    "button_bg_hover": "#5a6268", "button_border_hover": "#545b62", "button_bg_pressed": "#545b62",
+    "button_bg_disabled": "#6c757d", "button_border_disabled": "#6c757d", "button_text_disabled": "#cccccc",
+    "button_success_bg": "#198754", "button_success_text": "#ffffff", "button_success_border": "#198754",
+    "button_success_bg_hover": "#157347", "button_success_border_hover": "#146c43", "button_success_bg_pressed": "#146c43",
+    "button_warning_bg": "#0d6efd", "button_warning_text": "#ffffff", "button_warning_border": "#0d6efd",
+    "button_warning_bg_hover": "#0a58ca", "button_warning_border_hover": "#0951ba", "button_warning_bg_pressed": "#0951ba",
+    "button_danger_bg": "#dc3545", "button_danger_text": "#ffffff", "button_danger_border": "#dc3545",
+    "button_danger_bg_hover": "#c82333", "button_danger_border_hover": "#bd2130", "button_danger_bg_pressed": "#bd2130",
+    # Not Defteri Renkleri - dark theme
+    "notes_drawing_bg": "#4d2d2d", "notes_drawing_border": "#666666",
+    "notes_drawing_label_bg": "#666666", "notes_drawing_text_color": "#ffffff"
 }
 STYLES = {}
 
@@ -93,11 +126,124 @@ def update_styles(palette):
     STYLES["info_panel_title"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 10px;"
     STYLES["table_style"] = (f"QTableWidget {{ background-color: {palette['table_background']}; border: 1px solid {palette['table_border']}; gridline-color: {palette['table_border']}; color: {palette['text_primary']}; selection-background-color: {palette['table_selection']}; selection-color: {palette['text_primary']}; }} QHeaderView::section {{ background-color: {palette['table_header']}; color: {palette['text_primary']}; font-weight: bold; padding: 5px; border: 1px solid {palette['table_border']}; }}")
     STYLES["input_style"] = f"padding: 8px; border: 1px solid {palette.get('input_border', '#D0D0D0')}; border-radius: 6px; font-size: 13px; color: {palette.get('text_primary', '#0b2d4d')}; background-color: {palette.get('card_frame', '#FFFFFF')};"
+    STYLES["combobox_style"] = (f"QComboBox {{ "
+        f"padding: 8px 12px; "
+        f"border: 1px solid {palette.get('input_border', '#D0D0D0')}; "
+        f"border-radius: 6px; "
+        f"font-size: 13px; "
+        f"color: {palette.get('text_primary', '#0b2d4d')}; "
+        f"background-color: {palette.get('card_frame', '#FFFFFF')}; "
+        f"selection-background-color: {palette.get('table_selection', '#DFF0D8')}; "
+        f"}} "
+        f"QComboBox:drop-down {{ "
+        f"subcontrol-origin: padding; "
+        f"subcontrol-position: top right; "
+        f"width: 15px; "
+        f"border-left-width: 1px; "
+        f"border-left-color: {palette.get('input_border', '#D0D0D0')}; "
+        f"border-left-style: solid; "
+        f"border-top-right-radius: 3px; "
+        f"border-bottom-right-radius: 3px; "
+        f"}} "
+        f"QComboBox::down-arrow {{ "
+        f"image: none; "
+        f"border-left: 3px solid transparent; "
+        f"border-right: 3px solid transparent; "
+        f"border-top: 5px solid {palette.get('text_secondary', '#505050')}; "
+        f"margin-left: 3px; "
+        f"}} "
+        f"QComboBox QAbstractItemView {{ "
+        f"border: 1px solid {palette.get('input_border', '#D0D0D0')}; "
+        f"background-color: {palette.get('card_frame', '#FFFFFF')}; "
+        f"color: {palette.get('text_primary', '#0b2d4d')}; "
+        f"selection-background-color: {palette.get('table_selection', '#DFF0D8')}; "
+        f"}})")
     STYLES["menu_frame_style"] = f"background-color: {palette['menu_background']};"
     STYLES["menu_button_style"] = (f"QPushButton {{ text-align: left; padding: 15px 20px; border: none; color: {palette['text_secondary']}; font-size: 15px; font-weight: 500; border-radius: 8px; background-color: transparent; }} QPushButton:hover {{ background-color: {palette['menu_hover']}; color: #0088ff; }} QPushButton:checked {{ background-color: {palette['menu_checked']}; color: {palette['text_primary']}; font-weight: 600; }}")
     STYLES["export_button"] = "padding: 8px 12px; background-color: #17a2b8; color: white; border-radius: 6px; font-weight: 600; font-size: 12px;"
     STYLES["logo_text_style"] = f"font-size: 20px; font-weight: 600; color: {palette['text_primary']}; padding-left: 10px;"
     STYLES["notes_list_style"] = f"QListWidget {{ border: 1px solid {palette['notes_list_border']}; border-radius: 6px; padding: 5px; background-color: {palette['notes_list_bg']}; color: {palette['text_primary']}; }} QListWidget::item {{ padding: 8px; margin: 2px 0; border-radius: 4px; color: {palette['text_primary']}; }} QListWidget::item:selected {{ background-color: {palette['notes_list_item_selected_bg']}; color: {palette['notes_list_item_selected_text']}; }} QListWidget::item:hover {{ background-color: {palette['menu_hover']}; }}"
+    
+    # Uniform button styles - works in both light and dark mode
+    STYLES["button_style"] = (f"QPushButton {{ "
+        f"background-color: {palette.get('button_bg', '#0d6efd')}; "
+        f"color: {palette.get('button_text', '#ffffff')}; "
+        f"border: 2px solid {palette.get('button_border', '#0d6efd')}; "
+        f"border-radius: 6px; "
+        f"padding: 8px 16px; "
+        f"font-size: 13px; "
+        f"font-weight: 500; "
+        f"min-width: 80px; "
+        f"}} "
+        f"QPushButton:hover {{ "
+        f"background-color: {palette.get('button_bg_hover', '#0b5ed7')}; "
+        f"border-color: {palette.get('button_border_hover', '#0a58ca')}; "
+        f"}} "
+        f"QPushButton:pressed {{ "
+        f"background-color: {palette.get('button_bg_pressed', '#0a58ca')}; "
+        f"}} "
+        f"QPushButton:disabled {{ "
+        f"background-color: {palette.get('button_bg_disabled', '#6c757d')}; "
+        f"border-color: {palette.get('button_border_disabled', '#6c757d')}; "
+        f"color: {palette.get('button_text_disabled', '#ffffff')}; "
+        f"}}")
+    
+    # Success button - green styling (Ekle)
+    STYLES["success_button_style"] = (f"QPushButton {{ "
+        f"background-color: {palette.get('button_success_bg', '#198754')}; "
+        f"color: {palette.get('button_success_text', '#ffffff')}; "
+        f"border: 2px solid {palette.get('button_success_border', '#198754')}; "
+        f"border-radius: 6px; "
+        f"padding: 8px 16px; "
+        f"font-size: 13px; "
+        f"font-weight: 500; "
+        f"min-width: 80px; "
+        f"}} "
+        f"QPushButton:hover {{ "
+        f"background-color: {palette.get('button_success_bg_hover', '#157347')}; "
+        f"border-color: {palette.get('button_success_border_hover', '#146c43')}; "
+        f"}} "
+        f"QPushButton:pressed {{ "
+        f"background-color: {palette.get('button_success_bg_pressed', '#146c43')}; "
+        f"}}")
+    
+    # Warning button - yellow styling (Güncelle)
+    STYLES["warning_button_style"] = (f"QPushButton {{ "
+        f"background-color: {palette.get('button_warning_bg', '#ffc107')}; "
+        f"color: {palette.get('button_warning_text', '#000000')}; "
+        f"border: 2px solid {palette.get('button_warning_border', '#ffc107')}; "
+        f"border-radius: 6px; "
+        f"padding: 8px 16px; "
+        f"font-size: 13px; "
+        f"font-weight: 500; "
+        f"min-width: 80px; "
+        f"}} "
+        f"QPushButton:hover {{ "
+        f"background-color: {palette.get('button_warning_bg_hover', '#e0a800')}; "
+        f"border-color: {palette.get('button_warning_border_hover', '#d39e00')}; "
+        f"}} "
+        f"QPushButton:pressed {{ "
+        f"background-color: {palette.get('button_warning_bg_pressed', '#d39e00')}; "
+        f"}}")
+    
+    # Delete button - red styling
+    STYLES["delete_button_style"] = (f"QPushButton {{ "
+        f"background-color: {palette.get('button_danger_bg', '#dc3545')}; "
+        f"color: {palette.get('button_danger_text', '#ffffff')}; "
+        f"border: 2px solid {palette.get('button_danger_border', '#dc3545')}; "
+        f"border-radius: 6px; "
+        f"padding: 8px 16px; "
+        f"font-size: 13px; "
+        f"font-weight: 500; "
+        f"min-width: 80px; "
+        f"}} "
+        f"QPushButton:hover {{ "
+        f"background-color: {palette.get('button_danger_bg_hover', '#c82333')}; "
+        f"border-color: {palette.get('button_danger_border_hover', '#bd2130')}; "
+        f"}} "
+        f"QPushButton:pressed {{ "
+        f"background-color: {palette.get('button_danger_bg_pressed', '#bd2130')}; "
+        f"}}")
 
     STYLES["notes_date_label_style"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 5px;"
     STYLES["notes_section_title_style"] = f"font-size: 14px; font-weight: 600; color: {palette['text_secondary']}; margin-top: 10px; margin-bottom: 5px;"
@@ -148,11 +294,39 @@ def show_styled_message_box(parent, icon, title, text, buttons):
     btn_border = input_border
     
     msg_box.setStyleSheet(
-        f"QMessageBox {{ background-color: {bg_color}; }} "
-        f"QMessageBox QLabel {{ color: {text_color}; font-size: 14px; }} "
-        f"QMessageBox QPushButton {{ padding: 6px 15px; border: 1px solid {btn_border}; border-radius: 5px; background-color: {btn_bg}; color: {btn_text}; min-width: 80px; }} "
-        f"QMessageBox QPushButton:hover {{ background-color: {input_border}; }} "
-        f"QMessageBox QPushButton:pressed {{ background-color: {menu_checked}; }}"
+        f"QMessageBox {{ "
+        f"    background-color: {bg_color}; "
+        f"    font-size: 15px; "
+        f"    font-weight: 500; "
+        f"    color: {text_color};"
+        f"}} "
+        f"QMessageBox QLabel {{ "
+        f"    color: {text_color}; "
+        f"    font-size: 15px; "
+        f"    font-weight: 500; "
+        f"    padding: 15px; "
+        f"    margin: 10px;"
+        f"}} "
+        f"QMessageBox QPushButton {{ "
+        f"    padding: 12px 24px; "
+        f"    border: 1px solid {btn_border}; "
+        f"    border-radius: 8px; "
+        f"    background-color: {btn_bg}; "
+        f"    color: {btn_text}; "
+        f"    min-width: 120px; "
+        f"    font-size: 15px; "
+        f"    font-weight: 500; "
+        f"    margin: 5px;"
+        f"}} "
+        f"QMessageBox QPushButton:hover {{ "
+        f"    background-color: #3498db; "
+        f"    color: white; "
+        f"    border-color: #2980b9;"
+        f"}} "
+        f"QMessageBox QPushButton:pressed {{ "
+        f"    background-color: #2980b9; "
+        f"    color: white;"
+        f"}}"
     )
     return msg_box.exec()
 
@@ -269,6 +443,7 @@ class InvoiceTab(QWidget):
         self.current_page = 0
         self.page_size = 100  
         self.total_count = 0
+        self.sort_order = "tarih DESC"  # Varsayılan sıralama: Yakın tarihten uzak tarihe
         
         self._setup_ui()
         self._connect_signals()
@@ -286,6 +461,20 @@ class InvoiceTab(QWidget):
         self.title_label = QLabel(self.config[self.invoice_type]["title"])
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
+        
+        # Tarihe göre sıralama dropdown'ı
+        sort_label = QLabel("Sıralama:")
+        header_layout.addWidget(sort_label)
+        
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("Yakın tarihten uzak tarihe", "tarih DESC")
+        self.sort_combo.addItem("Uzak tarihten yakın tarihe", "tarih ASC")
+        self.sort_combo.addItem("Girilen sıra (ID)", "id ASC")
+        self.sort_combo.setCurrentIndex(0)  # Varsayılan: yakın tarihten uzak tarihe
+        self.sort_combo.setToolTip("Faturaları tarihe göre nasıl sıralayacağınızı seçin")
+        self.sort_combo.setMinimumWidth(200)
+        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
+        header_layout.addWidget(self.sort_combo)
         
         self.delete_selected_button = QPushButton("🗑️ Seçilenleri Sil")
         self.delete_selected_button.setToolTip("Seçili faturaları sil")
@@ -337,53 +526,37 @@ class InvoiceTab(QWidget):
         
         form_layout.addLayout(fields_layout)
         
-        kdv_control_layout = QHBoxLayout()
-        
-        self.kdv_dahil_checkbox = QCheckBox("✓ KDV Dahil")
-        self.kdv_dahil_checkbox.setToolTip("Girdiğiniz tutar KDV dahil mi, KDV hariç mi?\n\n• İŞARETLİ: Girilen tutar KDV dahildir (matrah hesaplanacak)\n• İŞARETSİZ: Girilen tutar matrah (KDV hariç) tutardır")
-        self.kdv_dahil_checkbox.setStyleSheet(STYLES.get("kdv_checkbox_style", ""))
-        kdv_control_layout.addWidget(self.kdv_dahil_checkbox)
-        
-        kdv_label = QLabel("KDV Tutarı:")
-        kdv_label.setToolTip("Opsiyonel alan")
-        kdv_control_layout.addWidget(kdv_label)
-        
-        self.kdv_tutari_field = QLineEdit()
-        self.kdv_tutari_field.setPlaceholderText("Opsiyonel - Biliniyorsa girebilirsiniz")
-        self.kdv_tutari_field.setToolTip("🔍 Eğer KDV tutarını biliyorsanız buraya girebilirsiniz.\n\n• GİRİLİRSE: Sistem bu değeri kullanır ve KDV yüzdesini kontrol eder\n• BOŞ BIRAKILIRSA: KDV tutarı otomatik hesaplanır")
-        self.kdv_tutari_field.setStyleSheet(STYLES.get("input_style", ""))
-        kdv_validator = QDoubleValidator()
-        kdv_validator.setLocale(tr_locale)
-        kdv_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-        self.kdv_tutari_field.setValidator(kdv_validator)
-        kdv_control_layout.addWidget(self.kdv_tutari_field)
-        
-        self.preview_calc_button = QPushButton("🧮 Hesaplamayı Önizle")
-        self.preview_calc_button.setToolTip("💡 Girilen değerlere göre KDV hesaplamasını gösterir\n\nFaturayı kaydetmeden önce hesaplamaları kontrol edin!")
-        self.preview_calc_button.setStyleSheet(STYLES.get("preview_button_style", ""))
-        self.preview_calc_button.clicked.connect(self.preview_kdv_calculation)
-        kdv_control_layout.addWidget(self.preview_calc_button)
-        
-        kdv_control_layout.addStretch()
-        form_layout.addLayout(kdv_control_layout)
+        # KDV kontrol alanı kaldırıldı - sistem otomatik KDV dahil çalışıyor
         
         form_layout.addLayout(self._create_button_layout())
         return form_layout
 
     def _create_button_layout(self):
         button_layout = QHBoxLayout()
-        self.new_button = QPushButton("Yeni / Temizle"); self.add_button = QPushButton("Ekle"); self.update_button = QPushButton("Güncelle"); self.delete_button = QPushButton("Sil")
-        button_layout.addWidget(self.new_button); button_layout.addWidget(self.add_button); button_layout.addWidget(self.update_button); button_layout.addWidget(self.delete_button)
+        self.new_button = QPushButton("🔄 Yeni / Temizle")
+        self.add_button = QPushButton("➕ Ekle")
+        self.update_button = QPushButton("📝 Güncelle")
+        self.delete_button = QPushButton("🗑️ Sil")
+        
+        button_layout.addWidget(self.new_button)
+        button_layout.addWidget(self.add_button)
+        button_layout.addWidget(self.update_button)
+        button_layout.addWidget(self.delete_button)
         button_layout.addStretch()
         return button_layout
 
     def _create_table(self):
         self.invoice_table = QTableWidget(); self.invoice_table.setColumnCount(10)
-        table_headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TUTAR (TL)", "TUTAR (USD)", "TUTAR (EUR)", "KDV %", "KDV TUTARI"]
+        table_headers = ["İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TUTAR (TL)", "TUTAR (USD)*", "TUTAR (EUR)*", "KDV %", "KDV TUTARI"]
         self.invoice_table.setHorizontalHeaderLabels(table_headers); self.invoice_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows); self.invoice_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         # --- İSTEĞİNİZ ÜZERİNE DEĞİŞİKLİK ---
         # Sütunları içeriğe göre değil, PENCEREYE GÖRE ESNETECEK şekilde ayarla
         self.invoice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.invoice_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.invoice_table.verticalHeader().setVisible(False)
+        
+        # Tooltip ekle USD/EUR sütunları için
+        self.invoice_table.horizontalHeaderItem(6).setToolTip("* Fatura giriş tarihindeki kurla hesaplanmış değer (Historik Kur)")
+        self.invoice_table.horizontalHeaderItem(7).setToolTip("* Fatura giriş tarihindeki kurla hesaplanmış değer (Historik Kur)")
+        
         return self.invoice_table
     
     def _create_pagination_layout(self):
@@ -434,6 +607,14 @@ class InvoiceTab(QWidget):
         if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'):
             self.backend.data_updated.connect(self.refresh_table)
 
+    def _on_sort_changed(self):
+        """Sıralama seçimi değiştiğinde çağrılır."""
+        selected_sort = self.sort_combo.currentData()
+        if selected_sort:
+            self.sort_order = selected_sort
+            self.current_page = 0  # İlk sayfaya dön
+            self.refresh_table()
+
     def gather_data_from_fields(self):
         """Form alanlarından veri toplar ve backend'in beklediği formata dönüştürür."""
         data = {}
@@ -450,93 +631,13 @@ class InvoiceTab(QWidget):
                 else: 
                     data[key] = text_value
         
-        data['kdv_dahil'] = self.kdv_dahil_checkbox.isChecked()
-        
-        kdv_tutari_text = self.kdv_tutari_field.text().strip()
-        if kdv_tutari_text:
-            data['kdv_tutari'] = kdv_tutari_text.replace('.', '').replace(',', '.')
-        else:
-            data['kdv_tutari'] = 0 
+        # KDV dahil sistemi - otomatik olarak true
+        data['kdv_dahil'] = True  # Sistem artık hep KDV dahil çalışıyor
+        data['kdv_tutari'] = 0  # KDV tutarı backend'de hesaplanır
         
         return data
-    
-    def preview_kdv_calculation(self):
-        """Girilen değerlere göre KDV hesaplamasını önizler."""
-        try:
-            toplam_tutar_text = self.edit_fields["toplam_tutar"].text().strip()
-            kdv_yuzdesi_text = self.edit_fields["kdv_yuzdesi"].text().strip()
-            kdv_tutari_text = self.kdv_tutari_field.text().strip()
-            kdv_dahil = self.kdv_dahil_checkbox.isChecked()
-            birim = self.edit_fields["birim"].currentText()
-            
-            if not toplam_tutar_text:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Eksik Bilgi", 
-                                        "Lütfen önce 'Toplam Tutar' alanını doldurun.", 
-                                        QMessageBox.StandardButton.Ok)
-                return
-            
-            toplam_tutar = float(toplam_tutar_text.replace('.', '').replace(',', '.'))
-            kdv_yuzdesi = float(kdv_yuzdesi_text.replace(',', '.')) if kdv_yuzdesi_text else (self.backend.settings.get('kdv_yuzdesi', 20.0) if self.backend else 20.0)
-            kdv_tutari_input = float(kdv_tutari_text.replace('.', '').replace(',', '.')) if kdv_tutari_text else 0.0
-            
-            matrah = 0.0
-            kdv_tutari = 0.0
-            senaryo = ""
-            
-            if toplam_tutar > 0 and kdv_tutari_input > 0:
-                if kdv_dahil:
-                    matrah = toplam_tutar - kdv_tutari_input
-                    kdv_tutari = kdv_tutari_input
-                    senaryo = "KDV Dahil + KDV Tutarı Girildi"
-                else:
-                    matrah = toplam_tutar
-                    kdv_tutari = kdv_tutari_input
-                    senaryo = "KDV Hariç + KDV Tutarı Girildi"
-            elif toplam_tutar > 0:
-                if kdv_dahil:
-                    kdv_katsayisi = 1 + (kdv_yuzdesi / 100)
-                    matrah = toplam_tutar / kdv_katsayisi
-                    kdv_tutari = toplam_tutar - matrah
-                    senaryo = "Sadece KDV Dahil Tutar"
-                else:
-                    matrah = toplam_tutar
-                    kdv_tutari = matrah * (kdv_yuzdesi / 100)
-                    senaryo = "Sadece KDV Hariç Tutar (Matrah)"
-            
-            genel_toplam = matrah + kdv_tutari
-            
-            locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
-            mesaj = f"""
-<b>📊 KDV HESAPLAMA ÖNİZLEMESİ</b><br><br>
-<b>🎯 Senaryo:</b> {senaryo}<br><br>
-<b>📥 Girilen Değerler:</b><br>
-• Toplam Tutar: {locale.toString(toplam_tutar, 'f', 2)} {birim}<br>
-• KDV Oranı: %{kdv_yuzdesi}<br>
-{f"• KDV Tutarı: {locale.toString(kdv_tutari_input, 'f', 2)} {birim}<br>" if kdv_tutari_input > 0 else ""}
-• KDV Durumu: {'KDV Dahil' if kdv_dahil else 'KDV Hariç'}<br><br>
-<b>📊 Hesaplanan Değerler:</b><br>
-• Matrah (KDV Hariç): <span style='color: #007bff; font-weight: bold;'>{locale.toString(matrah, 'f', 2)} {birim}</span><br>
-• KDV Tutarı: <span style='color: #28a745; font-weight: bold;'>{locale.toString(kdv_tutari, 'f', 2)} {birim}</span><br>
-• Genel Toplam (KDV Dahil): <span style='color: #dc3545; font-weight: bold;'>{locale.toString(genel_toplam, 'f', 2)} {birim}</span><br><br>
-<i>💡 Not: Bu önizlemedir. 'Ekle' veya 'Güncelle' butonuna bastığınızda bu değerler kaydedilecektir.</i>
-"""
-            
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle("KDV Hesaplama Önizlemesi")
-            msg_box.setTextFormat(Qt.TextFormat.RichText)
-            msg_box.setText(mesaj)
-            msg_box.setIcon(QMessageBox.Icon.Information)
-            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
-            msg_box.exec()
-            
-        except ValueError as e:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hesaplama Hatası", 
-                                    f"Sayısal değerler geçersiz. Lütfen kontrol edin.\n\nHata: {e}", 
-                                    QMessageBox.StandardButton.Ok)
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Beklenmeyen Hata", 
-                                    f"Bir hata oluştu: {e}", 
-                                    QMessageBox.StandardButton.Ok)
+
+    # KDV önizleme fonksiyonu kaldırıldı - sistem artık KDV dahil çalışıyor
 
     def _handle_invoice_operation(self, operation):
         if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
@@ -558,7 +659,7 @@ class InvoiceTab(QWidget):
         if not self.backend: return
         
         offset = self.current_page * self.page_size
-        invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=self.page_size, offset=offset)
+        invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=self.page_size, offset=offset, order_by=self.sort_order)
         if invoices is None: invoices = []
         
         self.total_count = self.backend.handle_invoice_operation('count', self.invoice_type) or 0
@@ -573,6 +674,16 @@ class InvoiceTab(QWidget):
             item_id.setData(Qt.ItemDataRole.UserRole, inv.get('id'))
             self.invoice_table.setVerticalHeaderItem(row_pos, item_id)
 
+            # Historik kurları kullan (eğer mevcutsa)
+            usd_amount = inv.get('toplam_tutar_usd', 0)
+            eur_amount = inv.get('toplam_tutar_eur', 0)
+            
+            # Eğer historik kur yoksa (eski faturalar için), hesapla
+            if usd_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
+                usd_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'USD')
+            if eur_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
+                eur_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'EUR')
+
             data_to_display = [
                 inv.get('irsaliye_no', ''), 
                 inv.get('tarih', ''), 
@@ -580,8 +691,8 @@ class InvoiceTab(QWidget):
                 inv.get('malzeme', ''), 
                 str(inv.get('miktar', '')), 
                 f"{inv.get('toplam_tutar_tl', 0):,.2f}", 
-                f"{inv.get('toplam_tutar_usd', 0):,.2f}", 
-                f"{inv.get('toplam_tutar_eur', 0):,.2f}", 
+                f"{usd_amount:,.2f}", 
+                f"{eur_amount:,.2f}", 
                 f"{inv.get('kdv_yuzdesi', 0):.0f}%", 
                 f"{inv.get('kdv_tutari', 0):,.2f}"
             ]
@@ -590,8 +701,7 @@ class InvoiceTab(QWidget):
                 if col_idx >= 5: item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.invoice_table.setItem(row_pos, col_idx, item)
 
-        self.invoice_table.setSortingEnabled(True) 
-        # self.invoice_table.resizeColumnsToContents() # Stretch kullandığımız için buna gerek yok
+        self.invoice_table.setSortingEnabled(True)
 
     def on_row_selected(self):
         selected_rows = list(set(item.row() for item in self.invoice_table.selectedItems()))
@@ -624,31 +734,47 @@ class InvoiceTab(QWidget):
             kdv_tutari_tl = float(invoice_data.get('kdv_tutari', 0))
             kdv_dahil = invoice_data.get('kdv_dahil', 0)
             
+            # Historik kurları kullan (eğer mevcutsa)
+            usd_kur = invoice_data.get('usd_kur', 0)
+            eur_kur = invoice_data.get('eur_kur', 0)
+            
             original_total_amount_tl = matrah_tl
             if kdv_dahil and kdv_yuzdesi and float(kdv_yuzdesi) > 0:
                 original_total_amount_tl = matrah_tl * (1 + float(kdv_yuzdesi) / 100)
             
-            original_amount_in_currency = self.backend.convert_currency(original_total_amount_tl, 'TRY', birim)
-            kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
+            # Orijinal para birimindeki tutarı hesapla
+            if birim == 'TL':
+                original_amount_in_currency = original_total_amount_tl
+                kdv_tutari_in_currency = kdv_tutari_tl
+            elif birim == 'USD' and usd_kur > 0:
+                # Historik kuru kullan
+                original_amount_in_currency = original_total_amount_tl / usd_kur
+                kdv_tutari_in_currency = kdv_tutari_tl / usd_kur
+            elif birim == 'EUR' and eur_kur > 0:
+                # Historik kuru kullan
+                original_amount_in_currency = original_total_amount_tl / eur_kur
+                kdv_tutari_in_currency = kdv_tutari_tl / eur_kur
+            else:
+                # Fallback: Güncel kurları kullan (eski faturalar için)
+                original_amount_in_currency = self.backend.convert_currency(original_total_amount_tl, 'TRY', birim)
+                kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
             
             locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
             formatted_amount = locale.toString(original_amount_in_currency, 'f', 2)
             formatted_kdv = locale.toString(kdv_tutari_in_currency, 'f', 2)
             
             self.edit_fields["toplam_tutar"].setText(formatted_amount)
-            self.kdv_tutari_field.setText(formatted_kdv)
             
             birim_index = self.edit_fields["birim"].findText(birim)
             self.edit_fields["birim"].setCurrentIndex(birim_index if birim_index != -1 else 0)
-            self.kdv_dahil_checkbox.setChecked(bool(kdv_dahil))
+            # KDV dahil checkbox kaldırıldı - sistem otomatik KDV dahil çalışıyor
 
     def clear_edit_fields(self):
         self.invoice_table.clearSelection()
         for key, field in self.edit_fields.items():
             if isinstance(field, QComboBox): field.setCurrentIndex(0)
             else: field.clear()
-        self.kdv_dahil_checkbox.setChecked(False)
-        self.kdv_tutari_field.clear() 
+        # KDV dahil checkbox ve KDV tutarı field kaldırıldı
         self.current_invoice_id = None
 
     def export_table_data(self):
@@ -661,6 +787,16 @@ class InvoiceTab(QWidget):
         
         export_data = []
         for inv in invoices_data:
+            # Historik kurları kullan
+            usd_amount = inv.get('toplam_tutar_usd', 0)
+            eur_amount = inv.get('toplam_tutar_eur', 0)
+            
+            # Eğer historik kur yoksa (eski faturalar için), hesapla
+            if usd_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
+                usd_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'USD')
+            if eur_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
+                eur_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'EUR')
+            
             export_data.append({
                 "İrsaliye No": inv.get('irsaliye_no'),
                 "Tarih": inv.get('tarih'),
@@ -669,9 +805,14 @@ class InvoiceTab(QWidget):
                 "Miktar": inv.get('miktar'),
                 "Birim": inv.get('birim'),
                 "Tutar (TL)": inv.get('toplam_tutar_tl'),
+                "Tutar (USD - Historik)": usd_amount,
+                "Tutar (EUR - Historik)": eur_amount,
                 "KDV (%)": inv.get('kdv_yuzdesi'),
                 "KDV Tutarı (TL)": inv.get('kdv_tutari'),
-                "KDV Dahil mi": "Evet" if inv.get('kdv_dahil') else "Hayır"
+                "KDV Dahil mi": "Evet" if inv.get('kdv_dahil') else "Hayır",
+                "USD Kuru (Giriş)": inv.get('usd_kur', 0),
+                "EUR Kuru (Giriş)": inv.get('eur_kur', 0),
+                "Kayıt Tarihi": inv.get('kayit_tarihi', '')
             })
 
         sheets_data = {config["title"]: {"data": export_data}}; 
@@ -722,9 +863,233 @@ class InvoiceTab(QWidget):
 
 
     def restyle(self):
-        self.title_label.setStyleSheet(STYLES["page_title"]); self.export_button.setStyleSheet(STYLES["export_button"]); self.invoice_table.setStyleSheet(STYLES["table_style"]); self.new_button.setStyleSheet("padding: 5px; background-color: #6c757d; color: white; border-radius: 5px;"); self.add_button.setStyleSheet("padding: 5px; background-color: #33A0A0; color: white; border-radius: 5px;"); self.update_button.setStyleSheet("padding: 5px; background-color: #0066CC; color: white; border-radius: 5px;"); self.delete_button.setStyleSheet("padding: 5px; background-color: #FF6666; color: white; border-radius: 5px;");
+        self.title_label.setStyleSheet(STYLES["page_title"])
+        self.export_button.setStyleSheet(STYLES["export_button"])
+        self.invoice_table.setStyleSheet(STYLES["table_style"])
+        
+        # ComboBox için temel stil
+        palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
+        self.sort_combo.setStyleSheet(f"padding: 8px; border: 1px solid {palette.get('input_border', '#D0D0D0')}; border-radius: 6px; font-size: 13px; color: {palette.get('text_primary', '#0b2d4d')}; background-color: {palette.get('card_frame', '#FFFFFF')};")
+        
+        # Renkli buton stilleri
+        self.new_button.setStyleSheet(STYLES.get("button_style", ""))  # Gri
+        self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
+        self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Mavi
+        self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
         self.delete_selected_button.setStyleSheet("padding: 5px; background-color: #dc3545; color: white; border-radius: 5px;")
         for field in self.edit_fields.values(): field.setStyleSheet(STYLES["input_style"])
+
+# --- Genel Giderler Sekmesi ---
+class GenelGiderTab(QWidget):
+    def __init__(self, backend, parent=None):
+        super().__init__(parent)
+        self.backend = backend
+        self.current_gider_id = None
+        self.current_page = 0
+        self.page_size = 100
+        self.setup_ui()
+        self.refresh_table()
+    
+    def setup_ui(self):
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        self.setLayout(main_layout)
+        
+        # Header layout
+        header_layout = QHBoxLayout()
+        title_label = QLabel("💼 Genel Giderler")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-bottom: 10px;")
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        main_layout.addLayout(header_layout)
+        
+        # Form layout - kutucuklu tasarım
+        form_layout = QVBoxLayout()
+        
+        # Input fields - horizontal layout
+        fields_layout = QHBoxLayout()
+        tr_locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
+        
+        # Miktar field
+        self.miktar_input = QLineEdit()
+        self.miktar_input.setPlaceholderText("💰 ZORUNLU - Miktar girin")
+        self.miktar_input.setToolTip("Genel gider tutarı (zorunlu)\nVirgül veya nokta kullanabilirsiniz")
+        self.miktar_input.setStyleSheet(STYLES.get("input_style", ""))
+        miktar_validator = QDoubleValidator()
+        miktar_validator.setLocale(tr_locale)
+        miktar_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+        self.miktar_input.setValidator(miktar_validator)
+        fields_layout.addWidget(self.miktar_input)
+        
+        # Tür field
+        self.tur_input = QLineEdit()
+        self.tur_input.setPlaceholderText("🏷️ Tür (Opsiyonel)")
+        self.tur_input.setToolTip("Gider türü (opsiyonel)\nÖrn: Ofis kira, elektrik, yakıt, temizlik...")
+        self.tur_input.setStyleSheet(STYLES.get("input_style", ""))
+        fields_layout.addWidget(self.tur_input)
+        
+        # Tarih field
+        self.tarih_input = QLineEdit()
+        self.tarih_input.setText(datetime.now().strftime('%d.%m.%Y'))
+        self.tarih_input.setPlaceholderText("📅 gg.aa.yyyy")
+        self.tarih_input.setToolTip("Gider tarihi\nFormat: gg.aa.yyyy\nBoş bırakılırsa bugünün tarihi kullanılır")
+        self.tarih_input.setStyleSheet(STYLES.get("input_style", ""))
+        fields_layout.addWidget(self.tarih_input)
+        
+        form_layout.addLayout(fields_layout)
+        
+        # Buttons layout - InvoiceTab stilinde
+        button_layout = QHBoxLayout()
+        self.new_button = QPushButton("🔄 Yeni / Temizle")
+        self.add_button = QPushButton("➕ Ekle")
+        self.update_button = QPushButton("📝 Güncelle")
+        self.delete_button = QPushButton("🗑️ Sil")
+        
+        # Button styling with specific colors
+        self.new_button.setStyleSheet(STYLES.get("button_style", ""))
+        self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
+        self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Sarı
+        self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
+        
+        # Connect signals
+        self.new_button.clicked.connect(self.clear_fields)
+        self.add_button.clicked.connect(lambda: self._handle_operation('add'))
+        self.update_button.clicked.connect(lambda: self._handle_operation('update'))
+        self.delete_button.clicked.connect(lambda: self._handle_operation('delete'))
+        
+        # Add buttons to layout - same order as InvoiceTab
+        button_layout.addWidget(self.new_button)
+        button_layout.addWidget(self.add_button)
+        button_layout.addWidget(self.update_button)
+        button_layout.addWidget(self.delete_button)
+        button_layout.addStretch()
+        
+        form_layout.addLayout(button_layout)
+        main_layout.addLayout(form_layout)
+        
+        # Table
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["ID", "Miktar (TL)", "Tür", "Tarih"])
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setStyleSheet(STYLES.get("table_style", ""))
+        
+        # Connect table signals
+        self.table.itemSelectionChanged.connect(self.on_selection_changed)
+        
+        main_layout.addWidget(self.table)
+    
+    def _handle_operation(self, operation):
+        if not self.backend:
+            QMessageBox.warning(self, "Hata", "Backend yüklenemedi.")
+            return
+        
+        if operation in ['update', 'delete'] and not self.current_gider_id:
+            QMessageBox.warning(self, "Seçim Gerekli", "Lütfen önce bir kayıt seçin.")
+            return
+        
+        if operation == 'delete':
+            reply = QMessageBox.question(self, "Silme Onayı", 
+                                       "Bu genel gider kaydını silmek istediğinizden emin misiniz?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.No:
+                return
+        
+        data = self.gather_data() if operation != 'delete' else None
+        success = self.backend.handle_genel_gider_operation(operation, data=data, record_id=self.current_gider_id)
+        
+        if success:
+            self.clear_fields()
+            self.refresh_table()
+            QMessageBox.information(self, "Başarılı", f"İşlem başarıyla tamamlandı.")
+        else:
+            QMessageBox.warning(self, "Hata", "İşlem başarısız. Lütfen bilgileri kontrol edin.")
+    
+    def gather_data(self):
+        miktar_text = self.miktar_input.text().strip().replace(',', '.')
+        
+        if not miktar_text:
+            QMessageBox.warning(self, "Eksik Bilgi", "Miktar alanı zorunludur.")
+            return None
+        
+        try:
+            miktar = float(miktar_text)
+            if miktar <= 0:
+                QMessageBox.warning(self, "Geçersiz Miktar", "Miktar pozitif olmalıdır.")
+                return None
+        except ValueError:
+            QMessageBox.warning(self, "Geçersiz Miktar", "Lütfen geçerli bir sayı girin.")
+            return None
+        
+        # Tarihi backend formatına çevir (YYYY-MM-DD)
+        tarih_text = self.tarih_input.text().strip()
+        try:
+            if '.' in tarih_text:
+                day, month, year = tarih_text.split('.')
+                tarih = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            else:
+                tarih = tarih_text
+        except:
+            tarih = datetime.now().strftime('%Y-%m-%d')
+        
+        return {
+            'miktar': miktar,
+            'tur': self.tur_input.text().strip(),
+            'tarih': tarih
+        }
+    
+    def refresh_table(self):
+        if not self.backend:
+            return
+        
+        giderler = self.backend.handle_genel_gider_operation('get', limit=self.page_size, offset=self.current_page * self.page_size)
+        
+        if giderler is None:
+            giderler = []
+        
+        self.table.setRowCount(len(giderler))
+        
+        for row, gider in enumerate(giderler):
+            # Tarihi DD.MM.YYYY formatına çevir
+            tarih = gider.get('tarih', '')
+            if '-' in tarih:
+                try:
+                    year, month, day = tarih.split('-')
+                    tarih_formatted = f"{day}.{month}.{year}"
+                except:
+                    tarih_formatted = tarih
+            else:
+                tarih_formatted = tarih
+            
+            self.table.setItem(row, 0, QTableWidgetItem(str(gider.get('id', ''))))
+            self.table.setItem(row, 1, QTableWidgetItem(f"{gider.get('miktar', 0):.2f}"))
+            self.table.setItem(row, 2, QTableWidgetItem(gider.get('tur', '')))
+            self.table.setItem(row, 3, QTableWidgetItem(tarih_formatted))
+    
+    def on_selection_changed(self):
+        current_row = self.table.currentRow()
+        if current_row >= 0:
+            id_item = self.table.item(current_row, 0)
+            miktar_item = self.table.item(current_row, 1)
+            tur_item = self.table.item(current_row, 2)
+            tarih_item = self.table.item(current_row, 3)
+            
+            if id_item:
+                self.current_gider_id = int(id_item.text())
+                self.miktar_input.setText(miktar_item.text() if miktar_item else "")
+                self.tur_input.setText(tur_item.text() if tur_item else "")
+                self.tarih_input.setText(tarih_item.text() if tarih_item else "")
+    
+    def clear_fields(self):
+        self.table.clearSelection()
+        self.miktar_input.clear()
+        self.tur_input.clear()
+        self.tarih_input.setText(datetime.now().strftime('%d.%m.%Y'))
+        self.current_gider_id = None
 
 # --- NotesWidget (Takvim + Not Listesi/Düzenleme) ---
 class NotesDatabase:
@@ -1157,8 +1522,10 @@ class InvoicesPage(QWidget):
         self.tab_widget = QTabWidget()
         self.outgoing_tab = InvoiceTab("outgoing", self.backend)
         self.incoming_tab = InvoiceTab("incoming", self.backend)
+        self.genel_gider_tab = GenelGiderTab(self.backend)
         self.tab_widget.addTab(self.outgoing_tab, "Giden Faturalar (Gelir)")
         self.tab_widget.addTab(self.incoming_tab, "Gelen Faturalar (Gider)")
+        self.tab_widget.addTab(self.genel_gider_tab, "Genel Giderler")
         main_layout.addWidget(self.tab_widget)
 
     def restyle(self):
@@ -1179,22 +1546,26 @@ class InvoicesPage(QWidget):
         tab_style = f"""
             QTabWidget::pane {{ 
                 border: 1px solid {palette.get('card_border', '#E0E0E0')}; 
-                border-top: none; border-radius: 0 0 8px 8px; 
-                background-color: {palette.get('card_frame', '#FFFFFF')}; 
-            }} 
+                background-color: {palette.get('card_background', '#FFFFFF')};
+            }}
             QTabBar::tab {{ 
-                background-color: {palette.get('table_header', '#F0F0F0')}; 
-                color: {palette.get('text_secondary', '#505050')}; 
-                font-weight: 500; font-size: 14px; padding: 10px 20px; 
-                border: 1px solid {palette.get('card_border', '#E0E0E0')}; 
-                border-bottom: none; margin-right: 2px; 
-                border-top-left-radius: 8px; border-top-right-radius: 8px; 
-            }} 
-            QTabBar::tab:hover {{ background-color: {palette.get('menu_hover', '#f0f5fa')}; }} 
+                background-color: {palette.get('tab_background', '#F8F9FA')};
+                border: 1px solid {palette.get('card_border', '#E0E0E0')};
+                padding: 10px 15px;
+                margin-right: 2px;
+                font-size: 14px;
+                font-weight: bold;
+                color: {palette.get('text_color', '#2C3E50')};
+                min-width: 180px;
+            }}
             QTabBar::tab:selected {{ 
-                background-color: #d1e7dd; color: {palette.get('text_primary', '#0b2d4d')}; 
-                font-weight: 600; 
-                border-color: {palette.get('card_border', '#E0E0E0')}; 
+                background-color: {palette.get('primary', '#3498DB')};
+                color: white;
+                border-bottom: none;
+            }}
+            QTabBar::tab:hover {{
+                background-color: {palette.get('secondary', '#95A5A6')};
+                color: white;
             }}
         """
         self.tab_widget.setStyleSheet(tab_style)
@@ -1206,13 +1577,43 @@ class InvoicesPage(QWidget):
         self.incoming_tab.refresh_table()
 
     def start_qr_processing_flow(self):
-        """Backend'i kullanarak QR'dan fatura ekleme akışını yönetir."""
+        """GELİŞTİRİLMİŞ QR sistemi - QR'dan fatura ekleme akışını yönetir."""
         if not self.backend:
             show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "Backend modülü bulunamadı.", QMessageBox.StandardButton.Ok)
             return
 
+        # QR modülünü test et
+        try:
+            logging.info("🔧 QR modülü test ediliyor...")
+            
+            # Backend'deki QR processor'ü kullan
+            self.backend.qr_processor._init_qr_tools()
+            logging.info("✅ QR modülü hazır.")
+            
+        except ImportError as e:
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR Kütüphaneleri Eksik", 
+                                  f"❌ QR okuma kütüphaneleri eksik:\n{e}\n\n"
+                                  f"🔧 Gerekli kütüphaneler:\n"
+                                  f"• PyMuPDF (PDF okuma)\n"
+                                  f"• opencv-python-headless (görüntü işleme)\n"
+                                  f"• pyzbar (QR kod okuma)\n\n"
+                                  f"💻 Kurulum komutu:\n"
+                                  f"pip install PyMuPDF opencv-python-headless pyzbar", 
+                                  QMessageBox.StandardButton.Ok)
+            return
+        except Exception as e:
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR Sistemi Hatası", 
+                                  f"❌ QR okuma sistemi başlatılamadı:\n{e}\n\n"
+                                  f"🔧 Olası çözümler:\n"
+                                  f"1. Kütüphaneleri yeniden kurun\n"
+                                  f"2. Python sürümünü kontrol edin\n"
+                                  f"3. Sistem yeniden başlatın", 
+                                  QMessageBox.StandardButton.Ok)
+            return
+
+        # Klasör seçimi
         file_dialog = QFileDialog(self)
-        file_dialog.setWindowTitle("QR Kodlu Fatura Dosyalarının Bulunduğu Klasörü Seçin")
+        file_dialog.setWindowTitle("📁 QR Kodlu Fatura Dosyalarının Klasörünü Seçin")
         file_dialog.setFileMode(QFileDialog.FileMode.Directory)
         file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
         file_dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Seç")
@@ -1225,59 +1626,308 @@ class InvoicesPage(QWidget):
         if not folder_path:
             return
 
-        progress = QProgressDialog("QR kodlar okunuyor...", "İptal", 0, 0, self)
+        # Klasörde dosya sayısı kontrolü
+        try:
+            import os
+            files = [f for f in os.listdir(folder_path) 
+                    if f.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp'))]
+            if not files:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Dosya Bulunamadı", 
+                                      f"📂 Seçilen klasörde işlenebilir dosya bulunamadı.\n\n"
+                                      f"Desteklenen formatlar: PDF, JPG, PNG, BMP", 
+                                      QMessageBox.StandardButton.Ok)
+                return
+                
+            if len(files) > 50:
+                reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Çok Fazla Dosya", 
+                                              f"⚠️ {len(files)} dosya bulundu. İşlem uzun sürebilir.\n\n"
+                                              f"Devam etmek istiyor musunuz?", 
+                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.No:
+                    return
+                    
+            logging.info(f"📁 Klasörde {len(files)} dosya bulundu")
+            
+        except Exception as e:
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Klasör Okuma Hatası", 
+                                  f"❌ Klasör okunamadı: {e}", QMessageBox.StandardButton.Ok)
+            return
+
+        # İlerleme çubuğu
+        progress = QProgressDialog("🔍 QR kodlar okunuyor...", "İptal", 0, 100, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setCancelButtonText("İptal")
-        progress.setAutoClose(True)
-        progress.setAutoReset(True)
-        progress.show()
-        QApplication.processEvents() 
-
-        qr_results = self.backend.process_qr_files_in_folder(folder_path)
-        
-        progress.close()
-
-        if qr_results is None:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "QR kodları işlenirken bir hata oluştu. Kütüphaneler eksik olabilir.", QMessageBox.StandardButton.Ok)
-            return
-        
-        successful_qrs = [r for r in qr_results if r.get('durum') == 'BAŞARILI']
-        total_files = len(qr_results)
-        success_count = len(successful_qrs)
-
-        if success_count == 0:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Sonuç", f"{total_files} dosyadan hiç birinde geçerli QR kod bulunamadı.", QMessageBox.StandardButton.Ok)
-            return
-
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle("Fatura Türü Seçimi")
-        dialog.setLabelText(f"{success_count} adet fatura bulundu.\nBu faturalar hangi türe eklensin?")
-        dialog.setComboBoxItems(["Gelen Fatura (Gider)", "Giden Fatura (Gelir)"])
-        dialog.setOkButtonText("Tamam")
-        dialog.setCancelButtonText("İptal")
-        
-        if dialog.exec() != QInputDialog.DialogCode.Accepted:
-            return
-        
-        invoice_type_text = dialog.textValue()
-            
-        invoice_type = "incoming" if "Gelen" in invoice_type_text else "outgoing"
-
-        progress.setLabelText("Faturalar veritabanına ekleniyor...")
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
         progress.show()
         QApplication.processEvents()
 
-        imported_count, failed_count = self.backend.add_invoices_from_qr_data(successful_qrs, invoice_type)
+        try:
+            # Fatura türü seçimi için pop-up
+            invoice_type_dialog = InvoiceTypeDialog(self)
+            if invoice_type_dialog.exec() != invoice_type_dialog.DialogCode.Accepted:
+                progress.close()
+                return
+            
+            selected_type = invoice_type_dialog.get_selected_type()
+            logging.info(f"📋 Seçilen fatura türü: {selected_type}")
+            
+            # QR işleme - backend metodunu kullan
+            def status_update(message, progress_val=None):
+                if progress.wasCanceled():
+                    return False
+                progress.setLabelText(f"🔍 {message}")
+                if progress_val is not None:
+                    progress.setValue(min(progress_val, 99))
+                QApplication.processEvents()
+                return True
+
+            qr_results = self.backend.process_qr_files_in_folder(folder_path, max_workers=6, status_callback=status_update)
+            
+        except Exception as e:
+            logging.error(f"❌ QR işleme hatası: {e}")
+            progress.close()
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR İşleme Hatası", 
+                                  f"❌ QR kodları işlenirken hata oluştu:\n{e}", 
+                                  QMessageBox.StandardButton.Ok)
+            return
 
         progress.close()
 
-        show_styled_message_box(self, QMessageBox.Icon.Information, "İşlem Tamamlandı",
-                                f"Otomatik fatura ekleme işlemi tamamlandı.\n\n"
-                                f"✅ Başarıyla eklenen: {imported_count}\n"
-                                f"❌ Hatalı/Atlanan: {failed_count + (success_count - imported_count)}\n"
-                                f"--------------------\n"
-                                f"Toplam Okunan QR: {success_count}",
+        if qr_results is None:
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "İşlem Hatası", 
+                                  "❌ QR kodları işlenirken kritik hata oluştu.", 
+                                  QMessageBox.StandardButton.Ok)
+            return
+        
+        # Sonuçları analiz et
+        successful_qrs = [r for r in qr_results if r.get('durum') == 'BAŞARILI']
+        json_errors = [r for r in qr_results if r.get('durum') == 'JSON HATASI']
+        qr_not_found = [r for r in qr_results if r.get('durum') == 'QR BULUNAMADI']
+        
+        total_files = len(qr_results)
+        success_count = len(successful_qrs)
+
+        logging.info(f"📊 QR İşlem Sonuçları - Toplam: {total_files}, Başarılı: {success_count}, JSON Hatası: {len(json_errors)}, QR Yok: {len(qr_not_found)}")
+
+        if success_count == 0:
+            error_details = []
+            if json_errors:
+                error_details.append(f"📝 JSON hatası: {len(json_errors)} dosya")
+            if qr_not_found:
+                error_details.append(f"🔍 QR bulunamadı: {len(qr_not_found)} dosya")
+                
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "QR Bulunamadı", 
+                                  f"❌ {total_files} dosyadan hiç birinde geçerli QR kod bulunamadı.\n\n"
+                                  f"📋 Detaylar:\n" + "\n".join(error_details) +
+                                  f"\n\n💡 İpuçları:\n"
+                                  f"• PDF dosyaların kaliteli olduğundan emin olun\n"
+                                  f"• QR kodun net görünür olduğunu kontrol edin\n"
+                                  f"• E-fatura PDF'lerini kullanın", 
+                                  QMessageBox.StandardButton.Ok)
+            return
+
+        # Başarılı QR'lar varsa veritabanına ekle
+        if success_count > 0:
+            progress = QProgressDialog("💾 Faturalar veritabanına ekleniyor...", "İptal", 0, success_count, self)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
+            progress.show()
+            QApplication.processEvents()
+
+            try:
+                # Seçilen fatura türünü kullan
+                result = self.backend.add_invoices_from_qr_data(qr_results, selected_type)
+                
+                progress.close()
+                
+                if result and result.get('success'):
+                    added = result.get('added', 0)
+                    failed = result.get('failed', 0)
+                    
+                    message = f"✅ QR işleme tamamlandı!\n\n"
+                    message += f"📊 Sonuçlar:\n"
+                    message += f"• Başarılı fatura eklendi: {added}\n"
+                    message += f"• Başarısız: {failed}\n"
+                    message += f"• Toplam işlenen: {total_files}\n\n"
+                    
+                    if result.get('processing_details'):
+                        message += f"📋 Detaylar:\n"
+                        for detail in result['processing_details'][:5]:  # İlk 5 detayı göster
+                            status_icon = "✅" if detail.get('status') == 'BAŞARILI' else "❌"
+                            message += f"{status_icon} {detail.get('file', 'Bilinmeyen')}: {detail.get('status', 'Durum bilinmiyor')}\n"
+                        
+                        if len(result['processing_details']) > 5:
+                            message += f"... ve {len(result['processing_details']) - 5} dosya daha\n"
+                    
+                    message += f"\n💡 Faturalar '{selected_type}' kategorisine eklendi."
+                    
+                    show_styled_message_box(self, QMessageBox.Icon.Information, "QR İşleme Başarılı", message, QMessageBox.StandardButton.Ok)
+                    
+                    # Tabloları yenile
+                    self.refresh_data()
+                    
+                else:
+                    error_msg = result.get('message', 'Bilinmeyen hata') if result else 'Sonuç alınamadı'
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Fatura Ekleme Hatası", 
+                                          f"❌ Faturalar veritabanına eklenemedi:\n{error_msg}", 
+                                          QMessageBox.StandardButton.Ok)
+                    
+            except Exception as e:
+                progress.close()
+                logging.error(f"❌ Veritabanına ekleme hatası: {e}")
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Veritabanı Hatası", 
+                                      f"❌ Faturalar veritabanına eklenirken hata oluştu:\n{e}", 
+                                      QMessageBox.StandardButton.Ok)
+                return
+        
+        else:
+            # Hata durumu - başarılı QR yok
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "QR İşlemi Tamamlanamadı", 
+                                  f"❌ QR kodlardan fatura eklenemedi.", 
+                                  QMessageBox.StandardButton.Ok)
+            return
+
+    def show_export_progress(self, title, export_func, *args):
+        """Export işlemi için progress göster."""
+        progress = QProgressDialog(title, "İptal", 0, 0, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+        
+        try:
+            result = export_func(*args)
+            progress.close()
+            return result
+        except Exception as e:
+            progress.close()
+            raise e
+        if result.get('failed', 0) > 0:
+            details.append(f"❌ Başarısız: {result.get('failed', 0)}")
+        details.append(f"📊 Toplam işlenen QR: {success_count}")
+        details.append(f"📂 Tarafanan dosya: {total_files}")
+
+        show_styled_message_box(self, icon, title,
+                                f"🎉 Otomatik fatura ekleme tamamlandı!\n\n" + 
+                                "\n".join(details) +
+                                f"\n\n💾 Veriler güncellendi.",
                                 QMessageBox.StandardButton.Ok)
+
+    def _process_qr_files_with_processor(self, qr_processor, folder_path):
+        """QR processor kullanarak dosyaları işler."""
+        import os
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        file_paths = []
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.pdf'}
+        
+        try:
+            for file_name in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file_name)
+                if os.path.isfile(file_path) and os.path.splitext(file_name)[1].lower() in allowed_extensions:
+                    file_paths.append(file_path)
+        except Exception as e:
+            logging.error(f"Klasör okunurken hata: {e}")
+            return None
+        
+        if not file_paths:
+            return []
+        
+        # Dinamik worker sayısı
+        cpu_count = 4  # varsayılan değer
+        try:
+            import psutil
+            cpu_count = psutil.cpu_count() or 4
+        except (ImportError, AttributeError):
+            # psutil yoksa veya çalışmıyorsa os modülünü dene
+            try:
+                import os
+                cpu_count = os.cpu_count() or 4
+            except AttributeError:
+                cpu_count = 4  # çok eski Python versiyonları için varsayılan
+        
+        max_workers = min(cpu_count, max(2, len(file_paths) // 2), 8)
+        
+        results = []
+        start_time = time.time()
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {executor.submit(qr_processor.process_file, path): path for path in file_paths}
+            
+            for i, future in enumerate(as_completed(future_to_path), 1):
+                try:
+                    result = future.result(timeout=45)
+                    results.append(result)
+                except Exception as e:
+                    file_path = future_to_path[future]
+                    logging.error(f"QR işleme hatası '{os.path.basename(file_path)}': {e}")
+                    results.append({'dosya_adi': os.path.basename(file_path), 'durum': 'HATA', 'json_data': {}})
+        
+        return results
+
+    def _add_qr_invoices_to_backend(self, qr_results, invoice_type):
+        """QR sonuçlarını backend'e fatura olarak ekler."""
+        import time
+        
+        if not qr_results:
+            return 0, 0
+
+        successful_imports = 0
+        failed_imports = 0
+        
+        for result in qr_results:
+            if result.get('durum') == 'BAŞARILI':
+                json_data = result.get('json_data', {})
+                parsed_data = self._parse_qr_to_invoice_fields(json_data)
+                
+                if self.backend.handle_invoice_operation('add', invoice_type, data=parsed_data):
+                    successful_imports += 1
+                else:
+                    failed_imports += 1
+            else:
+                failed_imports += 1
+        
+        return successful_imports, failed_imports
+
+    def _parse_qr_to_invoice_fields(self, qr_json):
+        """QR JSON verisini fatura alanlarına dönüştürür."""
+        import time
+        
+        if not qr_json:
+            return {}
+
+        key_map = {
+            'irsaliye_no': ['invoiceId', 'faturaNo', 'belgeno', 'uuid', 'id', 'no'],
+            'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date'],
+            'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company'],
+            'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme'],
+            'miktar': ['quantity', 'miktar', 'adet', 'qty'],
+            'toplam_tutar': ['payableAmount', 'totalAmount', 'toplamTutar', 'total'],
+            'kdv_yuzdesi': ['taxRate', 'kdvOrani', 'vatRate'],
+        }
+
+        def get_value(keys):
+            for key in keys:
+                if key in qr_json and qr_json[key]:
+                    return qr_json[key]
+            qr_json_lower = {k.lower(): v for k, v in qr_json.items()}
+            for key in keys:
+                if key.lower() in qr_json_lower:
+                    return qr_json_lower[key.lower()]
+            return None
+
+        parsed = {}
+        parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
+        parsed['tarih'] = str(get_value(key_map['tarih']) or datetime.now().strftime("%d.%m.%Y"))
+        parsed['firma'] = str(get_value(key_map['firma']) or 'QR Fatura Firma')
+        parsed['malzeme'] = str(get_value(key_map['malzeme']) or 'QR Kodlu E-Fatura')
+        parsed['miktar'] = str(get_value(key_map['miktar']) or '1')
+        parsed['toplam_tutar'] = float(get_value(key_map['toplam_tutar']) or 0)
+        parsed['kdv_yuzdesi'] = float(get_value(key_map['kdv_yuzdesi']) or 20)
+        parsed['birim'] = 'TL'
+
+        return parsed
         
 
 # --- Dönemsel/Yıllık Gelir Sayfası ---
@@ -1528,6 +2178,158 @@ class MonthlyIncomePage(QWidget):
 
 
 # --- Ana Pencere ---
+from PyQt6.QtWidgets import QDialog, QRadioButton
+
+class InvoiceTypeDialog(QDialog):
+    """Fatura türü seçimi için dialog"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.selected_type = 'outgoing'  # Varsayılan
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle("📋 Fatura Türü Seçimi")
+        self.setFixedSize(480, 320)
+        self.setModal(True)
+        
+        layout = QVBoxLayout()
+        
+        # Başlık
+        title_label = QLabel("QR kodlardan okunan faturalar hangi kategoriye eklensin?")
+        title_label.setWordWrap(True)
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 16px;
+                font-weight: 600;
+                color: #0b2d4d;
+                margin: 15px;
+                padding: 15px;
+                background-color: #f8f9fa;
+                border-radius: 12px;
+                border: 1px solid #e5eaf0;
+            }
+        """)
+        layout.addWidget(title_label)
+        
+        # Seçenekler
+        self.outgoing_radio = QRadioButton("💰 GELİR (Outgoing) - Müşteriye kesilen faturalar")
+        self.outgoing_radio.setChecked(True)
+        self.outgoing_radio.setStyleSheet("""
+            QRadioButton {
+                font-size: 15px;
+                font-weight: 500;
+                padding: 15px;
+                margin: 10px;
+                color: #0b2d4d;
+                background-color: #e8f5e8;
+                border-radius: 8px;
+                border: 1px solid #d1e7dd;
+            }
+            QRadioButton::indicator {
+                width: 24px;
+                height: 24px;
+                margin-right: 10px;
+            }
+        """)
+        
+        self.incoming_radio = QRadioButton("📋 GİDER (Incoming) - Tedarikçiden gelen faturalar")
+        self.incoming_radio.setStyleSheet("""
+            QRadioButton {
+                font-size: 15px;
+                font-weight: 500;
+                padding: 15px;
+                margin: 10px;
+                color: #0b2d4d;
+                background-color: #fff2e8;
+                border-radius: 8px;
+                border: 1px solid #ffeaa7;
+            }
+            QRadioButton::indicator {
+                width: 24px;
+                height: 24px;
+                margin-right: 10px;
+            }
+        """)
+        
+        layout.addWidget(self.outgoing_radio)
+        layout.addWidget(self.incoming_radio)
+        
+        # Açıklama
+        info_label = QLabel("💡 İpucu: Müşterilerinize kestiğiniz faturalar için 'GELİR', "
+                           "satın aldığınız ürün/hizmet faturaları için 'GİDER' seçin.")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("""
+            QLabel {
+                font-size: 13px;
+                font-weight: 500;
+                color: #505050;
+                background-color: #ecf0f1;
+                padding: 15px;
+                border-radius: 8px;
+                margin: 15px 5px;
+                border: 2px solid #bdc3c7;
+            }
+        """)
+        layout.addWidget(info_label)
+        
+        # Butonlar
+        button_layout = QHBoxLayout()
+        
+        cancel_btn = QPushButton("❌ İptal")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 500;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+            QPushButton:pressed {
+                background-color: #bd2130;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        
+        ok_btn = QPushButton("✅ Devam Et")
+        ok_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #198754;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 500;
+                min-width: 120px;
+            }
+            QPushButton:hover {
+                background-color: #157347;
+            }
+            QPushButton:pressed {
+                background-color: #146c43;
+            }
+        """)
+        ok_btn.clicked.connect(self.accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(ok_btn)
+        
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+    
+    def get_selected_type(self):
+        if self.outgoing_radio.isChecked():
+            return 'outgoing'
+        else:
+            return 'incoming'
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
