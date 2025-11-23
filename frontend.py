@@ -246,6 +246,40 @@ def update_styles(palette):
         f"}}")
 
     STYLES["notes_date_label_style"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 5px;"
+    
+    # QMessageBox için stil ekle - popup görünürlük sorununu çöz
+    STYLES["messagebox_style"] = f"""
+        QMessageBox {{
+            background-color: {palette['card_frame']};
+            color: {palette['text_primary']};
+            border: 2px solid {palette['card_border']};
+            border-radius: 8px;
+            font-size: 14px;
+        }}
+        QMessageBox QLabel {{
+            color: {palette['text_primary']};
+            font-size: 14px;
+            font-weight: 500;
+            padding: 10px;
+            background-color: transparent;
+        }}
+        QMessageBox QPushButton {{
+            background-color: {palette.get('button_primary', '#007ACC')};
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            min-width: 80px;
+        }}
+        QMessageBox QPushButton:hover {{
+            background-color: {palette.get('button_hover', '#005a9e')};
+        }}
+        QMessageBox QPushButton:pressed {{
+            background-color: {palette.get('button_pressed', '#004080')};
+        }}
+    """
     STYLES["notes_section_title_style"] = f"font-size: 14px; font-weight: 600; color: {palette['text_secondary']}; margin-top: 10px; margin-bottom: 5px;"
     STYLES["donut_label_style"] = f"font-size: 12px; color: {palette.get('text_secondary', '#505050')}; font-weight: 500;"
 
@@ -969,8 +1003,8 @@ class GenelGiderTab(QWidget):
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["ID", "Miktar (TL)", "Tür", "Tarih"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Miktar (TL)", "Tür", "Tarih"])
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -985,17 +1019,17 @@ class GenelGiderTab(QWidget):
     
     def _handle_operation(self, operation):
         if not self.backend:
-            QMessageBox.warning(self, "Hata", "Backend yüklenemedi.")
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Backend yüklenemedi.", QMessageBox.StandardButton.Ok)
             return
         
         if operation in ['update', 'delete'] and not self.current_gider_id:
-            QMessageBox.warning(self, "Seçim Gerekli", "Lütfen önce bir kayıt seçin.")
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Gerekli", "Lütfen önce bir kayıt seçin.", QMessageBox.StandardButton.Ok)
             return
         
         if operation == 'delete':
-            reply = QMessageBox.question(self, "Silme Onayı", 
-                                       "Bu genel gider kaydını silmek istediğinizden emin misiniz?",
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
+                                           "Bu genel gider kaydını silmek istediğinizden emin misiniz?",
+                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.No:
                 return
         
@@ -1005,24 +1039,24 @@ class GenelGiderTab(QWidget):
         if success:
             self.clear_fields()
             self.refresh_table()
-            QMessageBox.information(self, "Başarılı", f"İşlem başarıyla tamamlandı.")
+            show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", "İşlem başarıyla tamamlandı.", QMessageBox.StandardButton.Ok)
         else:
-            QMessageBox.warning(self, "Hata", "İşlem başarısız. Lütfen bilgileri kontrol edin.")
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "İşlem başarısız. Lütfen bilgileri kontrol edin.", QMessageBox.StandardButton.Ok)
     
     def gather_data(self):
         miktar_text = self.miktar_input.text().strip().replace(',', '.')
         
         if not miktar_text:
-            QMessageBox.warning(self, "Eksik Bilgi", "Miktar alanı zorunludur.")
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Eksik Bilgi", "Miktar alanı zorunludur.", QMessageBox.StandardButton.Ok)
             return None
         
         try:
             miktar = float(miktar_text)
             if miktar <= 0:
-                QMessageBox.warning(self, "Geçersiz Miktar", "Miktar pozitif olmalıdır.")
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Geçersiz Miktar", "Miktar pozitif olmalıdır.", QMessageBox.StandardButton.Ok)
                 return None
         except ValueError:
-            QMessageBox.warning(self, "Geçersiz Miktar", "Lütfen geçerli bir sayı girin.")
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Geçersiz Miktar", "Lütfen geçerli bir sayı girin.", QMessageBox.StandardButton.Ok)
             return None
         
         # Tarihi backend formatına çevir (YYYY-MM-DD)
@@ -1065,24 +1099,36 @@ class GenelGiderTab(QWidget):
             else:
                 tarih_formatted = tarih
             
-            self.table.setItem(row, 0, QTableWidgetItem(str(gider.get('id', ''))))
-            self.table.setItem(row, 1, QTableWidgetItem(f"{gider.get('miktar', 0):.2f}"))
-            self.table.setItem(row, 2, QTableWidgetItem(gider.get('tur', '')))
-            self.table.setItem(row, 3, QTableWidgetItem(tarih_formatted))
+            # ID'yi gizli data olarak sakla (sütun 0'a), sonra verileri yeniden sırala
+            miktar_value = gider.get('toplam_tutar_tl', gider.get('miktar', 0))
+            try:
+                miktar_float = float(miktar_value) if miktar_value else 0.0
+                miktar_item = QTableWidgetItem(f"{miktar_float:.2f}")
+            except (ValueError, TypeError):
+                miktar_item = QTableWidgetItem("0.00")
+            
+            # ID'yi miktar item'ine gizli data olarak ekle
+            miktar_item.setData(Qt.ItemDataRole.UserRole, gider.get('id', ''))
+            
+            self.table.setItem(row, 0, miktar_item)
+            self.table.setItem(row, 1, QTableWidgetItem(gider.get('firma', gider.get('tur', ''))))
+            self.table.setItem(row, 2, QTableWidgetItem(tarih_formatted))
     
     def on_selection_changed(self):
         current_row = self.table.currentRow()
         if current_row >= 0:
-            id_item = self.table.item(current_row, 0)
-            miktar_item = self.table.item(current_row, 1)
-            tur_item = self.table.item(current_row, 2)
-            tarih_item = self.table.item(current_row, 3)
+            miktar_item = self.table.item(current_row, 0)
+            tur_item = self.table.item(current_row, 1)
+            tarih_item = self.table.item(current_row, 2)
             
-            if id_item:
-                self.current_gider_id = int(id_item.text())
+            if miktar_item:
+                # ID'yi gizli data'dan al
+                self.current_gider_id = miktar_item.data(Qt.ItemDataRole.UserRole)
                 self.miktar_input.setText(miktar_item.text() if miktar_item else "")
                 self.tur_input.setText(tur_item.text() if tur_item else "")
                 self.tarih_input.setText(tarih_item.text() if tarih_item else "")
+        else:
+            self.current_gider_id = None
     
     def clear_fields(self):
         self.table.clearSelection()

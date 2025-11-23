@@ -402,12 +402,16 @@ class Database:
         
         return cursor.rowcount if cursor else 0
 
-    def get_all_invoices(self, table_name, limit=None, offset=0):
+    def get_all_invoices(self, table_name, limit=None, offset=0, order_by=None):
         """Belirtilen tablodaki tüm faturaları getirir (sayfalama destekli)."""
+        # Varsayılan sıralama
+        if not order_by:
+            order_by = "tarih DESC"
+        
         if limit:
-            query = f"SELECT * FROM {table_name} ORDER BY tarih DESC LIMIT {limit} OFFSET {offset}"
+            query = f"SELECT * FROM {table_name} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}"
         else:
-            query = f"SELECT * FROM {table_name} ORDER BY tarih DESC"
+            query = f"SELECT * FROM {table_name} ORDER BY {order_by}"
         cursor = self._execute_query(query)
         if cursor:
             rows = cursor.fetchall()
@@ -775,7 +779,7 @@ class Backend(QObject):
             logging.error(f"❌ Fatura veri işleme hatası: {e} - Veri: {invoice_data}")
             return None
 
-    def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None, limit=None, offset=None):
+    def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None, limit=None, offset=None, order_by=None):
         """Frontend için tekil fatura işlem merkezi."""
         table_name = f"{invoice_type}_invoices"
         
@@ -803,7 +807,7 @@ class Backend(QObject):
             return False
         
         elif operation == 'get':
-            return self.db.get_all_invoices(table_name, limit=limit, offset=offset)
+            return self.db.get_all_invoices(table_name, limit=limit, offset=offset, order_by=order_by)
         
         elif operation == 'count':
             return self.db.get_invoice_count(table_name)
@@ -813,6 +817,72 @@ class Backend(QObject):
         
         logging.warning(f"Geçersiz fatura operasyonu: {operation}")
         return False
+
+    def handle_genel_gider_operation(self, operation, data=None, record_id=None, limit=None, offset=None):
+        """Genel gider işlemleri için özel metod."""
+        table_name = "incoming_invoices"
+        
+        if operation == 'add':
+            processed_data = self._process_genel_gider_data(data)
+            if processed_data and self.db.add_invoice(table_name, processed_data):
+                self.status_updated.emit("Genel gider başarıyla eklendi.", 3000)
+                self.data_updated.emit()
+                return True
+            return False
+        
+        elif operation == 'update':
+            processed_data = self._process_genel_gider_data(data)
+            if processed_data and self.db.update_invoice(table_name, record_id, processed_data):
+                self.status_updated.emit("Genel gider başarıyla güncellendi.", 3000)
+                self.data_updated.emit()
+                return True
+            return False
+        
+        elif operation == 'delete':
+            if self.db.delete_invoice(table_name, record_id):
+                self.status_updated.emit("Genel gider silindi.", 3000)
+                self.data_updated.emit()
+                return True
+            return False
+        
+        elif operation == 'get':
+            return self.db.get_all_invoices(table_name, limit=limit, offset=offset)
+        
+        elif operation == 'count':
+            return self.db.get_invoice_count(table_name)
+        
+        elif operation == 'get_by_id':
+            return self.db.get_invoice_by_id(table_name, record_id)
+        
+        return None
+
+    def _process_genel_gider_data(self, gider_data):
+        """Genel gider verilerini incoming_invoices tablosu formatına çevirir."""
+        if not gider_data:
+            return None
+        
+        miktar = self._to_float(gider_data.get('miktar', 0))
+        if miktar <= 0:
+            logging.warning(f"Genel gider miktarı girilmemiş veya geçersiz: {gider_data}")
+            return None
+        
+        # Genel gider verilerini incoming_invoices formatına çevir
+        processed = {
+            'irsaliye_no': f"GIDER-{int(time.time())}",  # Otomatik gider numarası
+            'tarih': self.format_date(gider_data.get('tarih', '')),
+            'firma': gider_data.get('tur', 'Genel Gider'),  # Tür bilgisini firma alanına koy
+            'malzeme': gider_data.get('tur', 'Genel Gider'),  # Tür bilgisini malzeme alanına da koy
+            'miktar': '1',  # Genel giderler için miktar her zaman 1
+            'toplam_tutar_tl': miktar,
+            'toplam_tutar_usd': 0,
+            'toplam_tutar_eur': 0,
+            'birim': 'TL',
+            'kdv_yuzdesi': 0,
+            'kdv_tutari': 0,
+            'kdv_dahil': 0
+        }
+        
+        return processed
 
     def delete_multiple_invoices(self, invoice_type, invoice_ids):
         """Çoklu fatura silme işlemi."""
