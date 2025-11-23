@@ -38,8 +38,14 @@ Thumbs.db
 venv/
 .venv/ 
 
+# Build ve executable dosyaları
 dist/
 build/
+*.exe
+*.zip
+*.toc
+*.pyz
+*.pkg
 
 QR/
 qr/
