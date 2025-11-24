@@ -12,7 +12,7 @@ import warnings
 # import cv2             <-- HATA VEREN SATIR BURADAN TAŞINDI
 import numpy as np
 # from pyzbar import pyzbar <-- HATA VEREN SATIR BURADAN TAŞINDI
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -278,19 +278,30 @@ class FastQRProcessor:
             }
 
 class Database:
-    """Veritabanı işlemleri için sınıf."""
-    def __init__(self, db_name='excellent_mvp.db'):
-        self.conn = sqlite3.connect(db_name, check_same_thread=False)
+    """6 Ayrı Veritabanı ile Çalışan Sınıf - Database Dizininde."""
+    def __init__(self):
+        # Database dizinini oluştur
+        self.db_dir = os.path.join(os.getcwd(), 'Database')
+        os.makedirs(self.db_dir, exist_ok=True)
+        
+        # 6 ayrı veritabanı bağlantısı
+        self.gelir_conn = sqlite3.connect(os.path.join(self.db_dir, 'gelir.db'), check_same_thread=False)
+        self.gider_conn = sqlite3.connect(os.path.join(self.db_dir, 'gider.db'), check_same_thread=False)
+        self.genel_gider_conn = sqlite3.connect(os.path.join(self.db_dir, 'genel_gider.db'), check_same_thread=False)
+        self.settings_conn = sqlite3.connect(os.path.join(self.db_dir, 'settings.db'), check_same_thread=False)
+        self.exchange_rates_conn = sqlite3.connect(os.path.join(self.db_dir, 'exchange_rates.db'), check_same_thread=False)
+        self.history_conn = sqlite3.connect(os.path.join(self.db_dir, 'history.db'), check_same_thread=False)
         self.create_tables()
 
     def create_tables(self):
-        """Gerekli veritabanı tablolarını oluşturur."""
+        """Her veritabanında gerekli tabloları oluşturur."""
         try:
-            cursor = self.conn.cursor()
-            # Giden Faturalar (Gelir)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS outgoing_invoices (
+            # GELİR VERİTABANI
+            gelir_cursor = self.gelir_conn.cursor()
+            gelir_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invoices (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fatura_no TEXT,
                     irsaliye_no TEXT,
                     tarih TEXT,
                     firma TEXT,
@@ -305,10 +316,20 @@ class Database:
                     kdv_dahil INTEGER DEFAULT 0
                 )
             """)
-            # Gelen Faturalar (Gider)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS incoming_invoices (
+            
+            # Add fatura_no column if it doesn't exist (for existing databases)
+            try:
+                gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN fatura_no TEXT")
+                logging.info("Added fatura_no column to gelir invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # GİDER VERİTABANI
+            gider_cursor = self.gider_conn.cursor()
+            gider_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invoices (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fatura_no TEXT,
                     irsaliye_no TEXT,
                     tarih TEXT,
                     firma TEXT,
@@ -323,55 +344,125 @@ class Database:
                     kdv_dahil INTEGER DEFAULT 0
                 )
             """)
-            # YENİ: Ayarlar tablosu
-            cursor.execute("""
+            
+            # Add fatura_no column if it doesn't exist (for existing databases)
+            try:
+                gider_cursor.execute("ALTER TABLE invoices ADD COLUMN fatura_no TEXT")
+                logging.info("Added fatura_no column to gider invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # GENEL GİDER VERİTABANI
+            genel_gider_cursor = self.genel_gider_conn.cursor()
+            genel_gider_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS general_expenses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tarih TEXT,
+                    tur TEXT,
+                    miktar REAL,
+                    aciklama TEXT
+                )
+            """)
+            
+            # SETTINGS VERİTABANI
+            settings_cursor = self.settings_conn.cursor()
+            settings_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )
             """)
-            # YENİ: Döviz kurları tablosu
-            cursor.execute("""
+            
+            # EXCHANGE RATES VERİTABANI
+            exchange_rates_cursor = self.exchange_rates_conn.cursor()
+            exchange_rates_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS exchange_rates (
                     currency TEXT PRIMARY KEY,
                     rate REAL,
                     updated_at TEXT
                 )
             """)
-            self.conn.commit()
+            
+            # HISTORY VERİTABANI
+            history_cursor = self.history_conn.cursor()
+            history_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS invoice_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operation_type TEXT NOT NULL,
+                    invoice_type TEXT NOT NULL,
+                    invoice_date TEXT,
+                    firma TEXT,
+                    amount REAL,
+                    operation_date TEXT,
+                    operation_time TEXT,
+                    details TEXT
+                )
+            """)
+            
+            # Değişiklikleri kaydet
+            self.gelir_conn.commit()
+            self.gider_conn.commit()
+            self.genel_gider_conn.commit()
+            self.settings_conn.commit()
+            self.exchange_rates_conn.commit()
+            self.history_conn.commit()
+            
         except sqlite3.Error as e:
             logging.error(f"Tablo oluşturma hatası: {e}")
 
-    def _execute_query(self, query, params=()):
-        """Veritabanı sorgularını çalıştırmak için yardımcı metod."""
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(query, params)
-            self.conn.commit()
-            return cursor
-        except sqlite3.Error as e:
-            logging.error(f"Sorgu hatası: {e} - Sorgu: {query} - Parametreler: {params}")
+    def _get_connection(self, db_type):
+        """Veritabanı tipine göre bağlantı döndürür."""
+        if db_type == 'gelir':
+            return self.gelir_conn
+        elif db_type == 'gider':
+            return self.gider_conn
+        elif db_type == 'genel_gider':
+            return self.genel_gider_conn
+        elif db_type == 'settings':
+            return self.settings_conn
+        elif db_type == 'exchange_rates':
+            return self.exchange_rates_conn
+        elif db_type == 'history':
+            return self.history_conn
+        else:
+            logging.error(f"Geçersiz veritabanı tipi: {db_type}")
             return None
 
-    def add_invoice(self, table_name, data):
-        """Belirtilen tabloya fatura ekler."""
-        query = f"""
-            INSERT INTO {table_name} (irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    def _execute_query(self, db_type, query, params=()):
+        """Belirtilen veritabanında sorgu çalıştırmak için yardımcı metod."""
+        try:
+            conn = self._get_connection(db_type)
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor
+        except sqlite3.Error as e:
+            logging.error(f"Sorgu hatası ({db_type}): {e} - Sorgu: {query} - Parametreler: {params}")
+            return None
+
+    # GELİR İŞLEMLERİ
+    def add_gelir_invoice(self, data):
+        """Gelir veritabanına fatura ekler."""
+        query = """
+            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
-            data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
+            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0)
         )
-        cursor = self._execute_query(query, params)
+        cursor = self._execute_query('gelir', query, params)
         return cursor.lastrowid if cursor else None
 
-    def update_invoice(self, table_name, invoice_id, data):
-        """Belirtilen tablodaki faturayı günceller."""
-        query = f"""
-            UPDATE {table_name} SET
+    def update_gelir_invoice(self, invoice_id, data):
+        """Gelir veritabanındaki faturayı günceller."""
+        query = """
+            UPDATE invoices SET
             irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
             toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?
             WHERE id = ?
@@ -382,55 +473,55 @@ class Database:
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0), invoice_id
         )
-        self._execute_query(query, params)
-        return True # Başarı durumu
+        cursor = self._execute_query('gelir', query, params)
+        return cursor is not None
 
-    def delete_invoice(self, table_name, invoice_id):
-        """Belirtilen tablodan fatura siler."""
-        query = f"DELETE FROM {table_name} WHERE id = ?"
-        cursor = self._execute_query(query, (invoice_id,))
+    def delete_gelir_invoice(self, invoice_id):
+        """Gelir veritabanından fatura siler."""
+        query = "DELETE FROM invoices WHERE id = ?"
+        cursor = self._execute_query('gelir', query, (invoice_id,))
         return cursor.rowcount if cursor else 0
 
-    def delete_multiple_invoices(self, table_name, invoice_ids):
-        """Belirtilen tablodan çoklu fatura siler."""
+    def delete_multiple_gelir_invoices(self, invoice_ids):
+        """Gelir veritabanından çoklu fatura siler."""
         if not invoice_ids:
             return 0
         
         placeholders = ','.join(['?' for _ in invoice_ids])
-        query = f"DELETE FROM {table_name} WHERE id IN ({placeholders})"
-        cursor = self._execute_query(query, invoice_ids)
-        
+        query = f"DELETE FROM invoices WHERE id IN ({placeholders})"
+        cursor = self._execute_query('gelir', query, invoice_ids)
         return cursor.rowcount if cursor else 0
 
-    def get_all_invoices(self, table_name, limit=None, offset=0, order_by=None):
-        """Belirtilen tablodaki tüm faturaları getirir (sayfalama destekli)."""
-        # Varsayılan sıralama
+    def get_all_gelir_invoices(self, limit=None, offset=0, order_by=None):
+        """Gelir veritabanındaki tüm faturaları getirir."""
         if not order_by:
             order_by = "tarih DESC"
         
-        if limit:
-            query = f"SELECT * FROM {table_name} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}"
+        # Limit ve offset güvenli değerler kullan
+        if limit is not None:
+            query = f"SELECT * FROM invoices ORDER BY {order_by} LIMIT {int(limit)} OFFSET {int(offset or 0)}"
         else:
-            query = f"SELECT * FROM {table_name} ORDER BY {order_by}"
-        cursor = self._execute_query(query)
+            query = f"SELECT * FROM invoices ORDER BY {order_by}"
+        
+        cursor = self._execute_query('gelir', query)
         if cursor:
             rows = cursor.fetchall()
             columns = [description[0] for description in cursor.description]
             return [dict(zip(columns, row)) for row in rows]
         return []
     
-    def get_invoice_count(self, table_name):
-        """Tablodaki toplam fatura sayısını döndürür."""
-        query = f"SELECT COUNT(*) FROM {table_name}"
-        cursor = self._execute_query(query)
+    def get_gelir_invoice_count(self):
+        """Gelir tablosundaki toplam fatura sayısını döndürür."""
+        query = "SELECT COUNT(*) FROM invoices"
+        cursor = self._execute_query('gelir', query)
         if cursor:
             return cursor.fetchone()[0]
         return 0
 
-    def get_invoice_by_id(self, table_name, invoice_id):
-        """Belirtilen tablodan ID'ye göre tek bir fatura getirir."""
-        query = f"SELECT * FROM {table_name} WHERE id = ?"
-        cursor = self._execute_query(query, (invoice_id,))
+    def get_gelir_invoice_by_id(self, invoice_id):
+        """Gelir veritabanından ID'ye göre tek bir fatura getirir."""
+        query = "SELECT * FROM invoices WHERE id = ?"
+        cursor = self._execute_query('gelir', query, (invoice_id,))
         if cursor:
             row = cursor.fetchone()
             if row:
@@ -438,10 +529,177 @@ class Database:
                 return dict(zip(columns, row))
         return None
 
-    # --- Ayarlar ve Kur Yönetimi ---
+    # GİDER İŞLEMLERİ
+    def add_gider_invoice(self, data):
+        """Gider veritabanına fatura ekler."""
+        query = """
+            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
+            data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
+            data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0)
+        )
+        cursor = self._execute_query('gider', query, params)
+        return cursor.lastrowid if cursor else None
+
+    def update_gider_invoice(self, invoice_id, data):
+        """Gider veritabanındaki faturayı günceller."""
+        query = """
+            UPDATE invoices SET
+            fatura_no = ?, irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
+            toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?
+            WHERE id = ?
+        """
+        params = (
+            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'), 
+            data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
+            data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0), invoice_id
+        )
+        cursor = self._execute_query('gider', query, params)
+        return cursor is not None
+
+    def delete_gider_invoice(self, invoice_id):
+        """Gider veritabanından fatura siler."""
+        query = "DELETE FROM invoices WHERE id = ?"
+        cursor = self._execute_query('gider', query, (invoice_id,))
+        return cursor.rowcount if cursor else 0
+
+    def delete_multiple_gider_invoices(self, invoice_ids):
+        """Gider veritabanından çoklu fatura siler."""
+        if not invoice_ids:
+            return 0
+        
+        placeholders = ','.join(['?' for _ in invoice_ids])
+        query = f"DELETE FROM invoices WHERE id IN ({placeholders})"
+        cursor = self._execute_query('gider', query, invoice_ids)
+        return cursor.rowcount if cursor else 0
+
+    def get_all_gider_invoices(self, limit=None, offset=0, order_by=None):
+        """Gider veritabanındaki tüm faturaları getirir."""
+        if not order_by:
+            order_by = "tarih DESC"
+        
+        # Limit ve offset güvenli değerler kullan
+        if limit is not None:
+            query = f"SELECT * FROM invoices ORDER BY {order_by} LIMIT {int(limit)} OFFSET {int(offset or 0)}"
+        else:
+            query = f"SELECT * FROM invoices ORDER BY {order_by}"
+        
+        cursor = self._execute_query('gider', query)
+        if cursor:
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return []
+    
+    def get_gider_invoice_count(self):
+        """Gider tablosundaki toplam fatura sayısını döndürür."""
+        query = "SELECT COUNT(*) FROM invoices"
+        cursor = self._execute_query('gider', query)
+        if cursor:
+            return cursor.fetchone()[0]
+        return 0
+
+    def get_gider_invoice_by_id(self, invoice_id):
+        """Gider veritabanından ID'ye göre tek bir fatura getirir."""
+        query = "SELECT * FROM invoices WHERE id = ?"
+        cursor = self._execute_query('gider', query, (invoice_id,))
+        if cursor:
+            row = cursor.fetchone()
+            if row:
+                columns = [description[0] for description in cursor.description]
+                return dict(zip(columns, row))
+        return None
+
+    # GENEL GİDER İŞLEMLERİ
+    def add_genel_gider(self, data):
+        """Genel gider veritabanına kayıt ekler."""
+        query = """
+            INSERT INTO general_expenses (tarih, tur, miktar, aciklama)
+            VALUES (?, ?, ?, ?)
+        """
+        params = (
+            data.get('tarih'), data.get('tur'), 
+            data.get('miktar'), data.get('aciklama', '')
+        )
+        cursor = self._execute_query('genel_gider', query, params)
+        return cursor.lastrowid if cursor else None
+
+    def update_genel_gider(self, gider_id, data):
+        """Genel gider veritabanındaki kaydı günceller."""
+        query = """
+            UPDATE general_expenses SET
+            tarih = ?, tur = ?, miktar = ?, aciklama = ?
+            WHERE id = ?
+        """
+        params = (
+            data.get('tarih'), data.get('tur'), 
+            data.get('miktar'), data.get('aciklama', ''), gider_id
+        )
+        cursor = self._execute_query('genel_gider', query, params)
+        return cursor is not None
+
+    def delete_genel_gider(self, gider_id):
+        """Genel gider veritabanından kayıt siler."""
+        query = "DELETE FROM general_expenses WHERE id = ?"
+        cursor = self._execute_query('genel_gider', query, (gider_id,))
+        return cursor.rowcount if cursor else 0
+
+    def delete_multiple_genel_gider(self, gider_ids):
+        """Genel gider veritabanından çoklu kayıt siler."""
+        if not gider_ids:
+            return 0
+        
+        placeholders = ','.join(['?' for _ in gider_ids])
+        query = f"DELETE FROM general_expenses WHERE id IN ({placeholders})"
+        cursor = self._execute_query('genel_gider', query, gider_ids)
+        return cursor.rowcount if cursor else 0
+
+    def get_all_genel_gider(self, limit=None, offset=0, order_by=None):
+        """Genel gider veritabanındaki tüm kayıtları getirir."""
+        if not order_by:
+            order_by = "tarih DESC"
+        
+        # Limit ve offset güvenli değerler kullan
+        if limit is not None:
+            query = f"SELECT * FROM general_expenses ORDER BY {order_by} LIMIT {int(limit)} OFFSET {int(offset or 0)}"
+        else:
+            query = f"SELECT * FROM general_expenses ORDER BY {order_by}"
+        
+        cursor = self._execute_query('genel_gider', query)
+        if cursor:
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return []
+    
+    def get_genel_gider_count(self):
+        """Genel gider tablosundaki toplam kayıt sayısını döndürür."""
+        query = "SELECT COUNT(*) FROM general_expenses"
+        cursor = self._execute_query('genel_gider', query)
+        if cursor:
+            return cursor.fetchone()[0]
+        return 0
+
+    def get_genel_gider_by_id(self, gider_id):
+        """Genel gider veritabanından ID'ye göre tek bir kayıt getirir."""
+        query = "SELECT * FROM general_expenses WHERE id = ?"
+        cursor = self._execute_query('genel_gider', query, (gider_id,))
+        if cursor:
+            row = cursor.fetchone()
+            if row:
+                columns = [description[0] for description in cursor.description]
+                return dict(zip(columns, row))
+        return None
+
+    # --- Ayarlar ve Kur Yönetimi (Ayrı veritabanları) ---
     def get_setting(self, key):
         query = "SELECT value FROM settings WHERE key = ?"
-        cursor = self._execute_query(query, (key,))
+        cursor = self._execute_query('settings', query, (key,))
         if cursor:
             result = cursor.fetchone()
             return result[0] if result else None
@@ -449,25 +707,76 @@ class Database:
 
     def save_setting(self, key, value):
         query = "REPLACE INTO settings (key, value) VALUES (?, ?)"
-        self._execute_query(query, (key, str(value)))
+        self._execute_query('settings', query, (key, str(value)))
         return True
 
     def get_all_settings(self):
         query = "SELECT key, value FROM settings"
-        cursor = self._execute_query(query)
+        cursor = self._execute_query('settings', query)
         return dict(cursor.fetchall()) if cursor else {}
 
     def save_exchange_rates(self, rates):
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for currency, rate in rates.items():
             query = "REPLACE INTO exchange_rates (currency, rate, updated_at) VALUES (?, ?, ?)"
-            self._execute_query(query, (currency, rate, current_time))
+            self._execute_query('exchange_rates', query, (currency, rate, current_time))
         return True
 
     def load_exchange_rates(self):
         query = "SELECT currency, rate FROM exchange_rates"
-        cursor = self._execute_query(query)
+        cursor = self._execute_query('exchange_rates', query)
         return dict(cursor.fetchall()) if cursor else {}
+
+    # --- İşlem Geçmişi Yönetimi ---
+    def add_history_record(self, operation_type, invoice_type, invoice_date=None, firma=None, amount=None, details=None):
+        """İşlem geçmişi kaydı ekler."""
+        current_time = datetime.now()
+        operation_date = current_time.strftime("%d.%m.%Y")
+        operation_time = current_time.strftime("%H:%M:%S")
+        
+        query = """
+            INSERT INTO invoice_history (operation_type, invoice_type, invoice_date, firma, amount, operation_date, operation_time, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (operation_type, invoice_type, invoice_date, firma, amount, operation_date, operation_time, details)
+        cursor = self._execute_query('history', query, params)
+        return cursor.lastrowid if cursor else None
+
+    def get_recent_history(self, limit=20):
+        """Son işlem geçmişini getirir."""
+        query = """
+            SELECT * FROM invoice_history 
+            ORDER BY id DESC 
+            LIMIT ?
+        """
+        cursor = self._execute_query('history', query, (limit,))
+        if cursor:
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return []
+
+    def get_history_by_date_range(self, start_date, end_date, limit=100):
+        """Tarih aralığına göre işlem geçmişini getirir."""
+        query = """
+            SELECT * FROM invoice_history 
+            WHERE operation_date BETWEEN ? AND ?
+            ORDER BY id DESC 
+            LIMIT ?
+        """
+        cursor = self._execute_query('history', query, (start_date, end_date, limit))
+        if cursor:
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return []
+
+    def clear_old_history(self, days_to_keep=90):
+        """Eski geçmiş kayıtlarını temizler (varsayılan 90 gün)."""
+        cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%d.%m.%Y")
+        query = "DELETE FROM invoice_history WHERE operation_date < ?"
+        cursor = self._execute_query('history', query, (cutoff_date,))
+        return cursor.rowcount if cursor else 0
 
 
 class Backend(QObject):
@@ -639,16 +948,25 @@ class Backend(QObject):
 
     def format_date(self, date_str):
         """Tarih string'ini 'dd.mm.yyyy' formatına çevirir."""
-        if not date_str or not isinstance(date_str, str):
-                 return datetime.now().strftime("%d.%m.%Y")
+        # Boş string veya None ise None döndür (bugünün tarihi değil)
+        if not date_str or (isinstance(date_str, str) and not date_str.strip()):
+            return None
         
+        # String değilse string'e çevir
+        if not isinstance(date_str, str):
+            date_str = str(date_str)
+        
+        date_str = date_str.strip()
+        
+        # Yaygın tarih formatlarını dene
         for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
             try:
-                parsed_date = datetime.strptime(date_str.strip(), fmt)
+                parsed_date = datetime.strptime(date_str, fmt)
                 return parsed_date.strftime("%d.%m.%Y")
             except ValueError:
                 continue
         
+        # Sadece rakamları al
         cleaned_date = re.sub(r'[^0-9]', '', date_str)
         
         if len(cleaned_date) == 8:
@@ -664,7 +982,7 @@ class Backend(QObject):
                 except ValueError:
                     pass
             else:
-                # ggaaYYYY formatı
+                # ggaaYYYY formatı (12112025 gibi)
                 gun = cleaned_date[:2]
                 ay = cleaned_date[2:4]
                 yil = cleaned_date[4:8]
@@ -673,7 +991,20 @@ class Backend(QObject):
                     return parsed_date.strftime("%d.%m.%Y")
                 except ValueError:
                     pass
+        elif len(cleaned_date) == 6:
+            # ggaayy formatı (121125 -> 12.11.2025)
+            gun = cleaned_date[:2]
+            ay = cleaned_date[2:4]
+            yil_short = cleaned_date[4:6]
+            # 2000'li yıllara çevir
+            yil = "20" + yil_short
+            try:
+                parsed_date = datetime(int(yil), int(ay), int(gun))
+                return parsed_date.strftime("%d.%m.%Y")
+            except ValueError:
+                pass
         
+        # Geçersiz tarih ise bugünün tarihini döndür
         return datetime.now().strftime("%d.%m.%Y")
 
     def _process_invoice_data(self, invoice_data):
@@ -690,87 +1021,71 @@ class Backend(QObject):
             processed = invoice_data.copy()
             
             # Boş alanları olduğu gibi bırak
+            processed['fatura_no'] = processed.get('fatura_no', '').strip()
             processed['irsaliye_no'] = processed.get('irsaliye_no', '').strip()
             processed['firma'] = processed.get('firma', '').strip()
             processed['malzeme'] = processed.get('malzeme', '').strip()
             
-            processed['tarih'] = self.format_date(processed.get('tarih', ''))
+            # Tarih işleme - kullanıcı girişi varsa onu kullan, yoksa bugünün tarihini kullan
+            input_date = processed.get('tarih', '')
+            if input_date and input_date.strip():
+                formatted_date = self.format_date(input_date)
+                processed['tarih'] = formatted_date if formatted_date else datetime.now().strftime("%d.%m.%Y")
+            else:
+                processed['tarih'] = datetime.now().strftime("%d.%m.%Y")
+            
             processed['miktar'] = str(processed.get('miktar', '')).strip()
             
             toplam_tutar = self._to_float(processed.get('toplam_tutar', 0))
             kdv_yuzdesi = self._to_float(processed.get('kdv_yuzdesi', 0))
             kdv_tutari_input = self._to_float(processed.get('kdv_tutari', 0)) 
-            kdv_dahil = 1 if processed.get('kdv_dahil', False) else 0
             birim = processed.get('birim', 'TL')
             
-            logging.info(f"\n   MANUEL FATURA İŞLEME BAŞLADI")
-            logging.info(f"   Giriş Verileri:")
-            logging.info(f"     - Toplam Tutar: {toplam_tutar} {birim}")
-            logging.info(f"     - KDV %: {kdv_yuzdesi}")
-            logging.info(f"     - KDV Tutarı (input): {kdv_tutari_input} {birim}")
-            logging.info(f"     - KDV Dahil: {'EVET' if kdv_dahil else 'HAYIR'}")
+            logging.info(f"\n   🧾 FATURA İŞLEME BAŞLADI (KDV DAHİL SİSTEM)")
+            logging.info(f"   📋 Giriş Verileri:")
+            logging.info(f"     - Toplam Tutar (KDV DAHİL): {toplam_tutar} {birim}")
+            logging.info(f"     - KDV Yüzdesi: {kdv_yuzdesi}%")
             
+            # KDV yüzdesi kontrolü
             if kdv_yuzdesi <= 0:
                 kdv_yuzdesi = self.settings.get('kdv_yuzdesi', 20.0)
                 logging.info(f"   ⚙️ KDV yüzdesi girilmedi, varsayılan kullanılıyor: {kdv_yuzdesi}%")
             
-            matrah = 0.0
-            kdv_tutari = 0.0
-            
-            if toplam_tutar > 0 and kdv_tutari_input > 0:
-                if kdv_dahil:
-                    matrah = toplam_tutar - kdv_tutari_input
-                    kdv_tutari = kdv_tutari_input
-                    
-                    hesaplanan_kdv_yuzdesi = (kdv_tutari / matrah) * 100 if matrah > 0 else kdv_yuzdesi
-                    if abs(hesaplanan_kdv_yuzdesi - kdv_yuzdesi) > 0.5: 
-                        logging.warning(f"   ⚠️ KDV yüzdesi tutarsızlığı! Girilen: {kdv_yuzdesi}%, Hesaplanan: {hesaplanan_kdv_yuzdesi:.2f}%")
-                        kdv_yuzdesi = round(hesaplanan_kdv_yuzdesi, 2)
-                    
-                    logging.info(f"   ✅ SENARYO 1a: KDV Dahil + KDV Tutarı Girildi")
-                else:
-                    matrah = toplam_tutar
-                    kdv_tutari = kdv_tutari_input
-                    
-                    hesaplanan_kdv_yuzdesi = (kdv_tutari / matrah) * 100 if matrah > 0 else kdv_yuzdesi
-                    if abs(hesaplanan_kdv_yuzdesi - kdv_yuzdesi) > 0.5:
-                        logging.warning(f"   ⚠️ KDV yüzdesi tutarsızlığı! Girilen: {kdv_yuzdesi}%, Hesaplanan: {hesaplanan_kdv_yuzdesi:.2f}%")
-                        kdv_yuzdesi = round(hesaplanan_kdv_yuzdesi, 2)
-                    
-                    logging.info(f"   ✅ SENARYO 1b: KDV Hariç + KDV Tutarı Girildi")
-            
-            elif toplam_tutar > 0:
-                if kdv_dahil:
-                    kdv_katsayisi = 1 + (kdv_yuzdesi / 100)
-                    matrah = toplam_tutar / kdv_katsayisi
-                    kdv_tutari = toplam_tutar - matrah
-                    
-                    logging.info(f"   ✅ SENARYO 2a: Sadece KDV Dahil Tutar Girildi")
-                else:
-                    matrah = toplam_tutar
-                    kdv_tutari = matrah * (kdv_yuzdesi / 100)
-                    
-                    logging.info(f"   ✅ SENARYO 2b: Sadece KDV Hariç Tutar (Matrah) Girildi")
-            
+            # KDV DAHİL SİSTEM - Tüm girilen tutarlar KDV dahildir
+            if toplam_tutar > 0:
+                # KDV dahil tutardan matrahı ve KDV tutarını hesapla
+                kdv_katsayisi = 1 + (kdv_yuzdesi / 100)
+                matrah = toplam_tutar / kdv_katsayisi
+                kdv_tutari = toplam_tutar - matrah
+                
+                logging.info(f"   ✅ KDV DAHİL HESAPLAMA:")
+                logging.info(f"     - KDV Dahil Tutar: {toplam_tutar:.2f} {birim}")
+                logging.info(f"     - KDV Katsayısı: {kdv_katsayisi:.4f}")
+                logging.info(f"     - Matrah (KDV Hariç): {matrah:.2f} {birim}")
+                logging.info(f"     - KDV Tutarı: {kdv_tutari:.2f} {birim}")
             else:
                 logging.error(f"   ❌ HATA: Toplam tutar girilmemiş!")
                 return None
             
+            # Para birimi dönüşümü (TL'ye çevir)
             matrah_tl = self.convert_currency(matrah, birim, 'TRY')
             kdv_tutari_tl = self.convert_currency(kdv_tutari, birim, 'TRY')
+            toplam_kdv_dahil_tl = matrah_tl + kdv_tutari_tl
 
-            processed['toplam_tutar_tl'] = matrah_tl 
+            # Sonuç verilerini hazırla
+            processed['toplam_tutar_tl'] = matrah_tl  # Ana tutar hala matrah olarak saklanıyor (geriye uyumluluk)
             processed['toplam_tutar_usd'] = self.convert_currency(matrah_tl, 'TRY', 'USD')
             processed['toplam_tutar_eur'] = self.convert_currency(matrah_tl, 'TRY', 'EUR')
             
             processed['birim'] = birim 
             processed['kdv_yuzdesi'] = kdv_yuzdesi
-            processed['kdv_dahil'] = kdv_dahil
+            processed['kdv_dahil'] = 1  # Her zaman KDV dahil
             processed['kdv_tutari'] = kdv_tutari_tl 
             
-            logging.info(f"   📊 İŞLEME SONUCU:")
-            logging.info(f"     - Matrah (TL): {matrah_tl:.2f} TL")
-            logging.info(f"     - KDV Tutarı (TL): {kdv_tutari_tl:.2f} TL")
+            logging.info(f"   📊 SONUÇ (TL CİNSİNDEN):")
+            logging.info(f"     - Matrah: {matrah_tl:.2f} TL")
+            logging.info(f"     - KDV Tutarı: {kdv_tutari_tl:.2f} TL") 
+            logging.info(f"     - TOPLAM (KDV DAHİL): {toplam_kdv_dahil_tl:.2f} TL")
             logging.info(f"   ✅ İşlem başarılı!\n")
             
             return processed
@@ -780,143 +1095,274 @@ class Backend(QObject):
             return None
 
     def handle_invoice_operation(self, operation, invoice_type, data=None, record_id=None, limit=None, offset=None, order_by=None):
-        """Frontend için tekil fatura işlem merkezi."""
-        table_name = f"{invoice_type}_invoices"
+        """Frontend için fatura işlem merkezi - 3 ayrı veritabanı ile."""
         
         if operation == 'add':
             processed_data = self._process_invoice_data(data)
-            if processed_data and self.db.add_invoice(table_name, processed_data):
-                self.status_updated.emit("Fatura başarıyla eklendi.", 3000)
+            if not processed_data:
+                return False
+            
+            if invoice_type == 'outgoing':
+                result = self.db.add_gelir_invoice(processed_data)
+                if result:
+                    self._add_history_record('EKLEME', 'gelir', processed_data)
+            elif invoice_type == 'incoming':
+                result = self.db.add_gider_invoice(processed_data)
+                if result:
+                    self._add_history_record('EKLEME', 'gider', processed_data)
+            else:
+                return False
+                
+            if result:
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'update':
             processed_data = self._process_invoice_data(data)
-            if processed_data and self.db.update_invoice(table_name, record_id, processed_data):
-                self.status_updated.emit("Fatura başarıyla güncellendi.", 3000)
+            if not processed_data:
+                return False
+            
+            if invoice_type == 'outgoing':
+                result = self.db.update_gelir_invoice(record_id, processed_data)
+                if result:
+                    self._add_history_record('GÜNCELLEME', 'gelir', processed_data)
+            elif invoice_type == 'incoming':
+                result = self.db.update_gider_invoice(record_id, processed_data)
+                if result:
+                    self._add_history_record('GÜNCELLEME', 'gider', processed_data)
+            else:
+                return False
+                
+            if result:
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'delete':
-            if self.db.delete_invoice(table_name, record_id):
-                self.status_updated.emit("Fatura silindi.", 3000)
+            # Silmeden önce fatura bilgilerini al
+            if invoice_type == 'outgoing':
+                invoice_data = self.db.get_gelir_invoice_by_id(record_id)
+                result = self.db.delete_gelir_invoice(record_id)
+                if result and invoice_data:
+                    self._add_history_record('SİLME', 'gelir', invoice_data)
+            elif invoice_type == 'incoming':
+                invoice_data = self.db.get_gider_invoice_by_id(record_id)
+                result = self.db.delete_gider_invoice(record_id)
+                if result and invoice_data:
+                    self._add_history_record('SİLME', 'gider', invoice_data)
+            else:
+                return False
+                
+            if result:
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'get':
-            return self.db.get_all_invoices(table_name, limit=limit, offset=offset, order_by=order_by)
+            if invoice_type == 'outgoing':
+                return self.db.get_all_gelir_invoices(limit=limit, offset=offset, order_by=order_by)
+            elif invoice_type == 'incoming':
+                return self.db.get_all_gider_invoices(limit=limit, offset=offset, order_by=order_by)
+            else:
+                return []
         
         elif operation == 'count':
-            return self.db.get_invoice_count(table_name)
+            if invoice_type == 'outgoing':
+                return self.db.get_gelir_invoice_count()
+            elif invoice_type == 'incoming':
+                return self.db.get_gider_invoice_count()
+            else:
+                return 0
         
         elif operation == 'get_by_id':
-            return self.db.get_invoice_by_id(table_name, record_id)
+            if invoice_type == 'outgoing':
+                return self.db.get_gelir_invoice_by_id(record_id)
+            elif invoice_type == 'incoming':
+                return self.db.get_gider_invoice_by_id(record_id)
+            else:
+                return None
         
         logging.warning(f"Geçersiz fatura operasyonu: {operation}")
         return False
 
     def handle_genel_gider_operation(self, operation, data=None, record_id=None, limit=None, offset=None):
-        """Genel gider işlemleri için özel metod."""
-        table_name = "incoming_invoices"
+        """Genel gider işlemleri için özel metod - ayrı veritabanı ile."""
         
         if operation == 'add':
             processed_data = self._process_genel_gider_data(data)
-            if processed_data and self.db.add_invoice(table_name, processed_data):
-                self.status_updated.emit("Genel gider başarıyla eklendi.", 3000)
+            if processed_data and self.db.add_genel_gider(processed_data):
+                self._add_history_record('EKLEME', 'genel_gider', processed_data)
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'update':
             processed_data = self._process_genel_gider_data(data)
-            if processed_data and self.db.update_invoice(table_name, record_id, processed_data):
-                self.status_updated.emit("Genel gider başarıyla güncellendi.", 3000)
+            if processed_data and self.db.update_genel_gider(record_id, processed_data):
+                self._add_history_record('GÜNCELLEME', 'genel_gider', processed_data)
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'delete':
-            if self.db.delete_invoice(table_name, record_id):
-                self.status_updated.emit("Genel gider silindi.", 3000)
+            # Silmeden önce genel gider bilgilerini al
+            gider_data = self.db.get_genel_gider_by_id(record_id)
+            if self.db.delete_genel_gider(record_id):
+                if gider_data:
+                    self._add_history_record('SİLME', 'genel_gider', gider_data)
                 self.data_updated.emit()
                 return True
             return False
         
         elif operation == 'get':
-            return self.db.get_all_invoices(table_name, limit=limit, offset=offset)
+            return self.db.get_all_genel_gider(limit=limit, offset=offset)
         
         elif operation == 'count':
-            return self.db.get_invoice_count(table_name)
+            return self.db.get_genel_gider_count()
         
         elif operation == 'get_by_id':
-            return self.db.get_invoice_by_id(table_name, record_id)
+            return self.db.get_genel_gider_by_id(record_id)
         
         return None
 
     def _process_genel_gider_data(self, gider_data):
-        """Genel gider verilerini incoming_invoices tablosu formatına çevirir."""
+        """Genel gider verilerini genel_gider.db formatına çevirir."""
         if not gider_data:
             return None
         
-        miktar = self._to_float(gider_data.get('miktar', 0))
-        if miktar <= 0:
-            logging.warning(f"Genel gider miktarı girilmemiş veya geçersiz: {gider_data}")
+        # Miktar alanını hem sayı hem metin olarak kabul et
+        miktar_input = gider_data.get('miktar', '')
+        if not miktar_input or str(miktar_input).strip() == '':
+            logging.warning(f"Genel gider miktarı girilmemiş: {gider_data}")
             return None
         
-        # Genel gider verilerini incoming_invoices formatına çevir
+        # Eğer sayısal bir değer ise float'a çevir, değilse string olarak bırak
+        try:
+            miktar = self._to_float(miktar_input)
+        except:
+            # Sayısal olmayan miktar değerlerini string olarak sakla
+            miktar = str(miktar_input).strip()
+        
+        # Genel gider verilerini direkt format
+        input_date = gider_data.get('tarih', '')
+        if input_date and input_date.strip():
+            formatted_date = self.format_date(input_date)
+            tarih = formatted_date if formatted_date else datetime.now().strftime("%d.%m.%Y")
+        else:
+            tarih = datetime.now().strftime("%d.%m.%Y")
+            
         processed = {
-            'irsaliye_no': f"GIDER-{int(time.time())}",  # Otomatik gider numarası
-            'tarih': self.format_date(gider_data.get('tarih', '')),
-            'firma': gider_data.get('tur', 'Genel Gider'),  # Tür bilgisini firma alanına koy
-            'malzeme': gider_data.get('tur', 'Genel Gider'),  # Tür bilgisini malzeme alanına da koy
-            'miktar': '1',  # Genel giderler için miktar her zaman 1
-            'toplam_tutar_tl': miktar,
-            'toplam_tutar_usd': 0,
-            'toplam_tutar_eur': 0,
-            'birim': 'TL',
-            'kdv_yuzdesi': 0,
-            'kdv_tutari': 0,
-            'kdv_dahil': 0
+            'tarih': tarih,
+            'tur': gider_data.get('tur', 'Genel Gider'),
+            'miktar': miktar,
+            'aciklama': gider_data.get('aciklama', '')
         }
         
         return processed
 
-    def delete_multiple_invoices(self, invoice_type, invoice_ids):
-        """Çoklu fatura silme işlemi."""
-        table_name = f"{invoice_type}_invoices"
+    # --- İşlem Geçmişi Yönetimi ---
+    def get_recent_history(self, limit=20):
+        """Son işlem geçmişini getirir."""
+        return self.db.get_recent_history(limit)
+
+    def get_history_by_date_range(self, start_date, end_date, limit=100):
+        """Tarih aralığına göre işlem geçmişini getirir."""
+        return self.db.get_history_by_date_range(start_date, end_date, limit)
+
+    def clear_old_history(self, days_to_keep=90):
+        """Eski geçmiş kayıtlarını temizler."""
+        deleted_count = self.db.clear_old_history(days_to_keep)
+        return deleted_count
+
+    def _add_history_record(self, operation_type, invoice_type, invoice_data=None, details=None):
+        """Fatura işlemlerinde geçmiş kaydı ekler."""
         try:
-            deleted_count = self.db.delete_multiple_invoices(table_name, invoice_ids)
+            invoice_date = None
+            firma = None
+            amount = None
+            
+            if invoice_data:
+                invoice_date = invoice_data.get('tarih')
+                firma = invoice_data.get('firma') or invoice_data.get('tur')
+                amount = invoice_data.get('toplam_tutar_tl') or invoice_data.get('miktar')
+            
+            # İşlem tipine göre detay mesajı oluştur
+            if not details:
+                if operation_type == 'EKLEME':
+                    details = f"{invoice_type.title()} fatura eklendi"
+                elif operation_type == 'GÜNCELLEME':
+                    details = f"{invoice_type.title()} fatura güncellendi"
+                elif operation_type == 'SİLME':
+                    details = f"{invoice_type.title()} fatura silindi"
+                else:
+                    details = f"{operation_type} işlemi"
+            
+            self.db.add_history_record(operation_type, invoice_type, invoice_date, firma, amount, details)
+            
+        except Exception as e:
+            logging.error(f"Geçmiş kaydı ekleme hatası: {e}")
+
+    def delete_multiple_invoices(self, invoice_type, invoice_ids):
+        """Çoklu fatura silme işlemi - 3 ayrı veritabanı ile."""
+        try:
+            if invoice_type == 'outgoing':
+                deleted_count = self.db.delete_multiple_gelir_invoices(invoice_ids)
+            elif invoice_type == 'incoming':
+                deleted_count = self.db.delete_multiple_gider_invoices(invoice_ids)
+            else:
+                return 0
+                
             if deleted_count > 0:
-                self.status_updated.emit(f"{deleted_count} fatura silindi.", 3000)
                 self.data_updated.emit()
             return deleted_count
         except Exception as e:
             logging.error(f"Çoklu {invoice_type} faturası silme hatası: {e}")
             return 0
 
+    def delete_multiple_genel_gider(self, gider_ids):
+        """Çoklu genel gider silme işlemi."""
+        try:
+            deleted_count = self.db.delete_multiple_genel_gider(gider_ids)
+            if deleted_count > 0:
+                self.data_updated.emit()
+            return deleted_count
+        except Exception as e:
+            logging.error(f"Çoklu genel gider silme hatası: {e}")
+            return 0
+
     def get_summary_data(self):
-        """Gelir, gider ve kar/zarar özetini hesaplar (SQL ile optimize edildi)."""
-        cursor = self.db.conn.cursor()
+        """Gelir, gider ve kar/zarar özetini hesaplar - 3 ayrı veritabanı ile."""
+        # Gelir toplamı
+        gelir_cursor = self.db.gelir_conn.cursor()
+        gelir_cursor.execute("SELECT SUM(toplam_tutar_tl) FROM invoices")
+        total_revenue = gelir_cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT SUM(toplam_tutar_tl) FROM outgoing_invoices")
-        total_revenue = cursor.fetchone()[0] or 0
+        # Fatura giderleri toplamı
+        gider_cursor = self.db.gider_conn.cursor()
+        gider_cursor.execute("SELECT SUM(toplam_tutar_tl) FROM invoices")
+        invoice_expenses = gider_cursor.fetchone()[0] or 0
         
-        cursor.execute("SELECT SUM(toplam_tutar_tl) FROM incoming_invoices")
-        total_expense = cursor.fetchone()[0] or 0
+        # Genel giderler toplamı
+        genel_gider_cursor = self.db.genel_gider_conn.cursor()
+        genel_gider_cursor.execute("SELECT SUM(miktar) FROM general_expenses")
+        general_expenses = genel_gider_cursor.fetchone()[0] or 0
         
+        # Toplam gider
+        total_expense = invoice_expenses + general_expenses
+        
+        # Aylık veriler
         monthly_income = [0] * 12
         monthly_expenses = [0] * 12
         current_year = datetime.now().year
         
-        cursor.execute("""
-            SELECT tarih, toplam_tutar_tl FROM outgoing_invoices 
+        # Gelir aylık dağılım
+        gelir_cursor.execute("""
+            SELECT tarih, toplam_tutar_tl FROM invoices 
             WHERE tarih LIKE ?
         """, (f"%.{current_year}",))
         
-        for row in cursor.fetchall():
+        for row in gelir_cursor.fetchall():
             try:
                 parts = row[0].split('.')
                 if len(parts) == 3:
@@ -925,12 +1371,28 @@ class Backend(QObject):
             except:
                 continue
         
-        cursor.execute("""
-            SELECT tarih, toplam_tutar_tl FROM incoming_invoices 
+        # Fatura giderleri aylık dağılım
+        gider_cursor.execute("""
+            SELECT tarih, toplam_tutar_tl FROM invoices 
             WHERE tarih LIKE ?
         """, (f"%.{current_year}",))
         
-        for row in cursor.fetchall():
+        for row in gider_cursor.fetchall():
+            try:
+                parts = row[0].split('.')
+                if len(parts) == 3:
+                    month = int(parts[1]) - 1
+                    monthly_expenses[month] += row[1]
+            except:
+                continue
+                
+        # Genel giderler aylık dağılım
+        genel_gider_cursor.execute("""
+            SELECT tarih, miktar FROM general_expenses 
+            WHERE tarih LIKE ?
+        """, (f"%.{current_year}",))
+        
+        for row in genel_gider_cursor.fetchall():
             try:
                 parts = row[0].split('.')
                 if len(parts) == 3:
@@ -956,55 +1418,92 @@ class Backend(QObject):
         }
         
     def get_year_range(self):
-        """Fatura verilerinde bulunan tüm yılların listesini döndürür."""
+        """Fatura verilerinde bulunan tüm yılların listesini döndürür - 3 ayrı veritabanı ile."""
         years_set = set()
         current_year = datetime.now().year
         
         years_set.add(str(current_year))
         
-        for invoice_type in ['outgoing', 'incoming']:
-            invoices = self.db.get_all_invoices(f"{invoice_type}_invoices")
-            for inv in invoices:
-                try:
-                    if 'tarih' in inv and inv['tarih']:
-                        date_obj = datetime.strptime(inv['tarih'], "%d.%m.%Y")
-                        years_set.add(str(date_obj.year))
-                except (ValueError, KeyError):
-                    continue
+        # Gelir veritabanından yılları al
+        gelir_invoices = self.db.get_all_gelir_invoices()
+        for inv in gelir_invoices:
+            try:
+                if 'tarih' in inv and inv['tarih']:
+                    date_obj = datetime.strptime(inv['tarih'], "%d.%m.%Y")
+                    years_set.add(str(date_obj.year))
+            except (ValueError, KeyError):
+                continue
+        
+        # Gider veritabanından yılları al
+        gider_invoices = self.db.get_all_gider_invoices()
+        for inv in gider_invoices:
+            try:
+                if 'tarih' in inv and inv['tarih']:
+                    date_obj = datetime.strptime(inv['tarih'], "%d.%m.%Y")
+                    years_set.add(str(date_obj.year))
+            except (ValueError, KeyError):
+                continue
+        
+        # Genel gider veritabanından yılları al
+        genel_gider_list = self.db.get_all_genel_gider()
+        for gider in genel_gider_list:
+            try:
+                if 'tarih' in gider and gider['tarih']:
+                    date_obj = datetime.strptime(gider['tarih'], "%d.%m.%Y")
+                    years_set.add(str(date_obj.year))
+            except (ValueError, KeyError):
+                continue
         
         return sorted(list(years_set), reverse=True)
 
     def get_calculations_for_year(self, year):
-        """Belirli bir yıl için aylık ve çeyrek dönem hesaplamaları (SQL ile optimize edildi)."""
-        cursor = self.db.conn.cursor()
+        """Belirli bir yıl için aylık ve çeyrek dönem hesaplamaları - 3 ayrı veritabanı ile."""
         # Vergi oranını güvenli şekilde float'a dönüştür
         tax_rate_raw = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0)
         tax_rate = float(tax_rate_raw) / 100.0
         
         monthly_results = []
+        
         for month in range(1, 13):
-            cursor.execute("""
+            # Gelir hesapla
+            gelir_cursor = self.db.gelir_conn.cursor()
+            gelir_cursor.execute("""
                 SELECT SUM(toplam_tutar_tl), SUM(kdv_tutari) 
-                FROM outgoing_invoices 
+                FROM invoices 
                 WHERE tarih LIKE ?
             """, (f"%.{month:02d}.{year}",))
-            out_row = cursor.fetchone()
-            kesilen = out_row[0] or 0
-            kesilen_kdv = out_row[1] or 0
+            gelir_row = gelir_cursor.fetchone()
+            kesilen = gelir_row[0] or 0
+            kesilen_kdv = gelir_row[1] or 0
             
-            cursor.execute("""
+            # Fatura giderleri hesapla
+            gider_cursor = self.db.gider_conn.cursor()
+            gider_cursor.execute("""
                 SELECT SUM(toplam_tutar_tl), SUM(kdv_tutari) 
-                FROM incoming_invoices 
+                FROM invoices 
                 WHERE tarih LIKE ?
             """, (f"%.{month:02d}.{year}",))
-            in_row = cursor.fetchone()
-            gelen = in_row[0] or 0
-            gelen_kdv = in_row[1] or 0
+            gider_row = gider_cursor.fetchone()
+            fatura_giderleri = gider_row[0] or 0
+            fatura_gider_kdv = gider_row[1] or 0
+            
+            # Genel giderleri hesapla
+            genel_gider_cursor = self.db.genel_gider_conn.cursor()
+            genel_gider_cursor.execute("""
+                SELECT SUM(miktar) 
+                FROM general_expenses 
+                WHERE tarih LIKE ?
+            """, (f"%.{month:02d}.{year}",))
+            genel_gider_row = genel_gider_cursor.fetchone()
+            genel_giderler = genel_gider_row[0] or 0
+            
+            # Toplam gider
+            toplam_gider = fatura_giderleri + genel_giderler
             
             monthly_results.append({
                 'kesilen': kesilen,
-                'gelen': gelen,
-                'kdv': kesilen_kdv - gelen_kdv
+                'gelen': toplam_gider,
+                'kdv': kesilen_kdv - fatura_gider_kdv  # Genel giderlerde KDV yok
             })
         
         quarterly_results = []
@@ -1032,22 +1531,36 @@ class Backend(QObject):
         return monthly_results, quarterly_results
     
     def get_yearly_summary(self, year):
-        """Belirli bir yıl için yıllık özet (SQL ile optimize edildi)."""
-        cursor = self.db.conn.cursor()
+        """Belirli bir yıl için yıllık özet - 3 ayrı veritabanı ile."""
         
-        cursor.execute("""
-            SELECT SUM(toplam_tutar_tl) FROM outgoing_invoices 
+        # Gelir hesapla
+        gelir_cursor = self.db.gelir_conn.cursor()
+        gelir_cursor.execute("""
+            SELECT SUM(toplam_tutar_tl) FROM invoices 
             WHERE tarih LIKE ?
         """, (f"%.{year}",))
-        gelir = cursor.fetchone()[0] or 0
+        gelir = gelir_cursor.fetchone()[0] or 0
         
-        cursor.execute("""
-            SELECT SUM(toplam_tutar_tl) FROM incoming_invoices 
+        # Fatura giderleri hesapla
+        gider_cursor = self.db.gider_conn.cursor()
+        gider_cursor.execute("""
+            SELECT SUM(toplam_tutar_tl) FROM invoices 
             WHERE tarih LIKE ?
         """, (f"%.{year}",))
-        gider = cursor.fetchone()[0] or 0
+        fatura_giderleri = gider_cursor.fetchone()[0] or 0
         
-        brut_kar = gelir - gider
+        # Genel giderleri hesapla
+        genel_gider_cursor = self.db.genel_gider_conn.cursor()
+        genel_gider_cursor.execute("""
+            SELECT SUM(miktar) FROM general_expenses 
+            WHERE tarih LIKE ?
+        """, (f"%.{year}",))
+        genel_giderler = genel_gider_cursor.fetchone()[0] or 0
+        
+        # Toplam gider
+        toplam_gider = fatura_giderleri + genel_giderler
+        
+        brut_kar = gelir - toplam_gider
         
         # Vergi oranını güvenli şekilde float'a dönüştür
         tax_rate_raw = self.settings.get('kurumlar_vergisi_yuzdesi', 22.0)
@@ -1056,7 +1569,7 @@ class Backend(QObject):
         
         return {
             'toplam_gelir': gelir,
-            'toplam_gider': gider,
+            'toplam_gider': toplam_gider,
             'yillik_kar': brut_kar - vergi, # Net kar
             'vergi_tutari': vergi,
             'vergi_yuzdesi': tax_rate * 100
@@ -1096,20 +1609,6 @@ class Backend(QObject):
         # Veri güncellendiği sinyalini yay
         self.data_updated.emit()
         return True
-    
-    def export_to_excel(self, file_path, sheets_data):
-        """Verilen verileri bir Excel dosyasına aktarır."""
-        try:
-            with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
-                for sheet_name, content in sheets_data.items():
-                    df = pd.DataFrame(content.get("data", []))
-                    df.to_excel(writer, sheet_name=sheet_name, index=False)
-            self.status_updated.emit(f"Veriler '{os.path.basename(file_path)}' dosyasına aktarıldı.", 5000)
-            return True
-        except Exception as e:
-            logging.error(f"Excel'e aktarma hatası: {e}")
-            self.status_updated.emit("Excel'e aktarma başarısız oldu!", 5000)
-            return False
 
     # --- QR KOD İŞLEME VE ENTEGRASYON ---
     def process_qr_files_in_folder(self, folder_path, max_workers=6):
@@ -1177,7 +1676,7 @@ class Backend(QObject):
 
     def add_invoices_from_qr_data(self, qr_results, invoice_type):
         """
-        İşlenmiş QR sonuç listesini alır ve fatura olarak veritabanına ekler.
+        İşlenmiş QR sonuç listesini alır ve fatura olarak veritabanına ekler - 3 ayrı veritabanı ile.
         """
         if not qr_results:
             logging.warning("QR sonuçları boş!")
@@ -1239,7 +1738,8 @@ class Backend(QObject):
         logging.info(f"   🔍 QR JSON Anahtarları: {list(qr_json.keys())}")
         
         key_map = {
-            'irsaliye_no': ['invoiceId', 'faturaNo', 'belgeno', 'uuid', 'id', 'no', 'invoiceNumber', 'belgeNo', 'seriNo', 'ettn', 'faturaid'],
+            'fatura_no': ['faturaNo', 'invoiceNumber', 'faturanumarasi', 'belgeNo', 'documentNo', 'seriNo', 'faturaid', 'documentnumber'],
+            'irsaliye_no': ['invoiceId', 'irsaliyeNo', 'belgeno', 'uuid', 'id', 'no', 'belgeNo', 'seriNo', 'ettn', 'irsaliyenumarasi'],
             'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date', 'invoicedate', 'faturatarihi'],
             'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company', 'companyName', 'firmaUnvan', 'aliciUnvan', 'buyerName', 'saticiadi', 'aliciadi', 'satici', 'sellername', 'buyername'],
             'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme', 'hizmet', 'urun', 'product', 'service', 'senaryo'],
@@ -1267,6 +1767,8 @@ class Backend(QObject):
             
             return None
 
+        parsed = {}
+        parsed['fatura_no'] = str(get_value(key_map['fatura_no']) or '')
         parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
         # Tarih işleme - QR'dan gelen tarihi doğru formatlayalım
         qr_tarih = get_value(key_map['tarih'])
