@@ -308,7 +308,7 @@ def update_styles(palette):
     STYLES["preview_button_style"] = "QPushButton { padding: 8px 12px; background-color: #6c757d; color: white; border-radius: 6px; font-weight: 600; font-size: 12px; } QPushButton:hover { background-color: #5a6268; }"
 
 
-def show_styled_message_box(parent, icon, title, text, buttons=QMessageBox.StandardButton.Ok):
+def show_styled_message_box(parent, icon, title, text, buttons=QMessageBox.StandardButton.Ok, yes_text=None, no_text=None):
     """ Profesyonel ve kurumsal görünümlü QMessageBox gösterir. """
     msg_box = QMessageBox(parent)
     msg_box.setWindowTitle(title)
@@ -318,20 +318,18 @@ def show_styled_message_box(parent, icon, title, text, buttons=QMessageBox.Stand
     
     # Buton metinlerini Türkçeleştir
     for button in msg_box.buttons():
-        button_role = msg_box.buttonRole(button)
-        if button_role == QMessageBox.ButtonRole.AcceptRole:
-            if buttons & QMessageBox.StandardButton.Ok:
-                button.setText("Tamam")
-            elif buttons & QMessageBox.StandardButton.Yes:
-                button.setText("Evet")
-        elif button_role == QMessageBox.ButtonRole.RejectRole:
-            if buttons & QMessageBox.StandardButton.No:
-                button.setText("Hayır")
-            elif buttons & QMessageBox.StandardButton.Cancel:
-                button.setText("İptal")
-        elif button_role == QMessageBox.ButtonRole.ApplyRole:
+        std_button = msg_box.standardButton(button)
+        if std_button == QMessageBox.StandardButton.Ok:
+            button.setText("Tamam")
+        elif std_button == QMessageBox.StandardButton.Yes:
+            button.setText(yes_text if yes_text else "Evet")
+        elif std_button == QMessageBox.StandardButton.No:
+            button.setText(no_text if no_text else "Hayır")
+        elif std_button == QMessageBox.StandardButton.Cancel:
+            button.setText("İptal")
+        elif std_button == QMessageBox.StandardButton.Apply:
             button.setText("Uygula")
-        elif button_role == QMessageBox.ButtonRole.ResetRole:
+        elif std_button == QMessageBox.StandardButton.Reset:
             button.setText("Sıfırla")
     
     # Profesyonel renk paleti
@@ -597,12 +595,6 @@ class InvoiceTab(QWidget):
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         header_layout.addWidget(self.sort_combo)
         
-        self.delete_selected_button = QPushButton("🗑️ Seçilenleri Sil")
-        self.delete_selected_button.setToolTip("Seçili faturaları sil")
-        self.delete_selected_button.clicked.connect(self.delete_selected_invoices)
-        self.delete_selected_button.setEnabled(False)
-        header_layout.addWidget(self.delete_selected_button)
-        
         self.export_button = QPushButton("Excel'e Aktar")
         header_layout.addWidget(self.export_button)
         
@@ -665,6 +657,7 @@ class InvoiceTab(QWidget):
         self.add_button = QPushButton("➕ Ekle")
         self.update_button = QPushButton("📝 Güncelle")
         self.delete_button = QPushButton("🗑️ Sil")
+        self.delete_button.setToolTip("Seçili satır(lar) varsa çoklu sil, yoksa aktif faturayı sil")
         
         button_layout.addWidget(self.new_button)
         button_layout.addWidget(self.add_button)
@@ -735,7 +728,7 @@ class InvoiceTab(QWidget):
         self.new_button.clicked.connect(self.clear_edit_fields)
         self.add_button.clicked.connect(lambda: self._handle_invoice_operation('add'))
         self.update_button.clicked.connect(lambda: self._handle_invoice_operation('update'))
-        self.delete_button.clicked.connect(lambda: self._handle_invoice_operation('delete'))
+        self.delete_button.clicked.connect(self.smart_delete)
         self.invoice_table.itemSelectionChanged.connect(self.on_row_selected)
         self.invoice_table.itemSelectionChanged.connect(self.update_delete_button_state)
         self.export_button.clicked.connect(self.export_table_data)
@@ -969,43 +962,78 @@ class InvoiceTab(QWidget):
 
 
     def update_delete_button_state(self):
-        """Seçili satır sayısına göre çoklu silme butonunu aktif/pasif yapar."""
+        """Seçili satır sayısına göre silme butonunun metnini günceller."""
         selected_rows = self.invoice_table.selectionModel().selectedRows()
-        self.delete_selected_button.setEnabled(len(selected_rows) > 0)
-
-    def delete_selected_invoices(self):
-        """Seçili faturaları siler."""
-        selected_items = self.invoice_table.selectionModel().selectedRows()
-        if not selected_items:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", "Lütfen silmek istediğiniz faturaları seçin.", QMessageBox.StandardButton.Ok)
-            return
-
-        count = len(selected_items)
-        reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                        f"{count} faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
-                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-
-        invoice_ids = []
-        for index in selected_items:
-            id_item = self.invoice_table.verticalHeaderItem(index.row())
-            if id_item and id_item.data(Qt.ItemDataRole.UserRole) is not None:
-                invoice_ids.append(id_item.data(Qt.ItemDataRole.UserRole))
-
-        if not invoice_ids:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Seçili faturaların ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
-            return
-
-        try:
-            deleted_count = self.backend.delete_multiple_invoices(self.invoice_type, invoice_ids)
-            
-            if deleted_count > 0:
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} fatura başarıyla silindi.", QMessageBox.StandardButton.Ok)
+        count = len(selected_rows)
+        
+        if count > 1:
+            self.delete_button.setText(f"🗑️ Seçilenleri Sil ({count})")
+            self.delete_button.setEnabled(True)
+        elif count == 1:
+            self.delete_button.setText("🗑️ Sil")
+            self.delete_button.setEnabled(True)
+        else:
+            # Seçili satır yok ama current_invoice_id varsa aktif faturayı silebilir
+            if hasattr(self, 'current_invoice_id') and self.current_invoice_id:
+                self.delete_button.setText("🗑️ Sil")
+                self.delete_button.setEnabled(True)
             else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Faturalar silinemedi veya hiç fatura seçilmedi.", QMessageBox.StandardButton.Ok)
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", f"Silme işlemi sırasında beklenmedik bir hata oluştu: {str(e)}", QMessageBox.StandardButton.Ok)
+                self.delete_button.setText("🗑️ Sil")
+                self.delete_button.setEnabled(False)
+
+    def smart_delete(self):
+        """Akıllı silme: Seçili satırlar varsa çoklu sil, yoksa aktif faturayı sil."""
+        selected_items = self.invoice_table.selectionModel().selectedRows()
+        
+        if len(selected_items) > 1:
+            # Çoklu silme
+            count = len(selected_items)
+            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
+                                            f"{count} faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
+                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
+            invoice_ids = []
+            for index in selected_items:
+                id_item = self.invoice_table.verticalHeaderItem(index.row())
+                if id_item and id_item.data(Qt.ItemDataRole.UserRole) is not None:
+                    invoice_ids.append(id_item.data(Qt.ItemDataRole.UserRole))
+
+            if not invoice_ids:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Seçili faturaların ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
+                return
+
+            try:
+                deleted_count = self.backend.delete_multiple_invoices(self.invoice_type, invoice_ids)
+                
+                if deleted_count > 0:
+                    show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} fatura başarıyla silindi.", QMessageBox.StandardButton.Ok)
+                    self.refresh_table()
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Faturalar silinemedi.", QMessageBox.StandardButton.Ok)
+            except Exception as e:
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", f"Silme işlemi sırasında hata: {str(e)}", QMessageBox.StandardButton.Ok)
+        
+        else:
+            # Tek silme (aktif fatura veya seçili 1 satır)
+            if not self.current_invoice_id:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", "Lütfen silmek için bir fatura seçin.", QMessageBox.StandardButton.Ok)
+                return
+            
+            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
+                                            "Bu faturayı silmek istediğinizden emin misiniz?", 
+                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.No:
+                return
+            
+            success = self.backend.handle_invoice_operation('delete', self.invoice_type, record_id=self.current_invoice_id)
+            
+            if success:
+                self.clear_edit_fields()
+                self.refresh_table()
+            else:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Fatura silinemedi.", QMessageBox.StandardButton.Ok)
 
     def export_to_pdf(self):
         """PDF formatında fatura dışa aktarma fonksiyonu"""
@@ -1083,7 +1111,6 @@ class InvoiceTab(QWidget):
         self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
         self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Mavi
         self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
-        self.delete_selected_button.setStyleSheet("padding: 5px; background-color: #dc3545; color: white; border-radius: 5px;")
         for field in self.edit_fields.values(): field.setStyleSheet(STYLES["input_style"])
 
 # --- Genel Giderler Sekmesi ---
@@ -1127,13 +1154,6 @@ class GenelGiderTab(QWidget):
         self.sort_combo.setMinimumWidth(200)
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         header_layout.addWidget(self.sort_combo)
-        
-        # Multiple delete button
-        self.delete_selected_button = QPushButton("🗑️ Seçilenleri Sil")
-        self.delete_selected_button.setToolTip("Seçili genel giderleri sil")
-        self.delete_selected_button.clicked.connect(self.delete_selected_expenses)
-        self.delete_selected_button.setEnabled(False)
-        header_layout.addWidget(self.delete_selected_button)
         
         # Excel export button
         self.export_button = QPushButton("Excel'e Aktar")
@@ -1188,7 +1208,7 @@ class GenelGiderTab(QWidget):
         self.new_button.clicked.connect(self.clear_fields)
         self.add_button.clicked.connect(lambda: self._handle_operation('add'))
         self.update_button.clicked.connect(lambda: self._handle_operation('update'))
-        self.delete_button.clicked.connect(lambda: self._handle_operation('delete'))
+        self.delete_button.clicked.connect(self.smart_delete)
         
         # Add buttons to layout - same order as InvoiceTab
         button_layout.addWidget(self.new_button)
@@ -1422,53 +1442,82 @@ class GenelGiderTab(QWidget):
             self.refresh_table()
 
     def update_delete_button_state(self):
-        """Seçili satır sayısına göre çoklu silme butonunu aktif/pasif yapar"""
+        """Seçili satır sayısına göre silme butonunun metnini günceller."""
         selected_rows = self.table.selectionModel().selectedRows()
-        self.delete_selected_button.setEnabled(len(selected_rows) > 0)
+        count = len(selected_rows)
+        
+        if count > 1:
+            self.delete_button.setText(f"🗑️ Seçilenleri Sil ({count})")
+            self.delete_button.setEnabled(True)
+        elif count == 1:
+            self.delete_button.setText("🗑️ Sil")
+            self.delete_button.setEnabled(True)
+        else:
+            # Seçili satır yok ama current_gider_id varsa aktif gideri silebilir
+            if hasattr(self, 'current_gider_id') and self.current_gider_id:
+                self.delete_button.setText("🗑️ Sil")
+                self.delete_button.setEnabled(True)
+            else:
+                self.delete_button.setText("🗑️ Sil")
+                self.delete_button.setEnabled(False)
 
-    def delete_selected_expenses(self):
-        """Seçili genel giderleri siler"""
+    def smart_delete(self):
+        """Akıllı silme: Seçili satırlar varsa çoklu sil, yoksa aktif gideri sil."""
         selected_items = self.table.selectionModel().selectedRows()
-        if not selected_items:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", 
-                                  "Lütfen silmek istediğiniz genel giderleri seçin.", QMessageBox.StandardButton.Ok)
-            return
+        
+        if len(selected_items) > 1:
+            # Çoklu silme
+            count = len(selected_items)
+            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
+                                            f"{count} genel gider kaydını silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
+                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
-        count = len(selected_items)
-        reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                      f"{count} genel gider kaydını silmek istediğinizden emin misiniz?\\n\\nBu işlem geri alınamaz!", 
-                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+            expense_ids = []
+            for index in selected_items:
+                miktar_item = self.table.item(index.row(), 0)
+                if miktar_item and miktar_item.data(Qt.ItemDataRole.UserRole) is not None:
+                    expense_ids.append(miktar_item.data(Qt.ItemDataRole.UserRole))
 
-        expense_ids = []
-        for index in selected_items:
-            miktar_item = self.table.item(index.row(), 0)
-            if miktar_item and miktar_item.data(Qt.ItemDataRole.UserRole) is not None:
-                expense_ids.append(miktar_item.data(Qt.ItemDataRole.UserRole))
+            if not expense_ids:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Seçili giderlerin ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
+                return
 
-        if not expense_ids:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", 
-                                  "Seçili giderlerin ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
-            return
-
-        try:
-            deleted_count = 0
-            for expense_id in expense_ids:
-                if self.backend.handle_genel_gider_operation('delete', record_id=expense_id):
-                    deleted_count += 1
+            try:
+                deleted_count = 0
+                for expense_id in expense_ids:
+                    if self.backend.handle_genel_gider_operation('delete', record_id=expense_id):
+                        deleted_count += 1
+                
+                if deleted_count > 0:
+                    show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} genel gider kaydı başarıyla silindi.", QMessageBox.StandardButton.Ok)
+                    self.clear_fields()
+                    self.refresh_table()
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Gider kayıtları silinemedi.", QMessageBox.StandardButton.Ok)
+            except Exception as e:
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", f"Silme işlemi sırasında hata: {str(e)}", QMessageBox.StandardButton.Ok)
+        
+        else:
+            # Tek silme (aktif gider veya seçili 1 satır)
+            if not self.current_gider_id:
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", "Lütfen silmek için bir gider seçin.", QMessageBox.StandardButton.Ok)
+                return
             
-            if deleted_count > 0:
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"{deleted_count} genel gider kaydı başarıyla silindi.", QMessageBox.StandardButton.Ok)
+            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
+                                            "Bu genel gider kaydını silmek istediğinizden emin misiniz?", 
+                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.No:
+                return
+            
+            success = self.backend.handle_genel_gider_operation('delete', record_id=self.current_gider_id)
+            
+            if success:
                 self.clear_fields()
                 self.refresh_table()
             else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", 
-                                      "Gider kayıtları silinemedi.", QMessageBox.StandardButton.Ok)
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", 
-                                  f"Silme işlemi sırasında beklenmedik bir hata oluştu: {str(e)}", QMessageBox.StandardButton.Ok)
+                show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Gider kaydı silinemedi.", QMessageBox.StandardButton.Ok)
 
     def export_to_excel(self):
         """Genel gider listesini Excel'e aktarır"""
@@ -1614,7 +1663,6 @@ class GenelGiderTab(QWidget):
         self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
         self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Mavi
         self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
-        self.delete_selected_button.setStyleSheet("padding: 5px; background-color: #dc3545; color: white; border-radius: 5px;")
         
         # Input field styling
         for field in [self.miktar_input, self.tur_input, self.tarih_input]:
@@ -2224,7 +2272,7 @@ class InvoicesPage(QWidget):
         header_layout.addStretch()
         
         self.qr_button = QPushButton("📷 Otomatik Fatura Ekle (QR)")
-        self.qr_button.setToolTip("Bir klasördeki tüm faturaları QR kodlarını okuyarak otomatik olarak sisteme ekler.")
+        self.qr_button.setToolTip("QR kodlarını okuyarak faturaları otomatik sisteme ekler.\n⭐ SATIS faturaları GELİR'e, ALIS faturaları GİDER'e otomatik eklenir!")
         self.qr_button.clicked.connect(self.start_qr_processing_flow)
         header_layout.addWidget(self.qr_button)
         
@@ -2286,19 +2334,87 @@ class InvoicesPage(QWidget):
     def refresh_data(self):
         self.outgoing_tab.refresh_table()
         self.incoming_tab.refresh_table()
+    
+    def _move_failed_files(self, source_folder, failed_file_paths):
+        """Başarısız dosyaları 'QR_Basarisiz' klasörüne taşı"""
+        import shutil
+        
+        try:
+            # Hedef klasör oluştur
+            failed_folder = os.path.join(source_folder, "QR_Basarisiz")
+            os.makedirs(failed_folder, exist_ok=True)
+            
+            # Dosyaları taşı
+            moved_count = 0
+            for file_path in failed_file_paths:
+                if os.path.exists(file_path):
+                    try:
+                        file_name = os.path.basename(file_path)
+                        dest_path = os.path.join(failed_folder, file_name)
+                        
+                        # Aynı isimde dosya varsa, numara ekle
+                        if os.path.exists(dest_path):
+                            base, ext = os.path.splitext(file_name)
+                            counter = 1
+                            while os.path.exists(dest_path):
+                                dest_path = os.path.join(failed_folder, f"{base}_{counter}{ext}")
+                                counter += 1
+                        
+                        shutil.move(file_path, dest_path)
+                        moved_count += 1
+                        logging.info(f"📦 Taşındı: {file_name} -> QR_Basarisiz/")
+                    except Exception as e:
+                        logging.warning(f"⚠️ Dosya taşıma hatası ({os.path.basename(file_path)}): {e}")
+            
+            if moved_count > 0:
+                logging.info(f"✅ {moved_count} başarısız dosya taşındı: {failed_folder}")
+                return failed_folder
+            
+        except Exception as e:
+            logging.error(f"❌ Başarısız dosya klasörü oluşturma hatası: {e}")
+        
+        return None
 
     def start_qr_processing_flow(self):
         """GELİŞTİRİLMİŞ QR sistemi - QR'dan fatura ekleme akışını yönetir."""
         if not self.backend:
             show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "Backend modülü bulunamadı.", QMessageBox.StandardButton.Ok)
             return
+        
+        # ⭐ ÖNCE FATURA TİPİNİ SOR ⭐
+        reply = show_styled_message_box(
+            self, 
+            QMessageBox.Icon.Question, 
+            "Fatura Tipi Seçimi", 
+            "Bu faturalar hangi kategoriye eklensin?\n\n"
+            "💰 GELİR: Satış faturaları\n"
+            "💸 GİDER: Alış faturaları\n\n"
+            "Lütfen seçim yapın:",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            yes_text="💰 GELİR",
+            no_text="💸 GİDER"
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            invoice_type = 'outgoing'  # Gelir
+            type_text = "GELİR (Satış)"
+            type_icon = "💰"
+        else:
+            invoice_type = 'incoming'  # Gider
+            type_text = "GİDER (Alış)"
+            type_icon = "💸"
+        
+        logging.info(f"📋 Kullanıcı seçimi: {type_text}")
 
         # QR modülünü test et
         try:
             logging.info("🔧 QR modülü test ediliyor...")
             
-            # Backend'deki QR processor'ü kullan
-            self.backend.qr_processor._init_qr_tools()
+            # Yeni entegrasyon yapısı - QR entegratörü lazy loading ile başlatılacak
+            # QR kütüphanelerini test etmek için integrator'ü çağır
+            qr_integrator = self.backend.qr_integrator
+            # QR processor'ü başlat
+            qr_integrator.qr_processor._init_qr_tools()
             logging.info("✅ QR modülü hazır.")
             
         except ImportError as e:
@@ -2374,15 +2490,6 @@ class InvoicesPage(QWidget):
         QApplication.processEvents()
 
         try:
-            # Fatura türü seçimi için pop-up
-            invoice_type_dialog = InvoiceTypeDialog(self)
-            if invoice_type_dialog.exec() != invoice_type_dialog.DialogCode.Accepted:
-                progress.close()
-                return
-            
-            selected_type = invoice_type_dialog.get_selected_type()
-            logging.info(f"📋 Seçilen fatura türü: {selected_type}")
-            
             # QR işleme - backend metodunu kullan
             def status_update(message, progress_val=None):
                 if progress.wasCanceled():
@@ -2446,31 +2553,56 @@ class InvoicesPage(QWidget):
             QApplication.processEvents()
 
             try:
-                # Seçilen fatura türünü kullan
-                result = self.backend.add_invoices_from_qr_data(qr_results, selected_type)
+                # ⭐ MANUEL TİP SEÇİMİ - Kullanıcının seçtiği tipi kullan ⭐
+                result = self.backend.add_invoices_from_qr_data(qr_results, invoice_type)
                 
                 progress.close()
                 
                 if result and result.get('success'):
                     added = result.get('added', 0)
                     failed = result.get('failed', 0)
+                    skipped_duplicates = result.get('skipped_duplicates', 0)
+                    failed_files = result.get('failed_files', [])
+                    
+                    type_icon = "💰" if invoice_type == 'outgoing' else "💸"
+                    type_name = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
                     
                     message = f"✅ QR işleme tamamlandı!\n\n"
                     message += f"📊 Sonuçlar:\n"
-                    message += f"• Başarılı fatura eklendi: {added}\n"
-                    message += f"• Başarısız: {failed}\n"
-                    message += f"• Toplam işlenen: {total_files}\n\n"
+                    message += f"• Toplam işlenen: {total_files}\n"
+                    message += f"• {type_icon} {type_name} olarak eklendi: {added}\n"
+                    
+                    if skipped_duplicates > 0:
+                        message += f"• ⏭️  Atlanan (Duplicate): {skipped_duplicates}\n"
+                    
+                    message += f"• Başarısız: {failed}\n\n"
+                    
+                    # Başarısız dosyaları ayrı klasöre taşı
+                    if failed_files:
+                        failed_folder = self._move_failed_files(folder_path, failed_files)
+                        if failed_folder:
+                            message += f"📁 Başarısız dosyalar taşındı:\n{failed_folder}\n\n"
                     
                     if result.get('processing_details'):
                         message += f"📋 Detaylar:\n"
-                        for detail in result['processing_details'][:5]:  # İlk 5 detayı göster
-                            status_icon = "✅" if detail.get('status') == 'BAŞARILI' else "❌"
-                            message += f"{status_icon} {detail.get('file', 'Bilinmeyen')}: {detail.get('status', 'Durum bilinmiyor')}\n"
+                        for detail in result['processing_details'][:8]:  # İlk 8 detayı göster
+                            status = detail.get('status', '')
+                            if status == 'BAŞARILI':
+                                status_icon = "✅"
+                                detail_type = f" ({type_name})"
+                            elif status.startswith('ATLANDI'):
+                                status_icon = "⏭️"
+                                detail_type = f" (Fatura No: {detail.get('fatura_no', 'N/A')})"
+                            else:
+                                status_icon = "❌"
+                                detail_type = ""
+                            
+                            message += f"{status_icon} {detail.get('file', 'Bilinmeyen')}{detail_type}\n"
                         
-                        if len(result['processing_details']) > 5:
-                            message += f"... ve {len(result['processing_details']) - 5} dosya daha\n"
+                        if len(result['processing_details']) > 8:
+                            message += f"... ve {len(result['processing_details']) - 8} dosya daha\n"
                     
-                    message += f"\n💡 Faturalar '{selected_type}' kategorisine eklendi."
+                    message += f"\n🎯 Tüm faturalar {type_icon} {type_name} olarak eklendi!"
                     
                     show_styled_message_box(self, QMessageBox.Icon.Information, "QR İşleme Başarılı", message, QMessageBox.StandardButton.Ok)
                     

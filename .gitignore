@@ -47,6 +47,6 @@ build/
 *.toc
 *.pyz
 *.pkg
-
+*.pdf
 QR/
 qr/

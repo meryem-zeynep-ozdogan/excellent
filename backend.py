@@ -8,274 +8,20 @@ import time
 import json
 import re
 import warnings
-# import fitz  # PyMuPDF  <-- HATA VEREN SATIR BURADAN TAŞINDI
-# import cv2             <-- HATA VEREN SATIR BURADAN TAŞINDI
+
 import numpy as np
-# from pyzbar import pyzbar <-- HATA VEREN SATIR BURADAN TAŞINDI
+
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 # Logging yapılandırması
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# QR işleme için uyarıları kapat
-warnings.filterwarnings("ignore")
-# cv2.setNumThreads(4) <-- Hata verdiği için bu da kapatıldı
-# cv2.setUseOptimized(True) <-- Hata verdiği için bu da kapatıldı
 
 
-class FastQRProcessor:
-    """HIZLI VE MİNİMAL QR İşlemci"""
-    
-    def __init__(self):
-        # self.opencv_detector = cv2.QRCodeDetector() <-- Hata verdiği için bu da taşındı
-        pass # Başlangıçta QR ile ilgili hiçbir şey yükleme
-    
-    def _init_qr_tools(self):
-        """QR araçlarını sadece gerektiğinde yükler."""
-        global cv2, pyzbar
-        import cv2
-        from pyzbar import pyzbar
-        cv2.setNumThreads(4)
-        cv2.setUseOptimized(True)
-        self.opencv_detector = cv2.QRCodeDetector()
-    
-    def clean_json(self, qr_text):
-        """Geliştirilmiş JSON temizleme ve ayrıştırma"""
-        if not qr_text or len(qr_text) < 10:
-            return {}
-        
-        cleaned = qr_text.strip()
-        
-        # Yaygın JSON hatalarını düzelt
-        cleaned = re.sub(r',(\s*\n?\s*[}\]])', r'\1', cleaned)  # Sonda kalan virgülleri sil
-        cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned)  # Kontrol karakterlerini sil
-        cleaned = re.sub(r'\\x[0-9a-fA-F]{2}', '', cleaned)  # Hex escape karakterlerini sil
-        
-        # JSON parse dene
-        try:
-            parsed = json.loads(cleaned)
-            logging.info(f"  ✅ JSON başarıyla ayrıştırıldı. Anahtar sayısı: {len(parsed) if isinstance(parsed, dict) else 'Liste'}")
-            return parsed
-        except json.JSONDecodeError as e:
-            logging.warning(f"  ⚠️ JSON Parse Hatası (1. deneme): {e}")
-            
-            # İkinci deneme: Tek tırnak -> Çift tırnak dönüşümü
-            try:
-                cleaned_v2 = cleaned.replace("'", '"')
-                parsed = json.loads(cleaned_v2)
-                logging.info(f"  ✅ JSON 2. denemede ayrıştırıldı (tek tırnak dönüşümü).")
-                return parsed
-            except:
-                pass
-            
-            # Üçüncü deneme: Key-value çiftlerini manuel parse et
-            try:
-                kv_pairs = {}
-                # Basit key:value eşleşmelerini bul
-                pattern = r'["\']?(\w+)["\']?\s*:\s*["\']?([^,"}\]]+)["\']?'
-                matches = re.findall(pattern, cleaned)
-                for key, value in matches:
-                    kv_pairs[key] = value.strip().strip('"').strip("'")
-                
-                if kv_pairs:
-                    logging.info(f"  ⚠️ JSON manuel olarak ayrıştırıldı. {len(kv_pairs)} anahtar bulundu.")
-                    return kv_pairs
-            except Exception as e2:
-                logging.error(f"  ❌ Manuel parse de başarısız: {e2}")
-            
-            # Hiçbiri işe yaramadıysa ham veriyi döndür
-            logging.error(f"  ❌ JSON TEMİZLEME BAŞARISIZ - Ham veri: {cleaned[:100]}...")
-            return {"raw_data": cleaned}
-    
-    def scan_qr_fast(self, img):
-        """
-        SAĞLAMLAŞTIRILMIŞ QR tarama.
-        """
-        # Araçları yükle
-        if not hasattr(self, 'opencv_detector'):
-            self._init_qr_tools()
-            
-        h, w = img.shape[:2]
 
-        # 1. Sağ üst bölge önce (E-faturaların %70'i burada)
-        top_right = img[0:int(h*0.4), int(w*0.6):w]
-        if top_right.size > 0:
-            try:
-                codes = pyzbar.decode(top_right)
-                if codes:
-                    data = codes[0].data
-                    if isinstance(data, bytes):
-                        data = data.decode('utf-8', errors='ignore')
-                    if len(data) > 10:
-                        return data
-            except Exception as e:
-                logging.warning(f"   HATA (pyzbar-bölge): {e}")
-
-        # 2. Tam resim pyzbar (Renkli hali)
-        try:
-            codes = pyzbar.decode(img)
-            if codes:
-                data = codes[0].data
-                if isinstance(data, bytes):
-                    data = data.decode('utf-8', errors='ignore')
-                if len(data) > 10:
-                    return data
-        except Exception as e:
-            logging.warning(f"   HATA (pyzbar-tam): {e}")
-
-        # --- Gelişmiş Ön İşleme Adımları ---
-        gray = None
-        try:
-            if len(img.shape) == 3:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = img.copy() # Zaten gri ise kopyala
-            
-            codes = pyzbar.decode(gray)
-            if codes:
-                data = codes[0].data
-                if isinstance(data, bytes):
-                    data = data.decode('utf-8', errors='ignore')
-                if len(data) > 10:
-                    return data
-        except Exception as e:
-            logging.warning(f"   HATA (pyzbar-gri): {e}")
-            try:
-                data, _, _ = self.opencv_detector.detectAndDecode(img) # Orijinal resimle dene
-                if data and len(data) > 10:
-                    return data
-            except Exception:
-                pass 
-            return None
-
-        if gray is None: # Griye çevirme başarısız olduysa devam etme
-            return None
-
-        # 4. YENİ ADIM: Adaptif Eşikleme
-        try:
-            blur = cv2.GaussianBlur(gray, (5, 5), 0)
-            adapt_thresh = cv2.adaptiveThreshold(blur, 255, 
-                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                                cv2.THRESH_BINARY, 
-                                                11, 2)
-            
-            codes = pyzbar.decode(adapt_thresh)
-            if codes:
-                data = codes[0].data
-                if isinstance(data, bytes):
-                    data = data.decode('utf-8', errors='ignore')
-                if len(data) > 10:
-                    return data
-        except Exception as e:
-            logging.warning(f"   HATA (pyzbar-adaptif): {e}")
-
-        # 5. YENİ ADIM: Otsu's Eşikleme
-        try:
-            _, otsu_thresh = cv2.threshold(gray, 0, 255, 
-                                            cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            
-            codes = pyzbar.decode(otsu_thresh)
-            if codes:
-                data = codes[0].data
-                if isinstance(data, bytes):
-                    data = data.decode('utf-8', errors='ignore')
-                if len(data) > 10:
-                    return data
-        except Exception as e:
-            logging.warning(f"   HATA (pyzbar-otsu): {e}")
-
-        # 6. OpenCV son deneme
-        try:
-            data, _, _ = self.opencv_detector.detectAndDecode(gray)
-            if data and len(data) > 10:
-                return data
-        except Exception as e:
-            logging.warning(f"   HATA (OpenCV): {e}")
-
-        return None
-    
-    def process_pdf(self, pdf_path):
-        """HIZLI PDF işleme"""
-        import fitz  # PyMuPDF <-- GEREKTİĞİNDE BURADA IMPORT EDİLECEK
-        
-        try:
-            doc = fitz.open(pdf_path)
-            page = doc.load_page(0)
-            # DPI'yı artırarak daha yüksek çözünürlüklü resim elde et
-            zoom = 300 / 72.0  # 300 DPI
-            mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
-            
-            img_data = pix.tobytes("png")
-            nparr = np.frombuffer(img_data, np.uint8)
-            
-            if not 'cv2' in globals(): # cv2 yüklenmemişse yükle
-                 self._init_qr_tools()
-                 
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            doc.close()
-            
-            if img is not None:
-                return self.scan_qr_fast(img)
-            
-        except Exception as e:
-            logging.error(f"  ❌ HATA (PDF): {os.path.basename(pdf_path)} işlenemedi. Sebep: {e}")
-        
-        return None
-    
-    def process_image(self, image_path):
-        """HIZLI resim işleme"""
-        try:
-            if not 'cv2' in globals(): # cv2 yüklenmemişse yükle
-                 self._init_qr_tools()
-                 
-            img = cv2.imread(image_path)
-            if img is not None:
-                return self.scan_qr_fast(img)
-            else:
-                logging.warning(f"  ❌ HATA (Resim): {os.path.basename(image_path)} dosyası okunamadı.")
-        except Exception as e:
-            logging.error(f"  ❌ HATA (Resim): {os.path.basename(image_path)} işlenemedi. Sebep: {e}")
-        
-        return None
-    
-    def process_file(self, file_path):
-        """Tek dosya işleme"""
-        try:
-            file_basename = os.path.basename(file_path)
-            
-            if file_path.lower().endswith('.pdf'):
-                qr_data = self.process_pdf(file_path)
-            else:
-                qr_data = self.process_image(file_path)
-            
-            if qr_data:
-                json_data = self.clean_json(qr_data)
-                if json_data:
-                    return {
-                        'dosya_adi': file_basename,
-                        'durum': 'BAŞARILI',
-                        'json_data': json_data
-                    }
-            
-            return {
-                'dosya_adi': file_basename,
-                'durum': 'HATALI (QR Bulunamadı)',
-                'json_data': {}
-            }
-            
-        except Exception as e:
-            logging.error(f"  ❌ KRİTİK HATA (process_file): {os.path.basename(file_path)}. Sebep: {e}")
-            return {
-                'dosya_adi': os.path.basename(file_path),
-                'durum': 'KRİTİK HATA',
-                'json_data': {}
-            }
 
 class Database:
     """6 Ayrı Veritabanı ile Çalışan Sınıf - Database Dizininde."""
@@ -800,11 +546,22 @@ class Backend(QObject):
         else:
             self.settings['kurumlar_vergisi_yuzdesi'] = 22.0
         self.exchange_rates = {}
-        self.qr_processor = FastQRProcessor() # QR işlemciyi oluştur
+        
+        # QR Entegrasyon - Lazy loading (gerektiğinde yüklenecek)
+        self._qr_integrator = None
         
         # Kurları başlangıçta bir kez çek
         self.update_exchange_rates()
 
+    @property
+    def qr_integrator(self):
+        """QR entegratörünü lazy loading ile başlatır - OPTİMİZE EDİLMİŞ MODÜL."""
+        if self._qr_integrator is None:
+            from qr_optimized import QRInvoiceIntegrator
+            self._qr_integrator = QRInvoiceIntegrator(self)
+            logging.info("✅ QR Entegratörü başlatıldı (optimize edilmiş)")
+        return self._qr_integrator
+    
     def start_timers(self):
         """
         Uygulama döngüsü başladıktan sonra çağrılacak zamanlayıcıları başlatır.
@@ -1007,6 +764,47 @@ class Backend(QObject):
         # Geçersiz tarih ise bugünün tarihini döndür
         return datetime.now().strftime("%d.%m.%Y")
 
+    def _to_float(self, value):
+        """Bir değeri güvenli bir şekilde float'a çevirir."""
+        if value is None or value == '': 
+            return 0.0
+        
+        try:
+            str_value = str(value).strip()
+            
+            if not str_value or str_value.lower() in ['none', 'null', 'n/a']:
+                return 0.0
+            
+            # Sadece rakam, nokta, virgül ve işaretleri bırak
+            str_value = re.sub(r'[^\d.,\-+]', '', str_value)
+            
+            # Hem virgül hem nokta varsa format belirle
+            if ',' in str_value and '.' in str_value:
+                last_comma = str_value.rfind(',')
+                last_dot = str_value.rfind('.')
+                
+                if last_comma > last_dot:
+                    # Avrupa formatı: 1.234,56 -> 1234.56
+                    str_value = str_value.replace('.', '').replace(',', '.')
+                else:
+                    # ABD formatı: 1,234.56 -> 1234.56
+                    str_value = str_value.replace(',', '')
+            elif ',' in str_value:
+                # Sadece virgül var
+                parts = str_value.split(',')
+                if len(parts) == 2 and len(parts[1]) <= 2:
+                    # Ondalık ayırıcı: 123,45 -> 123.45
+                    str_value = str_value.replace(',', '.')
+                else:
+                    # Binlik ayırıcı: 1,234 -> 1234
+                    str_value = str_value.replace(',', '')
+            
+            return float(str_value)
+            
+        except (ValueError, TypeError, AttributeError) as e:
+            logging.warning(f"Float dönüşüm hatası: '{value}' -> Hata: {e}")
+            return 0.0
+
     def _process_invoice_data(self, invoice_data):
         """
         Fatura verilerini işler, doğrular ve KDV/kur hesaplamalarını yapar.
@@ -1100,17 +898,27 @@ class Backend(QObject):
         if operation == 'add':
             processed_data = self._process_invoice_data(data)
             if not processed_data:
+                logging.error(f"❌ İşlenmiş veri boş! Ham veri: {data}")
                 return False
+            
+            logging.info(f"🔹 Fatura ekleniyor -> Tip: {invoice_type}, Firma: {processed_data.get('firma', 'N/A')[:30]}")
             
             if invoice_type == 'outgoing':
                 result = self.db.add_gelir_invoice(processed_data)
                 if result:
                     self._add_history_record('EKLEME', 'gelir', processed_data)
+                    logging.info(f"✅ GELİR faturası eklendi (ID: {result})")
+                else:
+                    logging.error(f"❌ GELİR faturası eklenemedi!")
             elif invoice_type == 'incoming':
                 result = self.db.add_gider_invoice(processed_data)
                 if result:
                     self._add_history_record('EKLEME', 'gider', processed_data)
+                    logging.info(f"✅ GİDER faturası eklendi (ID: {result})")
+                else:
+                    logging.error(f"❌ GİDER faturası eklenemedi!")
             else:
+                logging.error(f"❌ Geçersiz invoice_type: {invoice_type}")
                 return False
                 
             if result:
@@ -1609,329 +1417,53 @@ class Backend(QObject):
         # Veri güncellendiği sinyalini yay
         self.data_updated.emit()
         return True
-
-    # --- QR KOD İŞLEME VE ENTEGRASYON ---
-    def process_qr_files_in_folder(self, folder_path, max_workers=6):
+    
+    # === QR İŞLEMLERİ - ENTEGRE SİSTEM ===
+    
+    def process_qr_files_in_folder(self, folder_path, max_workers=8, status_callback=None):
         """
-        Bir klasördeki dosyaları paralel olarak işler ve QR kod verilerini döndürür.
+        QR dosyalarını işler - qrayiklanmis.py modülüne yönlendirir.
+        
+        Args:
+            folder_path: İşlenecek dosyaların klasör yolu
+            max_workers: Paralel işlem sayısı
+            status_callback: İlerleme bildirimi için callback (opsiyonel)
+            
+        Returns:
+            list: QR işleme sonuçları
         """
-        # HATA VEREN IMPORTLAR SADECE BU FONKSİYON ÇAĞRILINCA YÜKLENECEK
-        global fitz, cv2, pyzbar
-        try:
-            import fitz  # PyMuPDF
-            import cv2
-            from pyzbar import pyzbar
-            logging.info("QR kütüphaneleri başarıyla yüklendi.")
-        except ImportError as e:
-            logging.error(f"❌ KRİTİK HATA: QR kütüphaneleri yüklenemedi: {e}")
-            logging.error("Lütfen 'PyMuPDF', 'opencv-python-headless' ve 'pyzbar' kütüphanelerinin kurulu olduğundan emin olun.")
-            logging.error("Eksik .dll hatası alıyorsanız (örn: libiconv.dll), manuel .dll yüklemesi gerekebilir.")
-            self.status_updated.emit("QR Kütüphaneleri Eksik!", 10000)
-            return None # Fonksiyonu durdur
-
-        logging.info(f"🚀 QR Klasör İşleme Başlatılıyor: {folder_path}")
+        # Callback wrapper - hem sinyal hem de frontend callback'i çağır
+        def combined_callback(msg, duration):
+            # Backend sinyalini yay
+            self.status_updated.emit(msg, duration)
+            # Frontend callback varsa çağır
+            if status_callback:
+                return status_callback(msg, duration)
+            return True
         
-        file_paths = []
-        allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.pdf'}
-        try:
-            for file_name in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file_name)
-                if os.path.isfile(file_path) and os.path.splitext(file_name)[1].lower() in allowed_extensions:
-                    file_paths.append(file_path)
-        except Exception as e:
-            logging.error(f"❌ Klasör okunurken hata oluştu: {e}")
-            return None
-        
-        if not file_paths:
-            logging.warning("❌ Klasörde işlenecek dosya bulunamadı.")
-            return []
-
-        logging.info(f"📁 Bulunan dosya sayısı: {len(file_paths)}, Thread sayısı: {max_workers}")
-        
-        results = []
-        start_time = time.time()
-        
-        # QR işlemciyi ilk kullanımda başlat
-        if not hasattr(self.qr_processor, 'opencv_detector'):
-            self.qr_processor._init_qr_tools()
-            
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {executor.submit(self.qr_processor.process_file, path): path for path in file_paths}
-            
-            for i, future in enumerate(as_completed(future_to_path), 1):
-                try:
-                    result = future.result(timeout=45) # Timeout artırıldı
-                    results.append(result)
-                    if i % 5 == 0 or i == len(file_paths):
-                        elapsed = time.time() - start_time
-                        rate = i / elapsed if elapsed > 0 else 0
-                        logging.info(f"📈 İlerleme: {i}/{len(file_paths)} | Hız: {rate:.1f} dosya/s")
-                except Exception as e:
-                    file_path = future_to_path[future]
-                    logging.error(f"❌ '{os.path.basename(file_path)}' işlenirken ciddi hata: {e}")
-                    results.append({'dosya_adi': os.path.basename(file_path), 'durum': 'KRİTİK HATA', 'json_data': {}})
-        
-        logging.info(f"🏁 QR İşleme Tamamlandı. Toplam süre: {time.time() - start_time:.2f}s")
-        return results
-
+        # QR entegratörüne callback'i geçir
+        return self.qr_integrator.process_qr_files_in_folder(
+            folder_path, 
+            max_workers, 
+            status_callback=combined_callback if status_callback else None
+        )
+    
     def add_invoices_from_qr_data(self, qr_results, invoice_type):
         """
-        İşlenmiş QR sonuç listesini alır ve fatura olarak veritabanına ekler - 3 ayrı veritabanı ile.
+        QR sonuçlarını veritabanına ekler - MANUEL TİP SEÇİMİ
+        
+        Args:
+            qr_results: QR işleme sonuçları
+            invoice_type: 'outgoing' (gelir) veya 'incoming' (gider)
+            
+        Returns:
+            dict: {
+                'success': bool,
+                'added': int,
+                'failed': int,
+                'total': int,
+                'invoice_type': str,
+                'processing_details': list
+            }
         """
-        if not qr_results:
-            logging.warning("QR sonuçları boş!")
-            return 0, 0
-
-        successful_imports = 0
-        failed_imports = 0
-        
-        logging.info(f"🔄 {len(qr_results)} adet QR sonucu işlenecek ({invoice_type} tipi)")
-        
-        for i, result in enumerate(qr_results, 1):
-            dosya_adi = result.get('dosya_adi', 'Bilinmeyen')
-            if result.get('durum') == 'BAŞARILI':
-                # QR verisini fatura alanlarına haritala
-                json_data = result.get('json_data', {})
-                logging.info(f"\n   📄 [{i}/{len(qr_results)}] {dosya_adi}")
-                logging.info(f"   🔑 JSON Anahtarları: {list(json_data.keys())}")
-                
-                # Önemli alanları logla
-                if 'payableAmount' in json_data or 'totalAmount' in json_data:
-                    logging.info(f"   💰 Tutar alanları bulundu: {[(k, v) for k, v in json_data.items() if 'amount' in k.lower() or 'tutar' in k.lower() or 'matrah' in k.lower()]}")
-                
-                parsed_data = self._parse_qr_to_invoice_fields(json_data)
-                
-                # Parse sonuçlarını detaylı logla
-                logging.info(f"   ✏️ Parse Sonucu:")
-                logging.info(f"     - Firma: {parsed_data.get('firma', 'YOK')}")
-                logging.info(f"     - Malzeme: {parsed_data.get('malzeme', 'YOK')}")
-                logging.info(f"     - Toplam Tutar: {parsed_data.get('toplam_tutar', 0)} {parsed_data.get('birim', 'TL')}")
-                logging.info(f"     - KDV %: {parsed_data.get('kdv_yuzdesi', 0)}")
-                logging.info(f"     - KDV Tutarı: {parsed_data.get('kdv_tutari', 0)} TL")
-                logging.info(f"     - KDV Dahil: {parsed_data.get('kdv_dahil', False)}")
-                
-                # Veritabanına ekle
-                if self.handle_invoice_operation('add', invoice_type, data=parsed_data):
-                    successful_imports += 1
-                    logging.info(f"   ✅ Veritabanına başarıyla eklendi\n")
-                else:
-                    failed_imports += 1
-                    logging.error(f"   ❌ Veritabanına EKLENEMEDİ!\n")
-            else:
-                failed_imports += 1
-                logging.warning(f"   ⚠️ [{i}/{len(qr_results)}] {dosya_adi} - QR Okunamadı: {result.get('durum', 'Bilinmiyor')}\n")
-        
-        logging.info(f"\n{'='*50}")
-        logging.info(f"✅ İşlem Tamamlandı: {successful_imports} başarılı, {failed_imports} başarısız")
-        logging.info(f"{'='*50}\n")
-        
-        self.data_updated.emit() # Toplu ekleme sonrası sinyal gönder
-        return successful_imports, failed_imports
-
-    def _parse_qr_to_invoice_fields(self, qr_json):
-        """
-        Tek bir QR JSON verisini, handle_invoice_operation'ın beklediği
-        sözlük formatına dönüştürür.
-        """
-        if not qr_json: return {}
-
-        logging.info(f"   🔍 QR JSON Anahtarları: {list(qr_json.keys())}")
-        
-        key_map = {
-            'fatura_no': ['faturaNo', 'invoiceNumber', 'faturanumarasi', 'belgeNo', 'documentNo', 'seriNo', 'faturaid', 'documentnumber'],
-            'irsaliye_no': ['invoiceId', 'irsaliyeNo', 'belgeno', 'uuid', 'id', 'no', 'belgeNo', 'seriNo', 'ettn', 'irsaliyenumarasi'],
-            'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date', 'invoicedate', 'faturatarihi'],
-            'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company', 'companyName', 'firmaUnvan', 'aliciUnvan', 'buyerName', 'saticiadi', 'aliciadi', 'satici', 'sellername', 'buyername'],
-            'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme', 'hizmet', 'urun', 'product', 'service', 'senaryo'],
-            'miktar': ['quantity', 'miktar', 'adet', 'amount', 'qty', 'quantityvalue', 'lineitem', 'kalem'],
-            'toplam_tutar': ['payableAmount', 'odenecek', 'vergidahil', 'totalAmount', 'toplamTutar', 'total', 'amount', 'tutar', 'geneltoplam', 'vergidahiltoplam', 'payableamount', 'totalamount'],
-            'matrah': ['taxableAmount', 'matrah', 'netAmount', 'malhizmettoplam', 'kdvmatrah', 'kdvmatrah(20)', 'kdvmatrah(18)', 'kdvmatrah(10)', 'kdvmatrah(8)', 'kdvmatrah(1)', 'taxableamount', 'netamount'],
-            'kdv_tutari': ['taxAmount', 'hesaplanankdv', 'kdv', 'kdvtoplam', 'hesaplanan kdv', 'hesaplanankdv(20)', 'hesaplanankdv(18)', 'taxamount', 'kdvtutari'],
-            'kdv_yuzdesi': ['taxRate', 'kdvOrani', 'vatRate', 'kdvorani', 'taxrate', 'vatrate'],
-            'birim': ['currency', 'parabirimi', 'currencyCode', 'paraBirimi', 'currencycode']
-        }
-
-        parsed = {}
-
-        def get_value(keys):
-            """Büyük/küçük harf duyarsız arama yapar"""
-            for key in keys:
-                if key in qr_json and qr_json[key]:
-                    return qr_json[key]
-            
-            qr_json_lower = {k.lower(): v for k, v in qr_json.items()}
-            for key in keys:
-                key_lower = key.lower()
-                if key_lower in qr_json_lower and qr_json_lower[key_lower]:
-                    return qr_json_lower[key_lower]
-            
-            return None
-
-        parsed = {}
-        parsed['fatura_no'] = str(get_value(key_map['fatura_no']) or '')
-        parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
-        # Tarih işleme - QR'dan gelen tarihi doğru formatlayalım
-        qr_tarih = get_value(key_map['tarih'])
-        if qr_tarih:
-            # QR'dan gelen tarihi format_date fonksiyonuyla düzeltelim
-            parsed['tarih'] = self.format_date(str(qr_tarih))
-        else:
-            parsed['tarih'] = datetime.now().strftime("%d.%m.%Y")
-        
-        firma_adi = get_value(key_map['firma'])
-        if not firma_adi or (isinstance(firma_adi, str) and firma_adi.isdigit()):
-            vkn = get_value(['vkntckn', 'vkn'])
-            avkn = get_value(['avkntckn', 'avkn'])
-            satici = get_value(['satici', 'saticiadi', 'sellerName'])
-            
-            if satici and not (isinstance(satici, str) and satici.isdigit()):
-                firma_adi = satici
-            elif vkn:
-                firma_adi = f"VKN: {vkn}"
-            elif avkn:
-                firma_adi = f"Alıcı VKN: {avkn}"
-            else:
-                firma_adi = 'Bilinmeyen Firma'
-        
-        parsed['firma'] = str(firma_adi)
-        
-        malzeme = get_value(key_map['malzeme'])
-        if malzeme:
-            malzeme_str = str(malzeme).upper()
-            
-            if 'EARSIV' in malzeme_str or 'E-ARSIV' in malzeme_str:
-                malzeme_str = 'E-Arşiv Fatura'
-            elif 'TICARIFATURA' in malzeme_str or 'TICARI' in malzeme_str:
-                malzeme_str = 'Ticari Fatura'
-            elif 'TEMEL' in malzeme_str:
-                malzeme_str = 'Temel Fatura'
-            elif 'ISTISNA' in malzeme_str:
-                malzeme_str = 'İstisna Faturası'
-            elif malzeme_str in ['SATIS', 'SATŞ', 'SALE']:
-                malzeme_str = 'Satış Faturası'
-            elif malzeme_str in ['ALIS', 'ALIŞ', 'PURCHASE']:
-                malzeme_str = 'Alış Faturası'
-            elif malzeme_str == 'SARJANLIK':
-                malzeme_str = 'Şarj/Anlık Satış'
-            
-            parsed['malzeme'] = malzeme_str
-        else:
-            parsed['malzeme'] = 'QR Kodlu E-Fatura'
-        
-        miktar_value = get_value(key_map['miktar'])
-        if miktar_value:
-            try:
-                miktar_str = str(miktar_value).strip()
-                miktar_clean = re.sub(r'[^\d.,]', '', miktar_str)
-                if miktar_clean:
-                    parsed['miktar'] = miktar_clean.replace(',', '.')
-                else:
-                    parsed['miktar'] = '1'
-            except:
-                parsed['miktar'] = '1'
-        else:
-            parsed['miktar'] = '1'
-        
-        birim = str(get_value(key_map['birim']) or 'TRY').upper()
-        if birim in ['TRY', 'TRL', 'TÜRK LİRASI', 'TURK LIRASI']:
-            birim = 'TL'
-        parsed['birim'] = birim
-        
-        logging.info(f"   📝 Temel Alanlar - Miktar: {parsed['miktar']}, Birim: {parsed['birim']}, Malzeme: {parsed['malzeme'][:30]}")
-
-        toplam_tutar = self._to_float(get_value(key_map['toplam_tutar']))
-        matrah = self._to_float(get_value(key_map['matrah']))
-        kdv_tutari = self._to_float(get_value(key_map['kdv_tutari']))
-        kdv_yuzdesi = self._to_float(get_value(key_map['kdv_yuzdesi']))
-
-        logging.info(f"   💰 QR Tutar Bilgileri - Toplam: {toplam_tutar}, Matrah: {matrah}, KDV Tutarı: {kdv_tutari}, KDV%: {kdv_yuzdesi}")
-
-        if kdv_yuzdesi > 0:
-            parsed['kdv_yuzdesi'] = kdv_yuzdesi
-        elif matrah > 0 and kdv_tutari > 0:
-            parsed['kdv_yuzdesi'] = round((kdv_tutari / matrah) * 100, 2)
-        else:
-            parsed['kdv_yuzdesi'] = self.settings.get('kdv_yuzdesi', 20.0)
-
-        if toplam_tutar > 0 and matrah > 0:
-            parsed['toplam_tutar'] = matrah 
-            parsed['kdv_dahil'] = False
-            if kdv_tutari > 0:
-                parsed['kdv_tutari'] = kdv_tutari
-            else:
-                parsed['kdv_tutari'] = matrah * (parsed['kdv_yuzdesi'] / 100)
-            
-            logging.info(f"   ✅ Matrah ve Toplam var - Matrah kullanılıyor: {matrah} TL, KDV: {parsed['kdv_tutari']} TL")
-            
-        elif toplam_tutar > 0:
-            parsed['toplam_tutar'] = toplam_tutar
-            
-            if kdv_tutari > 0:
-                parsed['kdv_dahil'] = True
-                parsed['kdv_tutari'] = kdv_tutari
-                matrah_calculated = toplam_tutar - kdv_tutari
-                logging.info(f"   ✅ Toplam ve KDV Tutarı var - KDV Dahil: {toplam_tutar} TL, KDV: {kdv_tutari} TL, Hesaplanan Matrah: {matrah_calculated} TL")
-            else:
-                parsed['kdv_dahil'] = True
-                parsed['kdv_tutari'] = toplam_tutar * (parsed['kdv_yuzdesi'] / (100 + parsed['kdv_yuzdesi']))
-                matrah_calculated = toplam_tutar - parsed['kdv_tutari']
-                logging.info(f"   ⚠️ Sadece Toplam var - KDV Dahil varsayıldı: {toplam_tutar} TL, Hesaplanan KDV: {parsed['kdv_tutari']:.2f} TL")
-            
-        elif matrah > 0:
-            parsed['toplam_tutar'] = matrah
-            parsed['kdv_dahil'] = False
-            
-            if kdv_tutari > 0:
-                parsed['kdv_tutari'] = kdv_tutari
-            else:
-                parsed['kdv_tutari'] = matrah * (parsed['kdv_yuzdesi'] / 100)
-            
-            logging.info(f"   ✅ Sadece Matrah var - KDV Hariç: {matrah} TL, Hesaplanan KDV: {parsed['kdv_tutari']:.2f} TL")
-            
-        else:
-            parsed['toplam_tutar'] = 0
-            parsed['kdv_dahil'] = False
-            parsed['kdv_tutari'] = 0
-            logging.warning(f"   ❌ QR'da hiçbir tutar bilgisi bulunamadı!")
-
-        logging.info(f"   📊 Sonuç - Tutar: {parsed.get('toplam_tutar', 0)} {parsed.get('birim', 'TL')}, KDV%: {parsed.get('kdv_yuzdesi', 0)}, KDV Tutarı: {parsed.get('kdv_tutari', 0)}, KDV Dahil: {parsed.get('kdv_dahil', False)}")
-        logging.info(f"   📦 Diğer Alanlar - Miktar: {parsed.get('miktar', 'YOK')}, Birim: {parsed.get('birim', 'YOK')}, Firma: {parsed.get('firma', 'YOK')[:30]}")
-
-        return parsed
-
-    def _to_float(self, value):
-        """Bir değeri güvenli bir şekilde float'a çevirir."""
-        if value is None or value == '': 
-            return 0.0
-        
-        try:
-            str_value = str(value).strip()
-            
-            if not str_value or str_value.lower() in ['none', 'null', 'n/a']:
-                return 0.0
-            
-            str_value = re.sub(r'[^\d.,\-+]', '', str_value)
-            
-            if ',' in str_value and '.' in str_value:
-                last_comma = str_value.rfind(',')
-                last_dot = str_value.rfind('.')
-                
-                if last_comma > last_dot:
-                    str_value = str_value.replace('.', '').replace(',', '.')
-                else:
-                    str_value = str_value.replace(',', '')
-            elif ',' in str_value:
-                parts = str_value.split(',')
-                if len(parts) == 2 and len(parts[1]) <= 2:
-                    str_value = str_value.replace(',', '.')
-                else:
-                    str_value = str_value.replace(',', '')
-            
-            return float(str_value)
-            
-        except (ValueError, TypeError, AttributeError) as e:
-            logging.warning(f"   ⚠️ Float dönüşüm hatası: '{value}' -> Hata: {e}")
-
-            return 0.0
-        
-
+        return self.qr_integrator.add_invoices_from_qr_data(qr_results, invoice_type)
