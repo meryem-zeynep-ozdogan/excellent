@@ -1,4 +1,4 @@
-# qr_optimized.py
+# fromqr.py
 # -*- coding: utf-8 -*-
 """
 OPTIMIZE EDİLMİŞ QR İŞLEME SİSTEMİ
@@ -7,19 +7,7 @@ OPTIMIZE EDİLMİŞ QR İŞLEME SİSTEMİ
 - Performans ve Doğruluk Dengesi
 """
 
-import cv2
-import json
-import numpy as np
-from pyzbar import pyzbar
-import os
-import re
-import time
-import logging
-import fitz  # PyMuPDF
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from imports import *
 
 
 class OptimizedQRProcessor:

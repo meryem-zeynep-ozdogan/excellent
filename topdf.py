@@ -4,17 +4,8 @@ PDF Export Module for Invoice Management System
 Bu modül fatura listelerini PDF formatına dönüştürür
 """
 
-import os
-from datetime import datetime
-from reportlab.lib.pagesizes import A4, letter
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch, cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.pdfgen import canvas
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+# Merkezi import dosyasından gerekli modülleri al
+from imports import *
 
 class InvoicePDFExporter:
     """Fatura listelerini PDF'e dönüştüren sınıf"""
@@ -617,6 +608,129 @@ def export_general_expenses_to_pdf(expense_data, file_path):
     """Genel giderleri PDF'e aktar"""
     exporter = InvoicePDFExporter()
     return exporter.export_general_expenses_to_pdf(expense_data, file_path)
+
+def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summary, file_path):
+    """Dönemsel gelir raporunu PDF'e aktar"""
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.units import cm
+        
+        # PDF dokümanı oluştur (yatay sayfa)
+        doc = SimpleDocTemplate(file_path, pagesize=landscape(A4))
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Türkçe font desteği
+        exporter = InvoicePDFExporter()
+        exporter._register_fonts()
+        
+        registered_fonts = pdfmetrics.getRegisteredFontNames()
+        if 'Calibri-Turkish' in registered_fonts:
+            turkish_font = 'Calibri-Turkish'
+            turkish_font_bold = 'Arial-Bold-Turkish' if 'Arial-Bold-Turkish' in registered_fonts else 'Calibri-Turkish'
+        elif 'Arial-Turkish' in registered_fonts:
+            turkish_font = 'Arial-Turkish'
+            turkish_font_bold = 'Arial-Bold-Turkish' if 'Arial-Bold-Turkish' in registered_fonts else 'Arial-Turkish'
+        else:
+            turkish_font = 'Helvetica'
+            turkish_font_bold = 'Helvetica-Bold'
+        
+        # Başlık
+        from reportlab.lib.styles import ParagraphStyle
+        title = Paragraph(f"<b>{year} Yılı Dönemsel Gelir Raporu</b>", 
+                         ParagraphStyle('Title', fontName=turkish_font_bold, fontSize=18, 
+                                      alignment=1, spaceAfter=20))
+        story.append(title)
+        story.append(Spacer(1, 20))
+        
+        # Tablo verilerini hazırla
+        months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
+                 "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        table_data = [["AYLAR", "GELİR (Kesilen)", "GİDER (Gelen)", "KDV FARKI", "ÖDENECEK VERGİ"]]
+        quarter_indices_map = {2: 0, 5: 1, 8: 2, 11: 3}
+        
+        for i, month_name in enumerate(months):
+            monthly_data = monthly_results[i]
+            odenecek_vergi = ""
+            if i in quarter_indices_map:
+                q_index = quarter_indices_map[i]
+                if q_index < len(quarterly_results):
+                    odenecek_vergi = f"{quarterly_results[q_index].get('odenecek_kv', 0):,.2f} TL"
+            
+            table_data.append([
+                month_name,
+                f"{monthly_data.get('kesilen', 0):,.2f} TL",
+                f"{monthly_data.get('gelen', 0):,.2f} TL",
+                f"{monthly_data.get('kdv', 0):,.2f} TL",
+                odenecek_vergi
+            ])
+        
+        # Toplam satırları
+        total_kdv = sum(m.get('kdv', 0) for m in monthly_results)
+        total_vergi = sum(q.get('odenecek_kv', 0) for q in quarterly_results)
+        
+        table_data.append(["GENEL TOPLAM",
+                         f"{summary.get('toplam_gelir', 0):,.2f} TL",
+                         f"{summary.get('toplam_gider', 0):,.2f} TL",
+                         f"{total_kdv:,.2f} TL",
+                         f"{total_vergi:,.2f} TL"])
+        table_data.append(["YILLIK NET KÂR", "", "", "", f"{summary.get('yillik_kar', 0):,.2f} TL"])
+        
+        # Tabloyu oluştur
+        table = Table(table_data, colWidths=[4*cm, 4*cm, 4*cm, 4*cm, 4*cm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a4a4a')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 8),
+            
+            # Veri satırları
+            ('FONTNAME', (0, 1), (-1, -1), turkish_font),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
+            ('TOPPADDING', (0, 1), (-1, -1), 5),
+            
+            # Hizalamalar
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+            
+            # Alternating rows
+            ('ROWBACKGROUNDS', (0, 1), (-1, -3), [colors.white, colors.HexColor('#f9f9f9')]),
+            
+            # Toplam satırları vurgusu
+            ('BACKGROUND', (0, -2), (-1, -2), colors.HexColor('#e8f5e8')),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#fff2e8')),
+            ('FONTNAME', (0, -2), (-1, -1), turkish_font_bold),
+            
+            # Grid
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d0d0d0')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        
+        story.append(table)
+        
+        # Tarih bilgisi
+        story.append(Spacer(1, 20))
+        from datetime import datetime
+        current_date = datetime.now().strftime("%d.%m.%Y %H:%M")
+        date_para = Paragraph(f'<i>Rapor Tarihi: {current_date}</i>', 
+                            ParagraphStyle('DateInfo', fontName=turkish_font, 
+                                         fontSize=8, alignment=1, 
+                                         textColor=colors.HexColor('#666666')))
+        story.append(date_para)
+        
+        doc.build(story)
+        return True
+        
+    except Exception as e:
+        print(f"Dönemsel gelir PDF oluşturma hatası: {e}")
+        return False
 
 # Test fonksiyonu
 def test_pdf_export():

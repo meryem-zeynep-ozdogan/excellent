@@ -4,10 +4,8 @@ Excel Export Module for Invoice Management System
 Bu modül fatura listelerini Excel formatına dönüştürür
 """
 
-import os
-import pandas as pd
-import logging
-from datetime import datetime
+# Merkezi import dosyasından gerekli modülleri al
+from imports import *
 
 class InvoiceExcelExporter:
     """Fatura listelerini Excel'e dönüştüren sınıf"""
@@ -258,3 +256,175 @@ def export_all_data_to_excel(backend_instance, file_path=None):
     """Tüm verileri Excel'e aktar"""
     exporter = InvoiceExcelExporter()
     return exporter.export_all_data_to_excel(backend_instance, file_path)
+
+def export_monthly_income_to_excel(year, monthly_results, quarterly_results, summary, file_path):
+    """Dönemsel gelir raporunu Excel'e aktar - Uygulama görünümüne benzer formatla"""
+    try:
+        workbook = xlsxwriter.Workbook(file_path)
+        worksheet = workbook.add_worksheet(f'{year} Raporu')
+        
+        # Renkler - Uygulama teması
+        colors = {
+            'mavi': '#D4EBF2',      # Ocak-Mart
+            'pembe': '#F9E7EF',     # Nisan-Haziran  
+            'sari': '#FFF2D6',      # Temmuz-Eylül
+            'yesil': '#D9F2E7'      # Ekim-Aralık
+        }
+        
+        # Formatlar
+        header_format = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#4472C4',
+            'font_color': 'white',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        month_format_base = {
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_size': 10
+        }
+        
+        # Her üç ayın formatı
+        month_formats = {}
+        for color_name, color_code in colors.items():
+            month_formats[color_name] = workbook.add_format({
+                **month_format_base,
+                'bg_color': color_code
+            })
+        
+        money_format_base = {
+            'num_format': '#,##0.00 ₺',
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_size': 10
+        }
+        
+        # Para formatları (renkli)
+        money_formats = {}
+        for color_name, color_code in colors.items():
+            money_formats[color_name] = workbook.add_format({
+                **money_format_base,
+                'bg_color': color_code
+            })
+        
+        # Toplam satırı formatı
+        total_format = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#E7E6E6',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        total_money_format = workbook.add_format({
+            'bold': True,
+            'num_format': '#,##0.00 ₺',
+            'align': 'right',
+            'valign': 'vcenter',
+            'bg_color': '#E7E6E6',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        # Kâr satırı formatı
+        kar_label_format = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'bg_color': '#E7E6E6',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        kar_value_format = workbook.add_format({
+            'bold': True,
+            'num_format': '#,##0.00 ₺',
+            'align': 'right',
+            'valign': 'vcenter',
+            'bg_color': '#E7E6E6',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        # Sütun genişlikleri
+        worksheet.set_column('A:A', 18)  # AYLAR
+        worksheet.set_column('B:E', 20)  # Para sütunları
+        
+        # Başlıklar
+        headers = ['AYLAR', 'GELİR (Kesilen)', 'GİDER (Gelen)', 'KDV FARKI', 'ÖDENECEK VERGİ']
+        for col, header in enumerate(headers):
+            worksheet.write(0, col, header, header_format)
+        
+        # Aylar ve veriler
+        months = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", 
+                 "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
+        
+        color_mapping = {
+            0: 'mavi', 1: 'mavi', 2: 'mavi',
+            3: 'pembe', 4: 'pembe', 5: 'pembe',
+            6: 'sari', 7: 'sari', 8: 'sari',
+            9: 'yesil', 10: 'yesil', 11: 'yesil'
+        }
+        
+        quarter_indices_map = {2: 0, 5: 1, 8: 2, 11: 3}
+        total_kdv_farki = 0.0
+        total_vergi = 0.0
+        
+        for i, month_name in enumerate(months):
+            row = i + 1
+            monthly_data = monthly_results[i]
+            color = color_mapping[i]
+            
+            kdv_farki = monthly_data.get('kdv', 0)
+            total_kdv_farki += kdv_farki
+            
+            odenecek_vergi = 0.0
+            if i in quarter_indices_map:
+                q_index = quarter_indices_map[i]
+                if q_index < len(quarterly_results):
+                    odenecek_vergi = quarterly_results[q_index].get('odenecek_kv', 0)
+                    total_vergi += odenecek_vergi
+            
+            # Ay adı
+            worksheet.write(row, 0, month_name, month_formats[color])
+            
+            # Para değerleri
+            worksheet.write(row, 1, monthly_data.get('kesilen', 0), money_formats[color])
+            worksheet.write(row, 2, monthly_data.get('gelen', 0), money_formats[color])
+            worksheet.write(row, 3, kdv_farki, money_formats[color])
+            worksheet.write(row, 4, odenecek_vergi, money_formats[color])
+        
+        # Toplam satırı (row 13)
+        total_row = 13
+        worksheet.write(total_row, 0, 'GENEL TOPLAM', total_format)
+        worksheet.write(total_row, 1, summary.get('toplam_gelir', 0), total_money_format)
+        worksheet.write(total_row, 2, summary.get('toplam_gider', 0), total_money_format)
+        worksheet.write(total_row, 3, total_kdv_farki, total_money_format)
+        worksheet.write(total_row, 4, total_vergi, total_money_format)
+        
+        # Kâr satırı (row 14) - Birleştirilmiş hücreler
+        kar_row = 14
+        worksheet.merge_range(kar_row, 0, kar_row, 3, 'YILLIK NET KÂR', kar_label_format)
+        worksheet.write(kar_row, 4, summary.get('yillik_kar', 0), kar_value_format)
+        
+        # Satır yükseklikleri
+        worksheet.set_row(0, 25)  # Başlık
+        for i in range(1, 15):
+            worksheet.set_row(i, 22)  # Veri satırları
+        
+        workbook.close()
+        
+        logging.info(f"Dönemsel gelir raporu başarıyla oluşturuldu: {file_path}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Dönemsel gelir Excel aktarma hatası: {e}")
+        print(f"Dönemsel gelir Excel aktarma hatası: {e}")
+        return False

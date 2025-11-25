@@ -1,54 +1,8 @@
 # --- BU KODUN TAMAMINI KOPYALAYIP frontend.py İÇİNE YAPIŞTIRIN ---
 
 # -*- coding: utf-8 -*-
-import sys
-import os
-import sqlite3
-import json
-from datetime import datetime
-import math
-import logging
-
-# PDF export functionality
-try:
-    from topdf import export_outgoing_invoices_to_pdf, export_incoming_invoices_to_pdf, export_general_expenses_to_pdf, InvoicePDFExporter
-    PDF_AVAILABLE = True
-except ImportError:
-    print("UYARI: topdf modülü bulunamadı. PDF export işlevi devre dışı.")
-    PDF_AVAILABLE = False
-
-# Excel export functionality  
-try:
-    from toexcel import export_outgoing_invoices_to_excel, export_incoming_invoices_to_excel, export_general_expenses_to_excel, export_all_data_to_excel, InvoiceExcelExporter
-    EXCEL_AVAILABLE = True
-except ImportError:
-    print("UYARI: toexcel modülü bulunamadı. Excel export işlevi devre dışı.")
-    EXCEL_AVAILABLE = False
-
-# QR işleme için backend'e güveniyoruz, bu yüzden bu bayrağı kaldırabiliriz.
-# QR_PROCESSING_AVAILABLE = True 
-
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QMainWindow, QHBoxLayout, QVBoxLayout,
-    QPushButton, QLabel, QFrame, QStackedWidget, QButtonGroup,
-    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QSpacerItem, QSizePolicy, QMessageBox, QCalendarWidget,
-    QTextEdit, QFileDialog, QStatusBar, QComboBox, QTabWidget,
-    QGroupBox, QListWidget, QListWidgetItem, QCheckBox, QProgressDialog,
-    QInputDialog, QFormLayout, QAbstractItemView,
-)
-from PyQt6.QtGui import (
-    QPainter, QPen, QBrush, QPainterPath, QColor, QFont,
-    QFontDatabase, QDoubleValidator, QTextCharFormat, QPixmap,QIcon
-)
-from PyQt6.QtCore import Qt, QDate, QLocale, QTimer, QRectF, QPointF, QSize
-
-# pyqtgraph'ı import et (eğer backend'den ayrıldıysa)
-try:
-    import pyqtgraph as pg
-except ImportError:
-    print("UYARI: pyqtgraph kütüphanesi eksik. 'pip install pyqtgraph' komutuyla kurun.")
-    pg = None
+# Merkezi import dosyasından tüm gerekli modülleri al
+from imports import *
 
 # Backend'i import et
 try:
@@ -595,13 +549,19 @@ class InvoiceTab(QWidget):
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         header_layout.addWidget(self.sort_combo)
         
-        self.export_button = QPushButton("Excel'e Aktar")
-        header_layout.addWidget(self.export_button)
+        # Export dropdown menu button
+        from PyQt6.QtWidgets import QMenu
+        self.export_menu_button = QPushButton("📥 Aktar")
+        self.export_menu_button.setToolTip("Faturaları dışa aktar")
         
-        self.pdf_export_button = QPushButton("📄 PDF'e Dönüştür")
-        self.pdf_export_button.setToolTip("Faturaları PDF formatında dışa aktar")
-        self.pdf_export_button.clicked.connect(self.export_to_pdf)
-        header_layout.addWidget(self.pdf_export_button)
+        export_menu = QMenu(self)
+        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
+        excel_action.triggered.connect(lambda: self.export_combined('excel'))
+        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
+        pdf_action.triggered.connect(lambda: self.export_combined('pdf'))
+        
+        self.export_menu_button.setMenu(export_menu)
+        header_layout.addWidget(self.export_menu_button)
         
         return header_layout
 
@@ -668,7 +628,7 @@ class InvoiceTab(QWidget):
 
     def _create_table(self):
         self.invoice_table = QTableWidget(); self.invoice_table.setColumnCount(10)
-        table_headers = ["FATURA NO", "İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TUTAR (TL)", "TUTAR (USD)*", "TUTAR (EUR)*", "KDV TUTARI (%)"]
+        table_headers = ["FATURA NO", "İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM (KDV DAHİL)", "TUTAR (USD)*", "TUTAR (EUR)*", "KDV TUTARI (%)"]
         self.invoice_table.setHorizontalHeaderLabels(table_headers)
         
         # Enhanced selection behavior for better green highlighting
@@ -731,7 +691,6 @@ class InvoiceTab(QWidget):
         self.delete_button.clicked.connect(self.smart_delete)
         self.invoice_table.itemSelectionChanged.connect(self.on_row_selected)
         self.invoice_table.itemSelectionChanged.connect(self.update_delete_button_state)
-        self.export_button.clicked.connect(self.export_table_data)
         if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'):
             self.backend.data_updated.connect(self.refresh_table)
 
@@ -862,33 +821,29 @@ class InvoiceTab(QWidget):
             self.edit_fields["kdv_yuzdesi"].setText(str(int(kdv_yuzdesi)) if kdv_yuzdesi and isinstance(kdv_yuzdesi, (int, float)) else str(kdv_yuzdesi))
             
             birim = invoice_data.get('birim', 'TL')
-            matrah_tl = float(invoice_data.get('toplam_tutar_tl', 0))
+            # toplam_tutar_tl artık KDV dahil tutar
+            toplam_kdv_dahil_tl = float(invoice_data.get('toplam_tutar_tl', 0))
             kdv_tutari_tl = float(invoice_data.get('kdv_tutari', 0))
-            kdv_dahil = invoice_data.get('kdv_dahil', 0)
             
             # Historik kurları kullan (eğer mevcutsa)
             usd_kur = invoice_data.get('usd_kur', 0)
             eur_kur = invoice_data.get('eur_kur', 0)
             
-            original_total_amount_tl = matrah_tl
-            if kdv_dahil and kdv_yuzdesi and float(kdv_yuzdesi) > 0:
-                original_total_amount_tl = matrah_tl * (1 + float(kdv_yuzdesi) / 100)
-            
             # Orijinal para birimindeki tutarı hesapla
             if birim == 'TL':
-                original_amount_in_currency = original_total_amount_tl
+                original_amount_in_currency = toplam_kdv_dahil_tl
                 kdv_tutari_in_currency = kdv_tutari_tl
             elif birim == 'USD' and usd_kur > 0:
                 # Historik kuru kullan
-                original_amount_in_currency = original_total_amount_tl / usd_kur
+                original_amount_in_currency = toplam_kdv_dahil_tl / usd_kur
                 kdv_tutari_in_currency = kdv_tutari_tl / usd_kur
             elif birim == 'EUR' and eur_kur > 0:
                 # Historik kuru kullan
-                original_amount_in_currency = original_total_amount_tl / eur_kur
+                original_amount_in_currency = toplam_kdv_dahil_tl / eur_kur
                 kdv_tutari_in_currency = kdv_tutari_tl / eur_kur
             else:
                 # Fallback: Güncel kurları kullan (eski faturalar için)
-                original_amount_in_currency = self.backend.convert_currency(original_total_amount_tl, 'TRY', birim)
+                original_amount_in_currency = self.backend.convert_currency(toplam_kdv_dahil_tl, 'TRY', birim)
                 kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
             
             locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
@@ -1035,8 +990,8 @@ class InvoiceTab(QWidget):
             else:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Fatura silinemedi.", QMessageBox.StandardButton.Ok)
 
-    def export_to_pdf(self):
-        """PDF formatında fatura dışa aktarma fonksiyonu"""
+    def export_combined(self, export_format='excel'):
+        """Excel veya PDF formatında dışa aktarma"""
         try:
             # Tüm faturaları al
             invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=10000, offset=0)
@@ -1045,34 +1000,84 @@ class InvoiceTab(QWidget):
                 show_styled_message_box(self, QMessageBox.Icon.Information, "Bilgi", "Dışa aktarılacak fatura bulunamadı.", QMessageBox.StandardButton.Ok)
                 return
             
-                
-            # PDF dosya yolunu sor
+            # Dosya uzantısını belirle
+            config = self.config[self.invoice_type]
+            
+            # Resmi dosya adı oluştur
+            from datetime import datetime
+            bugun = datetime.now().strftime("%d.%m.%Y")
+            if self.invoice_type == "outgoing":
+                base_name = f"GelirFaturalari-{bugun}"
+            else:
+                base_name = f"GiderFaturalari-{bugun}"
+            
+            if export_format == 'excel':
+                file_filter = "Excel Dosyaları (*.xlsx)"
+                default_name = f"{base_name}.xlsx"
+            else:
+                file_filter = "PDF Dosyaları (*.pdf)"
+                default_name = f"{base_name}.pdf"
+            
             file_path, _ = QFileDialog.getSaveFileName(
                 self, 
-                "PDF olarak kaydet", 
-                f"{self.invoice_type}_faturalari.pdf",
-                "PDF dosyaları (*.pdf)"
+                "Rapor Dosyasını Kaydet", 
+                default_name,
+                file_filter
             )
             
-            if file_path:
-                # PDF oluştur
-                if self.invoice_type == "outgoing":
-                    from topdf import export_outgoing_invoices_to_pdf
-                    export_outgoing_invoices_to_pdf(invoices, file_path)
-                else:  # incoming
-                    from topdf import export_incoming_invoices_to_pdf
-                    export_incoming_invoices_to_pdf(invoices, file_path)
-                    
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"PDF başarıyla oluşturuldu:\n{file_path}", QMessageBox.StandardButton.Ok)
+            if not file_path:
+                return
+            
+            # Export işlemini gerçekleştir
+            success = False
+            
+            if export_format == 'excel':
+                # Excel modülünü lazy loading ile yükle
+                excel_module = get_excel_module()
+                if excel_module:
+                    # toexcel.py modülünü kullan
+                    if self.invoice_type == "outgoing":
+                        success = excel_module.export_outgoing_invoices_to_excel(invoices, file_path)
+                    else:
+                        success = excel_module.export_incoming_invoices_to_excel(invoices, file_path)
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            else:  # PDF
+                # PDF modülünü lazy loading ile yükle
+                pdf_module = get_pdf_module()
+                if pdf_module:
+                    # topdf.py modülünü kullan
+                    if self.invoice_type == "outgoing":
+                        success = pdf_module.export_outgoing_invoices_to_pdf(invoices, file_path)
+                    else:
+                        success = pdf_module.export_incoming_invoices_to_pdf(invoices, file_path)
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            
+            # Sonuç mesajı
+            if success:
+                format_name = "Excel" if export_format == 'excel' else "PDF"
+                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
+                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
+                                      QMessageBox.StandardButton.Ok)
+            else:
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
+                                      f"❌ Rapor oluşturulamadı.", 
+                                      QMessageBox.StandardButton.Ok)
                 
         except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", f"PDF oluşturulurken bir hata oluştu:\n{str(e)}", QMessageBox.StandardButton.Ok)
+            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
+                                  f"Rapor oluşturma hatası:\n{str(e)}", 
+                                  QMessageBox.StandardButton.Ok)
 
 
     def restyle(self):
         self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_button.setStyleSheet(STYLES["export_button"])
-        self.pdf_export_button.setStyleSheet(STYLES["export_button"])
+        self.export_menu_button.setStyleSheet(STYLES["export_button"])
         
         # Enhanced table styling with prominent green selection highlighting
         palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
@@ -1155,17 +1160,19 @@ class GenelGiderTab(QWidget):
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         header_layout.addWidget(self.sort_combo)
         
-        # Excel export button
-        self.export_button = QPushButton("Excel'e Aktar")
-        self.export_button.setToolTip("Genel gider listesini Excel dosyasına aktar")
-        self.export_button.clicked.connect(self.export_to_excel)
-        header_layout.addWidget(self.export_button)
+        # Export dropdown menu button
+        from PyQt6.QtWidgets import QMenu
+        self.export_menu_button = QPushButton("📥 Aktar")
+        self.export_menu_button.setToolTip("Genel gider listesini dışa aktar")
         
-        # PDF export button
-        self.pdf_export_button = QPushButton("📄 PDF'e Dönüştür")
-        self.pdf_export_button.setToolTip("Genel gider listesini PDF formatında dışa aktar")
-        self.pdf_export_button.clicked.connect(self.export_to_pdf)
-        header_layout.addWidget(self.pdf_export_button)
+        export_menu = QMenu(self)
+        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
+        excel_action.triggered.connect(lambda: self.export_combined('excel'))
+        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
+        pdf_action.triggered.connect(lambda: self.export_combined('pdf'))
+        
+        self.export_menu_button.setMenu(export_menu)
+        header_layout.addWidget(self.export_menu_button)
         
         main_layout.addLayout(header_layout)
         
@@ -1519,70 +1526,8 @@ class GenelGiderTab(QWidget):
             else:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Gider kaydı silinemedi.", QMessageBox.StandardButton.Ok)
 
-    def export_to_excel(self):
-        """Genel gider listesini Excel'e aktarır"""
-        file_path, _ = get_save_file_name_turkish(self, "Genel Gider Listesini Kaydet", 
-                                                "genel_giderler.xlsx", "Excel Dosyaları (*.xlsx)")
-        if not file_path:
-            return
-
-        if not self.backend:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", 
-                                  "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok)
-            return
-
-        # Tüm genel giderleri al
-        all_expenses = self.backend.handle_genel_gider_operation('get')
-        if not all_expenses:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Veri Yok", 
-                                  "Dışa aktarılacak genel gider bulunamadı.", QMessageBox.StandardButton.Ok)
-            return
-
-        export_data = []
-        for expense in all_expenses:
-            # Tarihi DD.MM.YYYY formatına çevir
-            tarih = expense.get('tarih', '')
-            if '-' in tarih:
-                try:
-                    year, month, day = tarih.split('-')
-                    tarih_formatted = f"{day}.{month}.{year}"
-                except:
-                    tarih_formatted = tarih
-            else:
-                tarih_formatted = tarih
-
-            miktar_value = expense.get('toplam_tutar_tl', expense.get('miktar', 0))
-            try:
-                miktar_float = float(miktar_value) if miktar_value else 0.0
-            except (ValueError, TypeError):
-                miktar_float = 0.0
-
-            export_data.append({
-                "Miktar (TL)": miktar_float,
-                "Tür": expense.get('firma', expense.get('tur', '')),
-                "Tarih": tarih_formatted,
-                "Kayıt ID": expense.get('id', ''),
-                "Kayıt Tarihi": expense.get('kayit_tarihi', '')
-            })
-
-        # Excel'e aktar
-        sheets_data = {"Genel Giderler": {"data": export_data}}
-        
-        # Excel export'u için yeni modülü kullan
-        if EXCEL_AVAILABLE:
-            exporter = InvoiceExcelExporter()
-            if exporter.export_to_excel(file_path, sheets_data):
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"Genel giderler başarıyla dışa aktarıldı:\n{file_path}", QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", 
-                                      "Excel dosyası oluşturulurken bir hata oluştu.", QMessageBox.StandardButton.Ok)
-        else:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                  "Excel export modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-
-    def export_to_pdf(self):
-        """Genel gider listesini PDF formatında dışa aktarır"""
+    def export_combined(self, export_format='excel'):
+        """Genel giderleri Excel veya PDF formatında dışa aktarır"""
         try:
             if not self.backend:
                 show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", 
@@ -1596,25 +1541,66 @@ class GenelGiderTab(QWidget):
                                       "Dışa aktarılacak genel gider bulunamadı.", QMessageBox.StandardButton.Ok)
                 return
 
-            # PDF dosya yolunu sor
+            # Dosya uzantısını belirle
+            from datetime import datetime
+            bugun = datetime.now().strftime("%d.%m.%Y")
+            
+            if export_format == 'excel':
+                file_filter = "Excel Dosyaları (*.xlsx)"
+                default_name = f"GenelGiderler-{bugun}.xlsx"
+            else:
+                file_filter = "PDF Dosyaları (*.pdf)"
+                default_name = f"GenelGiderler-{bugun}.pdf"
+            
             file_path, _ = QFileDialog.getSaveFileName(
                 self, 
-                "PDF olarak kaydet", 
-                "genel_giderler.pdf",
-                "PDF dosyaları (*.pdf)"
+                "Rapor Dosyasını Kaydet", 
+                default_name,
+                file_filter
             )
             
-            if file_path:
-                # PDF oluştur
-                from topdf import export_general_expenses_to_pdf
-                export_general_expenses_to_pdf(all_expenses, file_path)
-                    
+            if not file_path:
+                return
+            
+            # Export işlemini gerçekleştir
+            success = False
+            
+            if export_format == 'excel':
+                # Excel modülünü lazy loading ile yükle
+                excel_module = get_excel_module()
+                if excel_module:
+                    # toexcel.py modülünü kullan
+                    success = excel_module.export_general_expenses_to_excel(all_expenses, file_path)
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            else:  # PDF
+                # PDF modülünü lazy loading ile yükle
+                pdf_module = get_pdf_module()
+                if pdf_module:
+                    # topdf.py modülünü kullan
+                    success = pdf_module.export_general_expenses_to_pdf(all_expenses, file_path)
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            
+            # Sonuç mesajı
+            if success:
+                format_name = "Excel" if export_format == 'excel' else "PDF"
                 show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"PDF başarıyla oluşturuldu:\n{file_path}", QMessageBox.StandardButton.Ok)
+                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
+                                      QMessageBox.StandardButton.Ok)
+            else:
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
+                                      f"❌ Rapor oluşturulamadı.", 
+                                      QMessageBox.StandardButton.Ok)
                 
         except Exception as e:
             show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                  f"PDF oluşturulurken bir hata oluştu:\n{str(e)}", QMessageBox.StandardButton.Ok)
+                                  f"Rapor oluşturma hatası:\n{str(e)}", 
+                                  QMessageBox.StandardButton.Ok)
 
     def _apply_initial_styling(self):
         """Apply initial styling to match invoice tabs"""
@@ -1623,8 +1609,7 @@ class GenelGiderTab(QWidget):
     def restyle(self):
         """Apply consistent styling like invoice tabs"""
         self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_button.setStyleSheet(STYLES["export_button"])
-        self.pdf_export_button.setStyleSheet(STYLES["export_button"])
+        self.export_menu_button.setStyleSheet(STYLES["export_button"])
         
         # Enhanced table styling with prominent green selection highlighting
         palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
@@ -2809,8 +2794,21 @@ class MonthlyIncomePage(QWidget):
         self.year_dropdown.setMinimumWidth(100)
         header_layout.addWidget(QLabel("Yıl:"))
         header_layout.addWidget(self.year_dropdown)
-        self.export_button = QPushButton("Excel'e Aktar")
-        header_layout.addWidget(self.export_button)
+        
+        # Export dropdown menu button
+        from PyQt6.QtWidgets import QMenu
+        self.export_menu_button = QPushButton("📥 Aktar")
+        self.export_menu_button.setToolTip("Dönemsel gelir raporunu dışa aktar")
+        
+        export_menu = QMenu(self)
+        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
+        excel_action.triggered.connect(lambda: self.export_table_data('excel'))
+        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
+        pdf_action.triggered.connect(lambda: self.export_table_data('pdf'))
+        
+        self.export_menu_button.setMenu(export_menu)
+        header_layout.addWidget(self.export_menu_button)
+        
         main_layout.addLayout(header_layout)
         
         tables_layout = QHBoxLayout()
@@ -2839,7 +2837,6 @@ class MonthlyIncomePage(QWidget):
 
     def _connect_signals(self):
         self.year_dropdown.currentTextChanged.connect(self.refresh_data)
-        self.export_button.clicked.connect(self.export_table_data)
         self.tax_save_btn.clicked.connect(self.save_tax_percentage)
         if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'):
             self.backend.data_updated.connect(self.refresh_data)
@@ -2864,7 +2861,7 @@ class MonthlyIncomePage(QWidget):
 
     def restyle(self):
         self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_button.setStyleSheet(STYLES["export_button"])
+        self.export_menu_button.setStyleSheet(STYLES["export_button"])
         self.income_table.setStyleSheet(STYLES["table_style"])
         self.tax_input.setStyleSheet(STYLES["input_style"])
         self.year_dropdown.setStyleSheet(STYLES["input_style"])
@@ -2958,7 +2955,8 @@ class MonthlyIncomePage(QWidget):
         except Exception as e:
             print(f"Veri yenileme hatası (MonthlyIncomePage): {e}")
 
-    def export_table_data(self):
+    def export_table_data(self, export_format='excel'):
+        """Dönemsel gelir raporunu Excel veya PDF formatında dışa aktarır"""
         year_str = self.year_dropdown.currentText()
         if not year_str:
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Yıl Seçilmedi", "Lütfen dışa aktarmak için bir yıl seçin.", QMessageBox.StandardButton.Ok)
@@ -2966,64 +2964,70 @@ class MonthlyIncomePage(QWidget):
         if not self.backend:
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok)
             return
-        file_path, _ = get_save_file_name_turkish(self, f"{year_str} Yılı Raporunu Kaydet", f"{year_str}_gelir_gider_raporu.xlsx", "Excel Dosyaları (*.xlsx)")
+
+        # Dosya uzantısını belirle
+        from datetime import datetime
+        bugun = datetime.now().strftime("%d.%m.%Y")
+        
+        if export_format == 'excel':
+            file_filter = "Excel Dosyaları (*.xlsx)"
+            default_name = f"DonemselGelirRaporu-{year_str}-{bugun}.xlsx"
+        else:
+            file_filter = "PDF Dosyaları (*.pdf)"
+            default_name = f"DonemselGelirRaporu-{year_str}-{bugun}.pdf"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 
+            f"{year_str} Yılı Raporunu Kaydet", 
+            default_name,
+            file_filter
+        )
+        
         if not file_path:
             return
+        
         try:
             year = int(year_str)
             monthly_results, quarterly_results = self.backend.get_calculations_for_year(year)
             summary = self.backend.get_yearly_summary(year)
-            months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-            data_to_export = []
-            total_kdv_farki_export = 0.0
-            total_vergi_export = 0.0
-            quarter_indices_map = {2: 0, 5: 1, 8: 2, 11: 3}
-            for i, month_name in enumerate(months):
-                monthly_data = monthly_results[i]
-                kdv_farki = monthly_data.get('kdv', 0)
-                total_kdv_farki_export += kdv_farki
-                odenecek_vergi = 0.0
-                if i in quarter_indices_map:
-                    q_index = quarter_indices_map[i]
-                    if q_index < len(quarterly_results):
-                        odenecek_vergi = quarterly_results[q_index].get('odenecek_kv', 0)
-                        total_vergi_export += odenecek_vergi
-                row_data = {
-                    "AYLAR": month_name,
-                    "GELİR (Kesilen)": monthly_data.get('kesilen', 0),
-                    "GİDER (Gelen)": monthly_data.get('gelen', 0),
-                    "KDV FARKI": kdv_farki,
-                    "ÖDENECEK VERGİ": odenecek_vergi
-                }
-                data_to_export.append(row_data)
-            data_to_export.append({})
-            data_to_export.append({
-                "AYLAR": "GENEL TOPLAM",
-                "GELİR (Kesilen)": summary.get('toplam_gelir', 0),
-                "GİDER (Gelen)": summary.get('toplam_gider', 0),
-                "KDV FARKI": total_kdv_farki_export,
-                "ÖDENECEK VERGİ": total_vergi_export
-            })
-            data_to_export.append({
-                "AYLAR": "YILLIK NET KÂR",
-                "GELİR (Kesilen)": None,
-                "GİDER (Gelen)": None,
-                "KDV FARKI": None,
-                "ÖDENECEK VERGİ": summary.get('yillik_kar', 0)
-            })
-            sheets_data = {f"{year_str} Raporu": {"data": data_to_export}}
-            if EXCEL_AVAILABLE:
-                excel_exporter = InvoiceExcelExporter()
-                if excel_exporter.export_to_excel(file_path, sheets_data):
-                    show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{year_str} yılı raporu başarıyla dışa aktarıldı:\n{file_path}", QMessageBox.StandardButton.Ok)
+            
+            # Export işlemini gerçekleştir
+            success = False
+            
+            if export_format == 'excel':
+                # Excel modülünü lazy loading ile yükle
+                excel_module = get_excel_module()
+                if excel_module:
+                    success = excel_module.export_monthly_income_to_excel(year, monthly_results, quarterly_results, summary, file_path)
                 else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", "Excel dosyası oluşturulurken bir hata oluştu.", QMessageBox.StandardButton.Ok)
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            else:  # PDF
+                # PDF modülünü lazy loading ile yükle
+                pdf_module = get_pdf_module()
+                if pdf_module:
+                    success = pdf_module.export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summary, file_path)
+                else:
+                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
+                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
+                    return
+            
+            # Sonuç mesajı
+            if success:
+                format_name = "Excel" if export_format == 'excel' else "PDF"
+                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
+                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
+                                      QMessageBox.StandardButton.Ok)
             else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Excel Desteği Yok", "Excel kütüphaneleri mevcut değil.", QMessageBox.StandardButton.Ok)
+                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
+                                      f"❌ Rapor oluşturulamadı.", 
+                                      QMessageBox.StandardButton.Ok)
+                
         except ValueError:
             show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", f"Geçersiz yıl formatı: {year_str}", QMessageBox.StandardButton.Ok)
         except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", f"Excel'e aktarma sırasında bir hata oluştu: {e}", QMessageBox.StandardButton.Ok)
+            show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", f"Rapor oluşturma sırasında bir hata oluştu: {e}", QMessageBox.StandardButton.Ok)
 
 
 # --- Ana Pencere ---
