@@ -292,6 +292,31 @@ class Backend(QObject):
         except (ValueError, IndexError):
             return False
     
+    def format_date(self, date_str):
+        """Tarih string'ini DD.MM.YYYY formatına dönüştürür."""
+        if not date_str:
+            return datetime.now().strftime("%d.%m.%Y")
+        
+        try:
+            # Zaten DD.MM.YYYY formatındaysa direkt döndür
+            if re.match(r'^\d{2}\.\d{2}\.\d{4}$', str(date_str)):
+                return str(date_str)
+            
+            # YYYY-MM-DD formatı
+            if re.match(r'^\d{4}-\d{2}-\d{2}', str(date_str)):
+                date_obj = datetime.strptime(str(date_str)[:10], '%Y-%m-%d')
+                return date_obj.strftime('%d.%m.%Y')
+            
+            # DD/MM/YYYY formatı
+            if re.match(r'^\d{2}/\d{2}/\d{4}$', str(date_str)):
+                return str(date_str).replace('/', '.')
+            
+            # Varsayılan olarak bugünün tarihi
+            return datetime.now().strftime("%d.%m.%Y")
+        except Exception as e:
+            logging.warning(f"Tarih formatı dönüştürülemedi: {date_str}, hata: {e}")
+            return datetime.now().strftime("%d.%m.%Y")
+    
     # ============================================================================
     # QR İŞLEMLERİ - ENTEGRE SİSTEM (QR Operations - Integrated System)
     # ============================================================================
