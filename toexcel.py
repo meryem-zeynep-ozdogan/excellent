@@ -26,7 +26,8 @@ class InvoiceExcelExporter:
                 'bold': True,
                 'text_wrap': True,
                 'valign': 'top',
-                'fg_color': '#D7E4BC',
+                'fg_color': '#6C5DD3',
+                'font_color': 'white',
                 'border': 1
             })
             
@@ -252,6 +253,94 @@ def export_general_expenses_to_excel(expense_data, file_path=None):
     exporter = InvoiceExcelExporter()
     return exporter.export_general_expenses_to_excel(expense_data, file_path)
 
+def export_monthly_general_expenses_to_excel(expense_data, year=None, file_path=None):
+    """Genel giderleri aylık formatta Excel'e aktar - Yatay tablo (Aylar sütunlarda)"""
+    try:
+        from datetime import datetime
+        import calendar
+        
+        if not year:
+            year = datetime.now().year
+        
+        if not file_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"genel_giderler_aylik_{year}_{timestamp}.xlsx"
+            exporter = InvoiceExcelExporter()
+            file_path = os.path.join(exporter.excel_folder, filename)
+        
+        workbook = xlsxwriter.Workbook(file_path)
+        worksheet = workbook.add_worksheet(f'{year} Genel Giderler')
+        
+        # Formatlar
+        header_format = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#6C5DD3',
+            'font_color': 'white',
+            'border': 1,
+            'font_size': 12
+        })
+        
+        money_format = workbook.add_format({
+            'num_format': '#,##0.00 "₺"',
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        # Ayları parse et ve topla
+        months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
+                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        monthly_totals = {i+1: 0.0 for i in range(12)}
+        
+        # Expense data'dan aylık toplamları hesapla
+        for expense in expense_data:
+            tarih = expense.get('tarih', '')
+            miktar = float(expense.get('miktar', 0) or 0)
+            
+            # Tarihi parse et (formatlar: DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD)
+            try:
+                if '.' in tarih:
+                    parts = tarih.split('.')
+                    month = int(parts[1])
+                elif '/' in tarih:
+                    parts = tarih.split('/')
+                    month = int(parts[1])
+                elif '-' in tarih:
+                    parts = tarih.split('-')
+                    month = int(parts[1])
+                else:
+                    continue
+                    
+                if 1 <= month <= 12:
+                    monthly_totals[month] += miktar
+            except:
+                continue
+        
+        # Başlık satırı (Aylar)
+        worksheet.write(0, 0, 'AY', header_format)
+        for i, month in enumerate(months):
+            worksheet.write(0, i+1, month, header_format)
+        
+        # Tutar satırı
+        worksheet.write(1, 0, 'TUTAR', header_format)
+        for i in range(12):
+            worksheet.write(1, i+1, monthly_totals[i+1], money_format)
+        
+        # Sütun genişliklerini ayarla
+        worksheet.set_column(0, 0, 12)  # İlk sütun (AY)
+        worksheet.set_column(1, 12, 15)  # Ay sütunları
+        
+        workbook.close()
+        print(f"Aylık genel giderler '{os.path.basename(file_path)}' dosyasına aktarıldı.")
+        return True
+        
+    except Exception as e:
+        print(f"Aylık genel gider Excel aktarma hatası: {e}")
+        return False
+
 def export_all_data_to_excel(backend_instance, file_path=None):
     """Tüm verileri Excel'e aktar"""
     exporter = InvoiceExcelExporter()
@@ -263,12 +352,12 @@ def export_monthly_income_to_excel(year, monthly_results, quarterly_results, sum
         workbook = xlsxwriter.Workbook(file_path)
         worksheet = workbook.add_worksheet(f'{year} Raporu')
         
-        # Renkler - Uygulama teması
+        # Renkler - Mor tema (açıktan koyuya)
         colors = {
-            'mavi': '#D4EBF2',      # Ocak-Mart
-            'pembe': '#F9E7EF',     # Nisan-Haziran  
-            'sari': '#FFF2D6',      # Temmuz-Eylül
-            'yesil': '#D9F2E7'      # Ekim-Aralık
+            'mavi': '#E8E5F5',      # Ocak-Mart (açık mor)
+            'pembe': '#D4CDED',     # Nisan-Haziran (orta açık mor)
+            'sari': '#C0B5E5',      # Temmuz-Eylül (orta mor)
+            'yesil': '#AC9EDD'      # Ekim-Aralık (koyu mor)
         }
         
         # Formatlar
@@ -276,7 +365,7 @@ def export_monthly_income_to_excel(year, monthly_results, quarterly_results, sum
             'bold': True,
             'align': 'center',
             'valign': 'vcenter',
-            'bg_color': '#4472C4',
+            'bg_color': '#6C5DD3',
             'font_color': 'white',
             'border': 1,
             'font_size': 11

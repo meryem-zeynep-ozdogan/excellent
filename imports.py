@@ -16,6 +16,7 @@ import time
 import re
 import warnings
 import math
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP
 
@@ -29,6 +30,17 @@ getcontext().rounding = ROUND_HALF_UP  # Standart yuvarlama
 import numpy as np
 import pandas as pd
 import requests
+
+# ============================================================================
+# FLET - Modern UI Framework
+# ============================================================================
+try:
+    import flet as ft
+    FLET_AVAILABLE = True
+except ImportError:
+    print("UYARI: flet kütüphanesi eksik. UI çalışmayacak.")
+    ft = None
+    FLET_AVAILABLE = False
 
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - QR KOD VE GÖRÜNTÜ İŞLEME
@@ -69,37 +81,11 @@ except ImportError:
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - PYQT6
 # ============================================================================
-from PyQt6.QtWidgets import (
-    QApplication, QWidget, QMainWindow, QHBoxLayout, QVBoxLayout,
-    QPushButton, QLabel, QFrame, QStackedWidget, QButtonGroup,
-    QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-    QSpacerItem, QSizePolicy, QMessageBox, QCalendarWidget,
-    QTextEdit, QFileDialog, QStatusBar, QComboBox, QTabWidget,
-    QGroupBox, QListWidget, QListWidgetItem, QCheckBox, QProgressDialog,
-    QInputDialog, QFormLayout, QAbstractItemView, QDialog, QDialogButtonBox,
-    QMenu, QRadioButton
-)
-
-from PyQt6.QtGui import (
-    QPainter, QPen, QBrush, QPainterPath, QColor, QFont,
-    QFontDatabase, QDoubleValidator, QTextCharFormat, QPixmap, QIcon
-)
-
-from PyQt6.QtCore import (
-    Qt, QDate, QLocale, QTimer, QRectF, QPointF, QSize,
-    QObject, pyqtSignal
-)
 
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - GRAFIK
 # ============================================================================
-try:
-    import pyqtgraph as pg
-    PYQTGRAPH_AVAILABLE = True
-except ImportError:
-    print("UYARI: pyqtgraph kütüphanesi eksik. 'pip install pyqtgraph' komutuyla kurun.")
-    pg = None
-    PYQTGRAPH_AVAILABLE = False
+# pyqtgraph artık kullanılmıyor - Flet native charts kullanılıyor
 
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - PDF İŞLEMLERİ
@@ -202,7 +188,7 @@ logging.basicConfig(
 __all__ = [
     # Standart kütüphaneler
     'sys', 'os', 'sqlite3', 'json', 'logging', 'time', 're', 'warnings', 
-    'math', 'datetime', 'timedelta',
+    'math', 'datetime', 'timedelta', 'threading',
     
     # Decimal (para hesaplamaları için)
     'Decimal', 'getcontext', 'ROUND_HALF_UP',
@@ -210,30 +196,12 @@ __all__ = [
     # Veri işleme
     'np', 'pd', 'requests',
     
+    # Flet UI
+    'ft', 'FLET_AVAILABLE',
+    
     # QR kod ve görüntü işleme
     'cv2', 'pyzbar', 'fitz', 'ThreadPoolExecutor', 'as_completed',
     'CV2_AVAILABLE', 'PYZBAR_AVAILABLE', 'FITZ_AVAILABLE', 'CONCURRENT_AVAILABLE',
-    
-    # PyQt6 Widgets
-    'QApplication', 'QWidget', 'QMainWindow', 'QHBoxLayout', 'QVBoxLayout',
-    'QPushButton', 'QLabel', 'QFrame', 'QStackedWidget', 'QButtonGroup',
-    'QTableWidget', 'QTableWidgetItem', 'QHeaderView', 'QLineEdit',
-    'QSpacerItem', 'QSizePolicy', 'QMessageBox', 'QCalendarWidget',
-    'QTextEdit', 'QFileDialog', 'QStatusBar', 'QComboBox', 'QTabWidget',
-    'QGroupBox', 'QListWidget', 'QListWidgetItem', 'QCheckBox', 'QProgressDialog',
-    'QInputDialog', 'QFormLayout', 'QAbstractItemView', 'QDialog', 'QDialogButtonBox',
-    'QMenu', 'QRadioButton',
-    
-    # PyQt6 GUI
-    'QPainter', 'QPen', 'QBrush', 'QPainterPath', 'QColor', 'QFont',
-    'QFontDatabase', 'QDoubleValidator', 'QTextCharFormat', 'QPixmap', 'QIcon',
-    
-    # PyQt6 Core
-    'Qt', 'QDate', 'QLocale', 'QTimer', 'QRectF', 'QPointF', 'QSize',
-    'QObject', 'pyqtSignal',
-    
-    # Grafik kütüphanesi
-    'pg', 'PYQTGRAPH_AVAILABLE',
     
     # ReportLab
     'A4', 'letter', 'landscape', 'colors', 'getSampleStyleSheet', 'ParagraphStyle',

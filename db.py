@@ -44,7 +44,9 @@ class Database:
                     birim TEXT,
                     kdv_yuzdesi REAL,
                     kdv_tutari REAL,
-                    kdv_dahil INTEGER DEFAULT 0
+                    kdv_dahil INTEGER DEFAULT 0,
+                    usd_rate REAL,
+                    eur_rate REAL
                 )
             """)
             
@@ -52,6 +54,28 @@ class Database:
             try:
                 gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN fatura_no TEXT")
                 logging.info("Added fatura_no column to gelir invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Add kur columns if they don't exist
+            try:
+                gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN usd_rate REAL")
+                gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN eur_rate REAL")
+                logging.info("Added exchange rate columns to gelir invoices table")
+            except sqlite3.OperationalError:
+                pass  # Columns already exist
+            
+            # Add updated_at column if it doesn't exist
+            try:
+                gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN updated_at TEXT")
+                logging.info("Added updated_at column to gelir invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Add created_at column if it doesn't exist
+            try:
+                gelir_cursor.execute("ALTER TABLE invoices ADD COLUMN created_at TEXT")
+                logging.info("Added created_at column to gelir invoices table")
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
@@ -72,7 +96,9 @@ class Database:
                     birim TEXT,
                     kdv_yuzdesi REAL,
                     kdv_tutari REAL,
-                    kdv_dahil INTEGER DEFAULT 0
+                    kdv_dahil INTEGER DEFAULT 0,
+                    usd_rate REAL,
+                    eur_rate REAL
                 )
             """)
             
@@ -83,15 +109,66 @@ class Database:
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
-            # GENEL GİDER VERİTABANI
+            # Add kur columns if they don't exist
+            try:
+                gider_cursor.execute("ALTER TABLE invoices ADD COLUMN usd_rate REAL")
+                gider_cursor.execute("ALTER TABLE invoices ADD COLUMN eur_rate REAL")
+                logging.info("Added exchange rate columns to gider invoices table")
+            except sqlite3.OperationalError:
+                pass  # Columns already exist
+            
+            # Add updated_at column if it doesn't exist
+            try:
+                gider_cursor.execute("ALTER TABLE invoices ADD COLUMN updated_at TEXT")
+                logging.info("Added updated_at column to gider invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Add created_at column if it doesn't exist
+            try:
+                gider_cursor.execute("ALTER TABLE invoices ADD COLUMN created_at TEXT")
+                logging.info("Added created_at column to gider invoices table")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # GENEL GİDERLER VERİTABANI
             genel_gider_cursor = self.genel_gider_conn.cursor()
             genel_gider_cursor.execute("""
                 CREATE TABLE IF NOT EXISTS general_expenses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tarih TEXT,
-                    tur TEXT,
-                    miktar REAL,
-                    aciklama TEXT
+                    yil INTEGER,
+                    ocak REAL DEFAULT 0,
+                    subat REAL DEFAULT 0,
+                    mart REAL DEFAULT 0,
+                    nisan REAL DEFAULT 0,
+                    mayis REAL DEFAULT 0,
+                    haziran REAL DEFAULT 0,
+                    temmuz REAL DEFAULT 0,
+                    agustos REAL DEFAULT 0,
+                    eylul REAL DEFAULT 0,
+                    ekim REAL DEFAULT 0,
+                    kasim REAL DEFAULT 0,
+                    aralik REAL DEFAULT 0
+                )
+            """)
+            
+            # KURUMLAR VERGİSİ VERİTABANI - Aylık kurumlar vergisi tutarları
+            genel_gider_cursor.execute("""
+                CREATE TABLE IF NOT EXISTS corporate_tax (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    yil INTEGER,
+                    ocak REAL DEFAULT 0,
+                    subat REAL DEFAULT 0,
+                    mart REAL DEFAULT 0,
+                    nisan REAL DEFAULT 0,
+                    mayis REAL DEFAULT 0,
+                    haziran REAL DEFAULT 0,
+                    temmuz REAL DEFAULT 0,
+                    agustos REAL DEFAULT 0,
+                    eylul REAL DEFAULT 0,
+                    ekim REAL DEFAULT 0,
+                    kasim REAL DEFAULT 0,
+                    aralik REAL DEFAULT 0
                 )
             """)
             
@@ -177,32 +254,36 @@ class Database:
     # GELİR İŞLEMLERİ
     def add_gelir_invoice(self, data):
         """Gelir veritabanına fatura ekler."""
+        from datetime import datetime
         query = """
-            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
-            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0)
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
+            data.get('usd_rate'), data.get('eur_rate'), datetime.now().isoformat()
         )
         cursor = self._execute_query('gelir', query, params)
         return cursor.lastrowid if cursor else None
 
     def update_gelir_invoice(self, invoice_id, data):
         """Gelir veritabanındaki faturayı günceller."""
+        from datetime import datetime
         query = """
             UPDATE invoices SET
             irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
-            toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?
+            toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?, usd_rate = ?, eur_rate = ?, updated_at = ?
             WHERE id = ?
         """
         params = (
             data.get('irsaliye_no'), data.get('tarih'), data.get('firma'), 
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
-            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0), invoice_id
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
+            data.get('usd_rate'), data.get('eur_rate'), datetime.now().isoformat(), invoice_id
         )
         cursor = self._execute_query('gelir', query, params)
         return cursor is not None
@@ -263,32 +344,36 @@ class Database:
     # GİDER İŞLEMLERİ
     def add_gider_invoice(self, data):
         """Gider veritabanına fatura ekler."""
+        from datetime import datetime
         query = """
-            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
-            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0)
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
+            data.get('usd_rate'), data.get('eur_rate'), datetime.now().isoformat()
         )
         cursor = self._execute_query('gider', query, params)
         return cursor.lastrowid if cursor else None
 
     def update_gider_invoice(self, invoice_id, data):
         """Gider veritabanındaki faturayı günceller."""
+        from datetime import datetime
         query = """
             UPDATE invoices SET
             fatura_no = ?, irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
-            toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?
+            toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?, usd_rate = ?, eur_rate = ?, updated_at = ?
             WHERE id = ?
         """
         params = (
             data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'), 
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
-            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0), invoice_id
+            data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
+            data.get('usd_rate'), data.get('eur_rate'), datetime.now().isoformat(), invoice_id
         )
         cursor = self._execute_query('gider', query, params)
         return cursor is not None
@@ -346,19 +431,126 @@ class Database:
                 return dict(zip(columns, row))
         return None
 
-    # GENEL GİDER İŞLEMLERİ
-    def add_genel_gider(self, data):
-        """Genel gider veritabanına kayıt ekler."""
-        query = """
-            INSERT INTO general_expenses (tarih, tur, miktar, aciklama)
-            VALUES (?, ?, ?, ?)
+    # GENEL GİDER İŞLEMLERİ - AYLIK FORMAT
+    def add_or_update_yearly_expenses(self, year, monthly_data):
+        """Belirli bir yıl için aylık genel giderleri ekle veya güncelle.
+        Args:
+            year (int): Yıl
+            monthly_data (dict): Ay adları ve tutarlar {'ocak': 1500, 'subat': 800, ...}
         """
-        params = (
-            data.get('tarih'), data.get('tur'), 
-            data.get('miktar'), data.get('aciklama', '')
-        )
-        cursor = self._execute_query('genel_gider', query, params)
-        return cursor.lastrowid if cursor else None
+        # Önce yılın kayıtlı olup olmadığını kontrol et
+        check_query = "SELECT id FROM general_expenses WHERE yil = ?"
+        cursor = self._execute_query('genel_gider', check_query, (year,))
+        
+        if cursor and cursor.fetchone():
+            # Güncelle
+            set_clauses = []
+            params = []
+            for month, amount in monthly_data.items():
+                if month in ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran',
+                           'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']:
+                    set_clauses.append(f"{month} = ?")
+                    params.append(float(amount or 0))
+            
+            if set_clauses:
+                params.append(year)
+                query = f"UPDATE general_expenses SET {', '.join(set_clauses)} WHERE yil = ?"
+                self._execute_query('genel_gider', query, tuple(params))
+                return True
+        else:
+            # Ekle
+            columns = ['yil']
+            values = [year]
+            for month in ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran',
+                         'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']:
+                columns.append(month)
+                values.append(float(monthly_data.get(month, 0) or 0))
+            
+            placeholders = ', '.join(['?'] * len(columns))
+            query = f"INSERT INTO general_expenses ({', '.join(columns)}) VALUES ({placeholders})"
+            cursor = self._execute_query('genel_gider', query, tuple(values))
+            return cursor.lastrowid if cursor else None
+        
+        return False
+    
+    def get_yearly_expenses(self, year):
+        """Belirli bir yılın aylık genel giderlerini getir."""
+        query = "SELECT * FROM general_expenses WHERE yil = ?"
+        cursor = self._execute_query('genel_gider', query, (year,))
+        if cursor:
+            row = cursor.fetchone()
+            if row:
+                columns = [description[0] for description in cursor.description]
+                return dict(zip(columns, row))
+        return None
+    
+    def get_all_yearly_expenses(self):
+        """Tüm yılların genel giderlerini getir."""
+        query = "SELECT * FROM general_expenses ORDER BY yil DESC"
+        cursor = self._execute_query('genel_gider', query)
+        if cursor:
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        return []
+    
+    # KURUMLAR VERGİSİ FONKSİYONLARI
+    def add_or_update_corporate_tax(self, year, monthly_data):
+        """Belirli bir yıl için aylık kurumlar vergisi tutarlarını ekle veya güncelle."""
+        # Önce kayıt var mı kontrol et
+        check_query = "SELECT id FROM corporate_tax WHERE yil = ?"
+        cursor = self._execute_query('genel_gider', check_query, (year,))
+        
+        if cursor and cursor.fetchone():
+            # Güncelleme
+            month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 
+                         'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+            set_clauses = []
+            values = []
+            
+            for month in month_keys:
+                if month in monthly_data:
+                    set_clauses.append(f"{month} = ?")
+                    values.append(float(monthly_data.get(month, 0) or 0))
+            
+            if set_clauses:
+                query = f"UPDATE corporate_tax SET {', '.join(set_clauses)} WHERE yil = ?"
+                values.append(year)
+                cursor = self._execute_query('genel_gider', query, tuple(values))
+                return cursor is not None
+        else:
+            # Ekleme
+            month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 
+                         'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+            columns = ['yil']
+            values = [year]
+            
+            for month in month_keys:
+                columns.append(month)
+                values.append(float(monthly_data.get(month, 0) or 0))
+            
+            placeholders = ', '.join(['?'] * len(columns))
+            query = f"INSERT INTO corporate_tax ({', '.join(columns)}) VALUES ({placeholders})"
+            cursor = self._execute_query('genel_gider', query, tuple(values))
+            return cursor.lastrowid if cursor else None
+        
+        return False
+    
+    def get_corporate_tax(self, year):
+        """Belirli bir yılın aylık kurumlar vergisi tutarlarını getir."""
+        query = "SELECT * FROM corporate_tax WHERE yil = ?"
+        cursor = self._execute_query('genel_gider', query, (year,))
+        if cursor:
+            row = cursor.fetchone()
+            if row:
+                columns = [description[0] for description in cursor.description]
+                return dict(zip(columns, row))
+        return None
+
+    # ESKİ FORMAT UYUMLULUK
+    def add_genel_gider(self, data):
+        """Eski format genel gider ekleme - Uyumluluk için."""
+        pass
 
     def update_genel_gider(self, gider_id, data):
         """Genel gider veritabanındaki kaydı günceller."""
@@ -391,22 +583,26 @@ class Database:
         return cursor.rowcount if cursor else 0
 
     def get_all_genel_gider(self, limit=None, offset=0, order_by=None):
-        """Genel gider veritabanındaki tüm kayıtları getirir."""
-        if not order_by:
-            order_by = "tarih DESC"
+        """Eski format tüm genel giderleri getir - yeni formata çevrilmiş veri döndür."""
+        # Yeni sistemden veri çek ve eski formata dönüştür (export için)
+        yearly_data = self.get_all_yearly_expenses()
+        result = []
         
-        # Limit ve offset güvenli değerler kullan
-        if limit is not None:
-            query = f"SELECT * FROM general_expenses ORDER BY {order_by} LIMIT {int(limit)} OFFSET {int(offset or 0)}"
-        else:
-            query = f"SELECT * FROM general_expenses ORDER BY {order_by}"
+        for year_record in yearly_data:
+            year = year_record.get('yil')
+            for month_num, month_name in enumerate(['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran',
+                                                     'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik'], 1):
+                amount = year_record.get(month_name, 0)
+                if amount and amount > 0:
+                    result.append({
+                        'id': f"{year}_{month_num}",
+                        'tarih': f"01.{month_num:02d}.{year}",
+                        'tur': 'Genel Gider',
+                        'miktar': amount,
+                        'aciklama': f'{month_name.capitalize()} {year}'
+                    })
         
-        cursor = self._execute_query('genel_gider', query)
-        if cursor:
-            rows = cursor.fetchall()
-            columns = [description[0] for description in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
-        return []
+        return result
     
     def get_genel_gider_count(self):
         """Genel gider tablosundaki toplam kayıt sayısını döndürür."""
