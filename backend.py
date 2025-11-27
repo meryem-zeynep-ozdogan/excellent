@@ -7,16 +7,17 @@ from db import Database
 from invoices import InvoiceProcessor, InvoiceManager, PeriodicIncomeCalculator
 
 
-class Backend(QObject):
+class Backend:
     """Uygulamanın ana iş mantığını yöneten sınıf."""
-    data_updated = pyqtSignal()
-    status_updated = pyqtSignal(str, int)
 
-    def __init__(self, parent=None):
+    def __init__(self):
         """
         Backend başlatıcısı.
         """
-        super().__init__(parent)
+        # Callback fonksiyonları (Flet uyumlu)
+        self.on_data_updated = None  # Frontend tarafından atanacak
+        self.on_status_updated = None  # Frontend tarafından atanacak
+        
         self.db = Database()
         self.settings = self.db.get_all_settings()
         # Vergi oranını float'a dönüştür
@@ -54,37 +55,52 @@ class Backend(QObject):
     def start_timers(self):
         """
         Uygulama döngüsü başladıktan sonra çağrılacak zamanlayıcıları başlatır.
+        Threading.Timer ile 5 dakikada bir kur güncellemesi yapar.
         """
-        self.rate_update_timer = QTimer(self) # self'i parent olarak ata
-        self.rate_update_timer.timeout.connect(self.update_exchange_rates)
-        self.rate_update_timer.start(300000) # 5 dakika
-        print("INFO: Kur güncelleme zamanlayıcısı başlatıldı.")
+        def schedule_rate_update():
+            self.update_exchange_rates()
+            # 5 dakika sonra tekrar çalıştır
+            self.rate_update_timer = threading.Timer(300.0, schedule_rate_update)
+            self.rate_update_timer.daemon = True
+            self.rate_update_timer.start()
+        
+        # İlk timer'ı başlat
+        self.rate_update_timer = threading.Timer(300.0, schedule_rate_update)
+        self.rate_update_timer.daemon = True
+        self.rate_update_timer.start()
+        print("INFO: Kur güncelleme zamanlayıcısı başlatıldı (Threading.Timer).")
 
     def update_exchange_rates(self):
-        """Döviz kurlarını birden fazla kaynaktan çekmeye çalışır."""
+        """Döviz kurlarını TCMB'den çeker, başarısız olursa önceki günün kurlarını kullanır."""
         
         # Önce TCMB'den deneyelim
         if self._fetch_from_tcmb():
             return
         
-        # TCMB başarısız olursa alternatif API'leri deneyelim
-        if self._fetch_from_exchangerate_api():
+        # TCMB başarısız olursa önceki günün kurlarını deneyelim
+        if self._fetch_tcmb_previous_day():
+            if self.on_status_updated:
+                self.on_status_updated("TCMB önceki gün kurları kullanılıyor.", 4000)
             return
         
-        # Tüm kaynaklar başarısız olursa son güncelleme tarihli kurları veritabanından yükle
+        # Önceki gün de başarısız olursa veritabanından son kaydedilen kurları yükle
         if self._load_rates_from_db():
-            self.status_updated.emit("Son kaydedilen döviz kurları kullanılıyor.", 4000)
+            if self.on_status_updated:
+                self.on_status_updated("Son kaydedilen döviz kurları kullanılıyor.", 4000)
             return
         
         # Hiçbir kaynak yoksa gerçekçi varsayılan değerleri kullan
         logging.warning("Tüm döviz kuru kaynakları başarısız. Varsayılan kurlar kullanılıyor.")
         self.exchange_rates = {'USD': 0.030, 'EUR': 0.028} 
-        self.status_updated.emit("İnternet bağlantısı yok! Varsayılan kurlar kullanılıyor.", 5000)
+        if self.on_status_updated:
+            self.on_status_updated("İnternet bağlantısı yok! Varsayılan kurlar kullanılıyor.", 5000)
     
     def _fetch_from_tcmb(self):
-        """TCMB'den döviz kurlarını çeker."""
+        """TCMB'den bugünün banknote selling kurlarını çeker."""
         try:
+            # TCMB today.xml URL'i sabit
             url = "https://www.tcmb.gov.tr/kurlar/today.xml"
+            
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             
@@ -97,44 +113,72 @@ class Backend(QObject):
             for currency in tree.findall('./Currency'):
                 currency_code = currency.get('Kod')
                 if currency_code == 'USD':
-                    usd_sell_node = currency.find('BanknoteSelling') or currency.find('ForexSelling')
-                    usd_sell = float(usd_sell_node.text.replace(',', '.'))
+                    # Sadece BanknoteSelling kullan
+                    usd_sell_node = currency.find('BanknoteSelling')
+                    if usd_sell_node is not None and usd_sell_node.text:
+                        usd_sell = float(usd_sell_node.text.replace(',', '.'))
                 elif currency_code == 'EUR':
-                    eur_sell_node = currency.find('BanknoteSelling') or currency.find('ForexSelling')
-                    eur_sell = float(eur_sell_node.text.replace(',', '.'))
+                    # Sadece BanknoteSelling kullan
+                    eur_sell_node = currency.find('BanknoteSelling')
+                    if eur_sell_node is not None and eur_sell_node.text:
+                        eur_sell = float(eur_sell_node.text.replace(',', '.'))
             
             if usd_sell and eur_sell:
                 usd_rate = 1.0 / usd_sell
                 eur_rate = 1.0 / eur_sell
                 self.exchange_rates = {'USD': usd_rate, 'EUR': eur_rate}
                 self._save_rates_to_db()  # Kurları veritabanına kaydet
-                self.status_updated.emit("TCMB döviz kurları güncellendi.", 3000)
-                logging.info(f"TCMB kurları: 1 USD = {usd_sell:.4f} TL, 1 EUR = {eur_sell:.4f} TL")
+                if self.on_status_updated:
+                    self.on_status_updated("TCMB döviz kurları güncellendi.", 3000)
+                logging.info(f"TCMB kurları (BanknoteSelling): 1 USD = {usd_sell:.4f} TL, 1 EUR = {eur_sell:.4f} TL")
                 return True
         except Exception as e:
-            logging.error(f"TCMB'den kur alınamadı: {e}")
+            logging.error(f"TCMB bugünün kurlarından kur alınamadı: {e}")
         return False
     
-    def _fetch_from_exchangerate_api(self):
-        """ExchangeRate-API'den döviz kurlarını çeker."""
+    def _fetch_tcmb_previous_day(self):
+        """TCMB'den önceki iş gününün banknote selling kurlarını çeker."""
         try:
-            url = "https://api.exchangerate-api.com/v4/latest/TRY"
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
+            from datetime import datetime, timedelta
             
-            data = response.json()
-            if 'rates' in data:
-                usd_rate = data['rates'].get('USD', 0)
-                eur_rate = data['rates'].get('EUR', 0)
+            # Son 7 günü dene (hafta sonu ve tatilleri atlamak için)
+            for days_back in range(1, 8):
+                prev_date = datetime.now() - timedelta(days=days_back)
+                url = f"https://www.tcmb.gov.tr/kurlar/{prev_date.year}{prev_date.month:02d}/{prev_date.day:02d}{prev_date.month:02d}{prev_date.year}.xml"
                 
-                if usd_rate > 0 and eur_rate > 0:
-                    self.exchange_rates = {'USD': usd_rate, 'EUR': eur_rate}
-                    self._save_rates_to_db()
-                    self.status_updated.emit("Döviz kurları alternatif kaynaktan güncellendi.", 3000)
-                    logging.info(f"ExchangeRate-API kurları: 1 TRY = {usd_rate:.6f} USD, 1 TRY = {eur_rate:.6f} EUR")
-                    return True
+                try:
+                    response = requests.get(url, timeout=5)
+                    response.raise_for_status()
+                    
+                    import xml.etree.ElementTree as ET
+                    tree = ET.fromstring(response.content)
+                    
+                    usd_sell = None
+                    eur_sell = None
+                    
+                    for currency in tree.findall('./Currency'):
+                        currency_code = currency.get('Kod')
+                        if currency_code == 'USD':
+                            usd_sell_node = currency.find('BanknoteSelling')
+                            if usd_sell_node is not None and usd_sell_node.text:
+                                usd_sell = float(usd_sell_node.text.replace(',', '.'))
+                        elif currency_code == 'EUR':
+                            eur_sell_node = currency.find('BanknoteSelling')
+                            if eur_sell_node is not None and eur_sell_node.text:
+                                eur_sell = float(eur_sell_node.text.replace(',', '.'))
+                    
+                    if usd_sell and eur_sell:
+                        usd_rate = 1.0 / usd_sell
+                        eur_rate = 1.0 / eur_sell
+                        self.exchange_rates = {'USD': usd_rate, 'EUR': eur_rate}
+                        self._save_rates_to_db()
+                        logging.info(f"TCMB önceki gün kurları ({prev_date.strftime('%d.%m.%Y')} - BanknoteSelling): 1 USD = {usd_sell:.4f} TL, 1 EUR = {eur_sell:.4f} TL")
+                        return True
+                except:
+                    continue  # Bu tarihte kur yoksa bir sonraki güne geç
+            
         except Exception as e:
-            logging.error(f"ExchangeRate-API'den kur alınamadı: {e}")
+            logging.error(f"TCMB önceki gün kurlarından kur alınamadı: {e}")
         return False
     
     def _save_rates_to_db(self):
@@ -160,6 +204,7 @@ class Backend(QObject):
         """
         Para birimleri arasında dönüşüm yapar.
         Decimal ve float değerleri destekler.
+        Tüm sonuçlar 5 ondalık basamağa yuvarlanır.
         """
         if not amount:
             return 0.0
@@ -172,18 +217,18 @@ class Backend(QObject):
         to_currency = self._normalize_currency(to_currency)
         
         if from_currency == to_currency:
-            return amount
+            return round(amount, 5)
         
         if from_currency == 'TRY':
             rate = self.exchange_rates.get(to_currency)
-            return amount * rate if rate else 0.0
+            return round(amount * rate, 5) if rate else 0.0
         
         if to_currency == 'TRY':
             rate = self.exchange_rates.get(from_currency)
-            return amount / rate if rate else 0.0
+            return round(amount / rate, 5) if rate else 0.0
         
         try_amount = self.convert_currency(amount, from_currency, 'TRY')
-        return self.convert_currency(try_amount, 'TRY', to_currency)
+        return round(self.convert_currency(try_amount, 'TRY', to_currency), 5)
     
     def _normalize_currency(self, currency):
         """Para birimi kodunu normalize eder (TL -> TRY)."""
@@ -262,8 +307,9 @@ class Backend(QObject):
             self.settings[key] = float(value)
         else:
             self.settings[key] = value
-        # Veri güncellendiği sinyalini yay
-        self.data_updated.emit()
+        # Veri güncellendiği callback'ini çağır
+        if self.on_data_updated:
+            self.on_data_updated()
         return True
 
     # ============================================================================
@@ -333,10 +379,11 @@ class Backend(QObject):
         Returns:
             list: QR işleme sonuçları
         """
-        # Callback wrapper - hem sinyal hem de frontend callback'i çağır
+        # Callback wrapper - hem backend hem de frontend callback'i çağır
         def combined_callback(msg, duration):
-            # Backend sinyalini yay
-            self.status_updated.emit(msg, duration)
+            # Backend status callback'ini çağır
+            if self.on_status_updated:
+                self.on_status_updated(msg, duration)
             # Frontend callback varsa çağır
             if status_callback:
                 return status_callback(msg, duration)

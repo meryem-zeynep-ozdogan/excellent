@@ -1,3379 +1,2767 @@
-# --- BU KODUN TAMAMINI KOPYALAYIP frontend.py İÇİNE YAPIŞTIRIN ---
+# Frontend.py - Flet UI
+# Merkezi imports'tan gerekli kütüphaneleri al
+from imports import ft, datetime, time, threading, Decimal, os
+import sys
+import win32event
+import win32api
+from winerror import ERROR_ALREADY_EXISTS
 
-# -*- coding: utf-8 -*-
-# Merkezi import dosyasından tüm gerekli modülleri al
-from imports import *
+# Backend modüllerini import et
+from backend import Backend
+from invoices import InvoiceProcessor
+from toexcel import InvoiceExcelExporter, export_monthly_general_expenses_to_excel
+from topdf import InvoicePDFExporter, export_monthly_general_expenses_to_pdf
 
-# Backend'i import et
-try:
-    from backend import Backend
-except ImportError as e:
-    print(f"HATA: backend.py dosyası bulunamadı veya import edilemedi: {e}")
-    # Backend olmadan çalışabilmek için sahte bir sınıf oluştur
-    class Backend:
-        data_updated = pyqtSignal()
-        status_updated = pyqtSignal(str, int)
-        def __init__(self, parent=None):
-            print("SAHTE BACKEND BAŞLATILDI")
-        def start_timers(self):
-            pass # Hiçbir şey yapma
-        def handle_invoice_operation(self, *args, **kwargs):
-            return [] # Boş liste döndür
-        def get_summary_data(self):
-            return {}, {"income": [0]*12, "expenses": [0]*12} # Boş veri döndür
-        def get_year_range(self):
-            return [str(datetime.now().year)] # Geçerli yılı döndür
-        def get_calculations_for_year(self, year):
-            return [], [] # Boş veri döndür
-        def get_yearly_summary(self, year):
-            return {} # Boş veri döndür
-        def convert_currency(self, amount, from_curr, to_curr):
-            return amount # Dönüşüm yapma
-        def save_setting(self, key, value):
-            pass # Hiçbir şey yapma
+# Tek instance kontrolü
+mutex = win32event.CreateMutex(None, False, 'Global\\ExcellentMVPSingleInstance')
+last_error = win32api.GetLastError()
 
+if last_error == ERROR_ALREADY_EXISTS:
+    # Uygulama zaten çalışıyor
+    import ctypes
+    ctypes.windll.user32.MessageBoxW(0, "Excellent uygulaması zaten çalışıyor!", "Uyarı", 0x30)
+    sys.exit(0)
 
-# --- Stil ve Tema Tanımlamaları ---
-LIGHT_THEME_PALETTE = {
-    "page_background": "#f8f9fa", "main_card_frame": "#ffffff", "card_frame": "#ffffff",
-    "card_border": "#e5eaf0", "text_primary": "#0b2d4d", "text_secondary": "#505050",
-    "text_tertiary": "#606060", "title_color": "#0b2d4d", "page_title_color": "#000000",
-    "table_background": "#FFFFFF", "table_border": "#D0D0D0", "table_header": "#F0F0F0",
-    "table_selection": "#C8E6C9", "input_border": "#D0D0D0", "menu_background": "#ffffff",
-    "menu_hover": "#f0f5fa", "menu_checked": "#e9f0f8", "graph_background": "w", "graph_foreground": "#404040",
-    "notes_list_bg": "#FFFFFF", "notes_list_border": "#E0E0E0", "notes_list_item_selected_bg": "#007bff",
-    "notes_list_item_selected_text": "#FFFFFF", "calendar_note_bg": "#28a745", "calendar_note_text": "#FFFFFF",
-    "donut_base_color": "#E9ECEF", "donut_text_color": "#495057",
-    # Button colors - light theme
-    "button_bg": "#6c757d", "button_text": "#ffffff", "button_border": "#6c757d",
-    "button_bg_hover": "#5a6268", "button_border_hover": "#545b62", "button_bg_pressed": "#545b62",
-    "button_bg_disabled": "#6c757d", "button_border_disabled": "#6c757d", "button_text_disabled": "#ffffff",
-    "button_success_bg": "#198754", "button_success_text": "#ffffff", "button_success_border": "#198754",
-    "button_success_bg_hover": "#157347", "button_success_border_hover": "#146c43", "button_success_bg_pressed": "#146c43",
-    "button_warning_bg": "#0d6efd", "button_warning_text": "#ffffff", "button_warning_border": "#0d6efd",
-    "button_warning_bg_hover": "#0a58ca", "button_warning_border_hover": "#0951ba", "button_warning_bg_pressed": "#0951ba",
-    "button_danger_bg": "#dc3545", "button_danger_text": "#ffffff", "button_danger_border": "#dc3545",
-    "button_danger_bg_hover": "#c82333", "button_danger_border_hover": "#bd2130", "button_danger_bg_pressed": "#bd2130",
-    # <<< YENİ: Not Defteri Renkleri >>>
-    "notes_drawing_bg": "#FFCCCC", "notes_drawing_border": "#FF9999",
-    "notes_drawing_label_bg": "#FF9999", "notes_drawing_text_color": "#333333"
+# Backend instance oluştur
+backend_instance = Backend()
+invoice_processor = InvoiceProcessor(backend_instance)
+excel_exporter = InvoiceExcelExporter()
+pdf_exporter = InvoicePDFExporter()
+
+# Backend callback'lerini ayarla (Flet uyumlu)
+def on_backend_data_updated():
+    """Backend'den veri güncellendiğinde tüm sayfalardaki bileşenleri günceller"""
+    try:
+        print("🔔 Backend veri güncelleme callback çağrıldı")
+        # Tüm kayıtlı callback'leri çağır
+        for page_name, callback in state["update_callbacks"].items():
+            if callback is not None:
+                try:
+                    print(f"  → {page_name} callback çalıştırılıyor...")
+                    callback()
+                except Exception as ex:
+                    print(f"  ✗ {page_name} callback hatası: {ex}")
+    except Exception as e:
+        print(f"❌ on_backend_data_updated hatası: {e}")
+
+def on_backend_status_updated(message, duration):
+    """Backend'den status mesajı geldiğinde çağrılır"""
+    pass  # İleride UI'da snackbar/toast gösterilebilir
+
+backend_instance.on_data_updated = on_backend_data_updated
+backend_instance.on_status_updated = on_backend_status_updated
+
+# --- RENK PALETİ ---
+col_primary = "#6C5DD3"   # Mor
+col_secondary = "#FF9F43" # Turuncu
+col_success = "#4CD964"   # Yeşil
+col_danger = "#FF3B30"    # Kırmızı
+col_bg = "#F4F5FA"        # Arka Plan
+col_white = "#FFFFFF"     # Beyaz
+col_text = "#1A1D1F"      # Koyu Metin
+col_text_light = "#9AA1B9" # Gri Metin
+col_blue_donut = "#2D9CDB"
+col_border = "#E6E8EC"
+col_table_header_bg = "#5A5278"
+col_selected_row = "#E8F5E9" 
+col_input_bg = "#FFFFFF"
+col_text_secondary = "#6B7280"  # Gri metin (input label)
+col_card = "#FFFFFF"  # Beyaz (input arka plan) 
+
+# Şeffaf Renkler
+col_primary_50 = "#806C5DD3"
+col_secondary_50 = "#80FF9F43"
+transparent_white = "#00FFFFFF"
+tooltip_bg = "#CC1A1D1F"
+
+# --- GLOBAL DURUM ---
+state = {
+    "sidebar_expanded": False,
+    "current_currency": "TRY",
+    "donuts": [],
+    "invoice_type": "income",
+    "selected_row": None,
+    "current_page": "home",
+    "invoice_sort_option": "newest",
+    "animation_completed": False,
+    "excel_export_path": os.path.join(os.getcwd(), "ExcelReports"),
+    "pdf_export_path": os.path.join(os.getcwd(), "PDFExports"),
+    # Dinamik güncelleme için referanslar
+    "update_callbacks": {
+        "home_page": None,
+        "donemsel_page": None,
+        "invoice_page": None,
+        "general_expenses": None
+    }
 }
 
-DARK_THEME_PALETTE = {
-    "page_background": "#1e1e1e", "main_card_frame": "#2d2d2d", "card_frame": "#2d2d2d",
-    "card_border": "#404040", "text_primary": "#ffffff", "text_secondary": "#cccccc",
-    "text_tertiary": "#aaaaaa", "title_color": "#ffffff", "page_title_color": "#ffffff",
-    "table_background": "#2d2d2d", "table_border": "#404040", "table_header": "#383838",
-    "table_selection": "#4CAF50", "input_border": "#404040", "menu_background": "#2d2d2d",
-    "menu_hover": "#383838", "menu_checked": "#0d6efd", "graph_background": "#2d2d2d", "graph_foreground": "#ffffff",
-    "notes_list_bg": "#2d2d2d", "notes_list_border": "#404040", "notes_list_item_selected_bg": "#0d6efd",
-    "notes_list_item_selected_text": "#ffffff", "calendar_note_bg": "#198754", "calendar_note_text": "#ffffff",
-    "donut_base_color": "#383838", "donut_text_color": "#ffffff",
-    # Button colors - dark theme
-    "button_bg": "#6c757d", "button_text": "#ffffff", "button_border": "#6c757d",
-    "button_bg_hover": "#5a6268", "button_border_hover": "#545b62", "button_bg_pressed": "#545b62",
-    "button_bg_disabled": "#6c757d", "button_border_disabled": "#6c757d", "button_text_disabled": "#cccccc",
-    "button_success_bg": "#198754", "button_success_text": "#ffffff", "button_success_border": "#198754",
-    "button_success_bg_hover": "#157347", "button_success_border_hover": "#146c43", "button_success_bg_pressed": "#146c43",
-    "button_warning_bg": "#0d6efd", "button_warning_text": "#ffffff", "button_warning_border": "#0d6efd",
-    "button_warning_bg_hover": "#0a58ca", "button_warning_border_hover": "#0951ba", "button_warning_bg_pressed": "#0951ba",
-    "button_danger_bg": "#dc3545", "button_danger_text": "#ffffff", "button_danger_border": "#dc3545",
-    "button_danger_bg_hover": "#c82333", "button_danger_border_hover": "#bd2130", "button_danger_bg_pressed": "#bd2130",
-    # Not Defteri Renkleri - dark theme
-    "notes_drawing_bg": "#4d2d2d", "notes_drawing_border": "#666666",
-    "notes_drawing_label_bg": "#666666", "notes_drawing_text_color": "#ffffff"
-}
-STYLES = {}
+# --- BACKEND YARDIMCI FONKSİYONLAR ---
+def get_exchange_rates():
+    """Backend'den güncel döviz kurlarını al"""
+    return backend_instance.exchange_rates
 
-def update_styles(palette):
-    """Stil sözlüğünü günceller."""
-    STYLES["palette"] = palette
-    STYLES["page_background"] = f"background-color: {palette['page_background']};"
-    STYLES["main_card_frame"] = f"QFrame {{ background-color: {palette['main_card_frame']}; border-radius: 12px; }}"
-    STYLES["title"] = f"font-size: 26px; font-weight: 600; color: {palette['title_color']};"
-    STYLES["page_title"] = f"font-size: 24px; font-weight: bold; margin-bottom: 5px; color: {palette['page_title_color']};"
-    STYLES["card_frame"] = f"QFrame {{ background-color: {palette['card_frame']}; border: 1px solid {palette['card_border']}; border-radius: 12px; }}"
-    STYLES["info_panel_title"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 10px;"
-    STYLES["table_style"] = (f"QTableWidget {{ background-color: {palette['table_background']}; border: 1px solid {palette['table_border']}; gridline-color: {palette['table_border']}; color: {palette['text_primary']}; selection-background-color: {palette['table_selection']}; selection-color: {palette['text_primary']}; }} QHeaderView::section {{ background-color: {palette['table_header']}; color: {palette['text_primary']}; font-weight: bold; padding: 5px; border: 1px solid {palette['table_border']}; }} QTableWidget::item:selected {{ background-color: {palette['table_selection']}; color: {palette['text_primary']}; border: 2px solid #4CAF50; }}")
-    STYLES["input_style"] = f"padding: 8px; border: 1px solid {palette.get('input_border', '#D0D0D0')}; border-radius: 6px; font-size: 13px; color: {palette.get('text_primary', '#0b2d4d')}; background-color: {palette.get('card_frame', '#FFFFFF')};"
-    STYLES["combobox_style"] = (f"QComboBox {{ "
-        f"padding: 8px 12px; "
-        f"border: 1px solid {palette.get('input_border', '#D0D0D0')}; "
-        f"border-radius: 6px; "
-        f"font-size: 13px; "
-        f"color: {palette.get('text_primary', '#0b2d4d')}; "
-        f"background-color: {palette.get('card_frame', '#FFFFFF')}; "
-        f"selection-background-color: {palette.get('table_selection', '#C8E6C9')}; "
-        f"}} "
-        f"QComboBox:drop-down {{ "
-        f"subcontrol-origin: padding; "
-        f"subcontrol-position: top right; "
-        f"width: 15px; "
-        f"border-left-width: 1px; "
-        f"border-left-color: {palette.get('input_border', '#D0D0D0')}; "
-        f"border-left-style: solid; "
-        f"border-top-right-radius: 3px; "
-        f"border-bottom-right-radius: 3px; "
-        f"}} "
-        f"QComboBox::down-arrow {{ "
-        f"image: none; "
-        f"border-left: 3px solid transparent; "
-        f"border-right: 3px solid transparent; "
-        f"border-top: 5px solid {palette.get('text_secondary', '#505050')}; "
-        f"margin-left: 3px; "
-        f"}} "
-        f"QComboBox QAbstractItemView {{ "
-        f"border: 1px solid {palette.get('input_border', '#D0D0D0')}; "
-        f"background-color: {palette.get('card_frame', '#FFFFFF')}; "
-        f"color: {palette.get('text_primary', '#0b2d4d')}; "
-        f"selection-background-color: {palette.get('table_selection', '#C8E6C9')}; "
-        f"}})")
-    STYLES["menu_frame_style"] = f"background-color: {palette['menu_background']};"
-    STYLES["menu_button_style"] = (f"QPushButton {{ text-align: left; padding: 15px 20px; border: none; color: {palette['text_secondary']}; font-size: 15px; font-weight: 500; border-radius: 8px; background-color: transparent; }} QPushButton:hover {{ background-color: {palette['menu_hover']}; color: #0088ff; }} QPushButton:checked {{ background-color: {palette['menu_checked']}; color: {palette['text_primary']}; font-weight: 600; }}")
-    STYLES["export_button"] = "padding: 8px 12px; background-color: #17a2b8; color: white; border-radius: 6px; font-weight: 600; font-size: 12px;"
-    STYLES["logo_text_style"] = f"font-size: 20px; font-weight: 600; color: {palette['text_primary']}; padding-left: 10px;"
-    STYLES["notes_list_style"] = f"QListWidget {{ border: 1px solid {palette['notes_list_border']}; border-radius: 6px; padding: 5px; background-color: {palette['notes_list_bg']}; color: {palette['text_primary']}; }} QListWidget::item {{ padding: 8px; margin: 2px 0; border-radius: 4px; color: {palette['text_primary']}; }} QListWidget::item:selected {{ background-color: {palette['notes_list_item_selected_bg']}; color: {palette['notes_list_item_selected_text']}; }} QListWidget::item:hover {{ background-color: {palette['menu_hover']}; }}"
-    
-    # Uniform button styles - works in both light and dark mode
-    STYLES["button_style"] = (f"QPushButton {{ "
-        f"background-color: {palette.get('button_bg', '#0d6efd')}; "
-        f"color: {palette.get('button_text', '#ffffff')}; "
-        f"border: 2px solid {palette.get('button_border', '#0d6efd')}; "
-        f"border-radius: 6px; "
-        f"padding: 8px 16px; "
-        f"font-size: 13px; "
-        f"font-weight: 500; "
-        f"min-width: 80px; "
-        f"}} "
-        f"QPushButton:hover {{ "
-        f"background-color: {palette.get('button_bg_hover', '#0b5ed7')}; "
-        f"border-color: {palette.get('button_border_hover', '#0a58ca')}; "
-        f"}} "
-        f"QPushButton:pressed {{ "
-        f"background-color: {palette.get('button_bg_pressed', '#0a58ca')}; "
-        f"}} "
-        f"QPushButton:disabled {{ "
-        f"background-color: {palette.get('button_bg_disabled', '#6c757d')}; "
-        f"border-color: {palette.get('button_border_disabled', '#6c757d')}; "
-        f"color: {palette.get('button_text_disabled', '#ffffff')}; "
-        f"}}")
-    
-    # Success button - green styling (Ekle)
-    STYLES["success_button_style"] = (f"QPushButton {{ "
-        f"background-color: {palette.get('button_success_bg', '#198754')}; "
-        f"color: {palette.get('button_success_text', '#ffffff')}; "
-        f"border: 2px solid {palette.get('button_success_border', '#198754')}; "
-        f"border-radius: 6px; "
-        f"padding: 8px 16px; "
-        f"font-size: 13px; "
-        f"font-weight: 500; "
-        f"min-width: 80px; "
-        f"}} "
-        f"QPushButton:hover {{ "
-        f"background-color: {palette.get('button_success_bg_hover', '#157347')}; "
-        f"border-color: {palette.get('button_success_border_hover', '#146c43')}; "
-        f"}} "
-        f"QPushButton:pressed {{ "
-        f"background-color: {palette.get('button_success_bg_pressed', '#146c43')}; "
-        f"}}")
-    
-    # Warning button - yellow styling (Güncelle)
-    STYLES["warning_button_style"] = (f"QPushButton {{ "
-        f"background-color: {palette.get('button_warning_bg', '#ffc107')}; "
-        f"color: {palette.get('button_warning_text', '#000000')}; "
-        f"border: 2px solid {palette.get('button_warning_border', '#ffc107')}; "
-        f"border-radius: 6px; "
-        f"padding: 8px 16px; "
-        f"font-size: 13px; "
-        f"font-weight: 500; "
-        f"min-width: 80px; "
-        f"}} "
-        f"QPushButton:hover {{ "
-        f"background-color: {palette.get('button_warning_bg_hover', '#e0a800')}; "
-        f"border-color: {palette.get('button_warning_border_hover', '#d39e00')}; "
-        f"}} "
-        f"QPushButton:pressed {{ "
-        f"background-color: {palette.get('button_warning_bg_pressed', '#d39e00')}; "
-        f"}}")
-    
-    # Delete button - red styling
-    STYLES["delete_button_style"] = (f"QPushButton {{ "
-        f"background-color: {palette.get('button_danger_bg', '#dc3545')}; "
-        f"color: {palette.get('button_danger_text', '#ffffff')}; "
-        f"border: 2px solid {palette.get('button_danger_border', '#dc3545')}; "
-        f"border-radius: 6px; "
-        f"padding: 8px 16px; "
-        f"font-size: 13px; "
-        f"font-weight: 500; "
-        f"min-width: 80px; "
-        f"}} "
-        f"QPushButton:hover {{ "
-        f"background-color: {palette.get('button_danger_bg_hover', '#c82333')}; "
-        f"border-color: {palette.get('button_danger_border_hover', '#bd2130')}; "
-        f"}} "
-        f"QPushButton:pressed {{ "
-        f"background-color: {palette.get('button_danger_bg_pressed', '#bd2130')}; "
-        f"}}")
+def convert_currency(amount, from_currency, to_currency):
+    """Para birimi dönüşümü yap"""
+    return backend_instance.convert_currency(amount, from_currency, to_currency)
 
-    STYLES["notes_date_label_style"] = f"font-size: 16px; font-weight: 600; color: {palette['text_primary']}; margin-bottom: 5px;"
-    
-    # QMessageBox için stil ekle - popup görünürlük sorununu çöz
-    STYLES["messagebox_style"] = f"""
-        QMessageBox {{
-            background-color: {palette['card_frame']};
-            color: {palette['text_primary']};
-            border: 2px solid {palette['card_border']};
-            border-radius: 8px;
-            font-size: 14px;
-        }}
-        QMessageBox QLabel {{
-            color: {palette['text_primary']};
-            font-size: 14px;
-            font-weight: 500;
-            padding: 10px;
-            background-color: transparent;
-        }}
-        QMessageBox QPushButton {{
-            background-color: {palette.get('button_primary', '#007ACC')};
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            min-width: 80px;
-        }}
-        QMessageBox QPushButton:hover {{
-            background-color: {palette.get('button_hover', '#005a9e')};
-        }}
-        QMessageBox QPushButton:pressed {{
-            background-color: {palette.get('button_pressed', '#004080')};
-        }}
-    """
-    STYLES["notes_section_title_style"] = f"font-size: 14px; font-weight: 600; color: {palette['text_secondary']}; margin-top: 10px; margin-bottom: 5px;"
-    STYLES["donut_label_style"] = f"font-size: 12px; color: {palette.get('text_secondary', '#505050')}; font-weight: 500;"
+def process_invoice(invoice_data):
+    """Fatura verilerini işle ve KDV hesapla"""
+    return invoice_processor.process_invoice_data(invoice_data)
 
-    STYLES["notes_drawing_frame"] = f"QFrame {{ background-color: {palette['notes_drawing_bg']}; border: 2px solid {palette['notes_drawing_border']}; border-radius: 8px; }}"
-    STYLES["notes_drawing_label_bg"] = f"background-color: {palette['notes_drawing_label_bg']}; color: {palette['notes_drawing_text_color']}; font-weight: bold; padding: 5px; border-radius: 5px;"
-    STYLES["notes_list_item_drawing_style"] = f"QListWidget {{ border: none; background-color: transparent; }} QListWidget::item {{ padding: 8px 5px; color: {palette['notes_drawing_text_color']}; background-color: transparent; border-bottom: 1px dashed {palette['notes_drawing_border']}; }} QListWidget::item:selected {{ background-color: {palette['notes_drawing_border']}; color: {palette['notes_list_item_selected_text']}; }}"
-    STYLES["notes_buttons_drawing_style"] = "QPushButton { padding: 6px 10px; border-radius: 4px; font-size: 12px; } QPushButton#new_button_notes { background-color: #6c757d; color: white; } QPushButton#delete_button_notes { background-color: #dc3545; color: white; } QPushButton#save_button_notes { background-color: #28a745; color: white; }"
+def format_currency(amount, currency="TRY", compact=False):
+    """Para birimi formatla - compact=True ise K/M formatında göster"""
+    if compact:
+        # Kompakt format (K/M ile)
+        if amount >= 1000000:
+            return f"₺ {amount/1000000:.1f}M"
+        elif amount >= 1000:
+            return f"₺ {amount/1000:.1f}K"
+        else:
+            return f"₺ {amount:.0f}"
     
-    STYLES["kdv_checkbox_style"] = "QCheckBox { font-weight: 600; padding: 5px; } QCheckBox:checked { color: #28a745; }"
-    STYLES["preview_button_style"] = "QPushButton { padding: 8px 12px; background-color: #6c757d; color: white; border-radius: 6px; font-weight: 600; font-size: 12px; } QPushButton:hover { background-color: #5a6268; }"
+    # Normal format
+    if currency == "TRY":
+        return f"{amount:,.2f} ₺"
+    elif currency == "USD":
+        return f"${amount:,.2f}"
+    elif currency == "EUR":
+        return f"€{amount:,.2f}"
+    return f"{amount:,.2f} {currency}"
 
+def get_exchange_rate_display():
+    """Kur bilgilerini string olarak döndür"""
+    rates = get_exchange_rates()
+    usd_rate = rates.get('USD', 0)
+    eur_rate = rates.get('EUR', 0)
+    
+    if usd_rate > 0 and eur_rate > 0:
+        usd_tl = 1 / usd_rate
+        eur_tl = 1 / eur_rate
+        return f"1 USD = {usd_tl:.2f} TL | 1 EUR = {eur_tl:.2f} TL"
+    return "Kur bilgisi yükleniyor..."
 
-def show_styled_message_box(parent, icon, title, text, buttons=QMessageBox.StandardButton.Ok, yes_text=None, no_text=None):
-    """ Profesyonel ve kurumsal görünümlü QMessageBox gösterir. """
-    msg_box = QMessageBox(parent)
-    msg_box.setWindowTitle(title)
-    msg_box.setText(text)
-    msg_box.setStandardButtons(buttons)
-    msg_box.setIcon(icon)
-    
-    # Buton metinlerini Türkçeleştir
-    for button in msg_box.buttons():
-        std_button = msg_box.standardButton(button)
-        if std_button == QMessageBox.StandardButton.Ok:
-            button.setText("Tamam")
-        elif std_button == QMessageBox.StandardButton.Yes:
-            button.setText(yes_text if yes_text else "Evet")
-        elif std_button == QMessageBox.StandardButton.No:
-            button.setText(no_text if no_text else "Hayır")
-        elif std_button == QMessageBox.StandardButton.Cancel:
-            button.setText("İptal")
-        elif std_button == QMessageBox.StandardButton.Apply:
-            button.setText("Uygula")
-        elif std_button == QMessageBox.StandardButton.Reset:
-            button.setText("Sıfırla")
-    
-    # Profesyonel renk paleti
-    bg_color = "#ffffff"
-    text_color = "#2c3e50"
-    border_color = "#bdc3c7" 
-    header_bg = "#34495e"
-    
-    # İkon tipine göre vurgu rengi (daha profesyonel tonlarda)
-    if icon == QMessageBox.Icon.Information:
-        accent_color = "#3498db"
-        accent_light = "#ebf3fd"
-    elif icon == QMessageBox.Icon.Question:
-        accent_color = "#f39c12"
-        accent_light = "#fef9e7"
-    elif icon == QMessageBox.Icon.Warning:
-        accent_color = "#e74c3c"
-        accent_light = "#fdebea"
-    elif icon == QMessageBox.Icon.Critical:
-        accent_color = "#8e44ad"
-        accent_light = "#f4ecf7"
+# --- YARDIMCI BİLEŞENLER ---
+
+class ScaleButton(ft.Container):
+    def __init__(self, icon, color, tooltip_text, width=50, height=45, on_click=None):
+        super().__init__()
+        self.bgcolor = color
+        self.border_radius = 8
+        self.width = width
+        self.height = height
+        self.tooltip = tooltip_text
+        self.alignment = ft.alignment.center
+        self.animate_scale = ft.Animation(200, ft.AnimationCurve.EASE_OUT_BACK)
+        self.animate = ft.Animation(200, "easeOut")
+        self.ink = False 
+        if on_click:
+            self.on_click = on_click
+        
+        hex_code = color.lstrip("#")
+        shadow_color = f"#80{hex_code}"
+        self.shadow = ft.BoxShadow(blur_radius=5, color=shadow_color, offset=ft.Offset(0, 3))
+        self.content = ft.Icon(icon, color=col_white, size=22)
+        self.on_hover = self.hover_effect
+        self.scale = 1.0 
+
+    def hover_effect(self, e):
+        if e.data == "true":
+            self.scale = 1.15
+            self.shadow.blur_radius = 15
+            self.shadow.offset = ft.Offset(0, 6)
+        else:
+            self.scale = 1.0 
+            self.shadow.blur_radius = 5
+            self.shadow.offset = ft.Offset(0, 3)
+        self.update()
+
+class AestheticButton(ft.Container):
+    def __init__(self, text, icon, color, width=130, on_click=None):
+        super().__init__()
+        self.bgcolor = color
+        self.border_radius = 8
+        self.padding = ft.padding.symmetric(horizontal=15, vertical=10)
+        self.width = width
+        self.animate_scale = ft.Animation(150, ft.AnimationCurve.EASE_OUT)
+        self.animate = ft.Animation(200, "easeOut") 
+        self.ink = False 
+        if on_click:
+            self.on_click = on_click
+        
+        hex_code = color.lstrip("#")
+        self.shadow = ft.BoxShadow(blur_radius=8, color=f"#4D{hex_code}", offset=ft.Offset(0, 3))
+        
+        self.content = ft.Row([
+            ft.Icon(icon, color=col_white, size=18),
+            ft.Text(text, color=col_white, weight="bold", size=12)
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=5)
+        self.on_hover = self.hover_effect
+        self.scale = 1.0
+        
+    def hover_effect(self, e):
+        if e.data == "true":
+            self.scale = 1.08
+            self.shadow.offset = ft.Offset(0, 5)
+            self.shadow.blur_radius = 12
+        else:
+            self.scale = 1.0
+            self.shadow.offset = ft.Offset(0, 3)
+            self.shadow.blur_radius = 8
+        self.update()
+
+def create_vertical_input(label, hint, width=None, expand=True, is_dropdown=False, dropdown_options=None):
+    if is_dropdown:
+        input_control = ft.Dropdown(
+            options=[ft.dropdown.Option(opt) for opt in dropdown_options] if dropdown_options else [],
+            text_size=13, color=col_text, border_color="transparent", bgcolor="transparent",
+            content_padding=ft.padding.only(left=10, bottom=5), hint_text=hint,
+            hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+        )
     else:
-        accent_color = "#7f8c8d"
-        accent_light = "#f8f9fa"
+        input_control = ft.TextField(
+            hint_text=hint, hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+            text_size=13, color=col_text, border_color="transparent", bgcolor="transparent",
+            content_padding=ft.padding.only(left=10, bottom=12), 
+        )
+
+    return ft.Column([
+        ft.Text(label, size=12, color=col_text_light, weight="bold"),
+        ft.Container(
+            content=input_control, bgcolor=col_white, border=ft.border.all(1, col_border),
+            border_radius=8, height=38, width=width
+        )
+    ], spacing=3, expand=expand)
+
+# --- FATURA VERİSİ ---
+# Frontend sample invoice data removed to avoid embedded backend/test scaffolding.
+# Integrate a backend data source and supply rows dynamically when ready.
+
+def get_sorted_invoices(sort_option):
+    """Placeholder: returns empty list until backend integration is provided."""
+    return []
+
+def create_invoice_table_content(sort_option="newest", invoice_type="income", on_select_changed=None, invoice_list=None):
+    """Backend'den fatura verilerini çekerek DataTable oluşturur."""
+    def header(t): return ft.DataColumn(ft.Text(t, weight="bold", color=col_white, size=12))
     
-    msg_box.setStyleSheet(
-        f"""
-        QMessageBox {{
-            background-color: {bg_color};
-            border: 1px solid {border_color};
-            border-radius: 0px;
-            font-family: 'Segoe UI', sans-serif;
-            min-width: 450px;
-            max-width: 600px;
-        }}
+    # Backend'den faturaları çek (eğer liste verilmediyse)
+    rows = []
+    invoices = invoice_list  # Liste cache'i için
+    
+    try:
+        if invoices is None:
+            # invoice_type'a göre doğru veritabanını belirle
+            db_type = 'outgoing' if invoice_type == 'income' else 'incoming'
+            
+            # Sıralama seçeneğine göre order_by parametresi
+            if sort_option == "newest":
+                order_by = "id DESC"
+            elif sort_option == "date_desc":
+                order_by = "tarih DESC"
+            elif sort_option == "date_asc":
+                order_by = "tarih ASC"
+            else:
+                order_by = "id DESC"
+            
+            # Backend'den faturaları al
+            invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type=db_type,
+                limit=100,
+                offset=0,
+                order_by=order_by
+            )
         
-        QMessageBox QLabel {{
-            color: {text_color};
-            font-size: 14px;
-            font-weight: 400;
-            padding: 25px 30px;
-            margin: 0px;
-            background-color: transparent;
-            border: none;
-            line-height: 1.6;
-        }}
+        # DataTable satırlarını oluştur
+        if invoices:
+            for inv in invoices:
+                def cell(text, color=col_text): 
+                    return ft.DataCell(ft.Text(str(text), size=12, color=color))
+                
+                # Checkbox hücresi - manuel seçim için
+                checkbox = ft.Checkbox(value=False, on_change=on_select_changed if on_select_changed else None)
+                checkbox_cell = ft.DataCell(checkbox)
+                
+                # Kur bilgisini al
+                usd_rate = inv.get('usd_rate', 0)
+                eur_rate = inv.get('eur_rate', 0)
+                
+                # Tutar görüntüleme - kur bilgisi ile
+                tutar_usd = float(inv.get('toplam_tutar_usd', 0))
+                tutar_eur = float(inv.get('toplam_tutar_eur', 0))
+                
+                usd_text = f"{tutar_usd:,.2f}" if usd_rate == 0 else f"{tutar_usd:,.2f} ({usd_rate:.2f} TL)"
+                eur_text = f"{tutar_eur:,.2f}" if eur_rate == 0 else f"{tutar_eur:,.2f} ({eur_rate:.2f} TL)"
+                
+                # Her satıra invoice verilerini data olarak ekle
+                row = ft.DataRow(
+                    data=inv,  # Tüm invoice verisini data olarak sakla
+                    cells=[
+                        checkbox_cell,  # İlk hücre checkbox
+                        cell(inv.get('fatura_no', '')),
+                        cell(inv.get('irsaliye_no', '')),
+                        cell(inv.get('tarih', '')),
+                        cell(inv.get('firma', '')),
+                        cell(inv.get('malzeme', '')),
+                        cell(inv.get('miktar', '')),
+                        cell(f"{float(inv.get('toplam_tutar_tl', 0)):,.2f}"),
+                        cell(usd_text),
+                        cell(eur_text),
+                        cell(f"%{float(inv.get('kdv_yuzdesi', 0)):.0f}")
+                    ]
+                )
+                rows.append(row)
+    except Exception as e:
+        pass
+
+    return ft.DataTable(
+        columns=[header("SEÇ"), header("FATURA NO"), header("İRSALİYE NO"), header("TARİH"), header("FİRMA"), header("MALZEME"), header("MİKTAR"), ft.DataColumn(ft.Text("TUTAR (TL)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (USD)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (EUR)", weight="bold", color=col_white, size=12), numeric=True), header("KDV")],
+        rows=rows, heading_row_color=col_table_header_bg, heading_row_height=45, data_row_max_height=40,
+        vertical_lines=ft.border.BorderSide(0, "transparent"), horizontal_lines=ft.border.BorderSide(1, "#F0F0F0"),
+        column_spacing=15, width=float("inf")
+    )
+
+def create_donemsel_table(year=None, tax_fields=None, on_tax_change=None):
+    """Dönemsel gelir/gider tablosu - Gerçek verilerle dolu"""
+    if year is None:
+        year = datetime.now().year
+    
+    months = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
+    quarter_colors = [col_danger, col_success, col_secondary, col_blue_donut]
+    def header(t): return ft.DataColumn(ft.Text(t, weight="bold", color=col_white, size=12))
+    def cell(t): return ft.DataCell(ft.Text(t, color="#333333", size=12))
+    
+    # Backend'den verileri çek
+    try:
+        income_invoices = backend_instance.handle_invoice_operation('get', 'outgoing') or []
+        expense_invoices = backend_instance.handle_invoice_operation('get', 'incoming') or []
         
-        QMessageBox QPushButton {{
-            background-color: {bg_color};
-            color: {text_color};
-            border: 1px solid {border_color};
-            border-radius: 0px;
-            padding: 10px 25px;
-            font-size: 13px;
-            font-weight: 500;
-            min-width: 80px;
-            margin: 8px 4px;
-            font-family: 'Segoe UI', sans-serif;
-        }}
+        # Genel giderleri çek
+        general_expenses = backend_instance.db.get_yearly_expenses(year) or {}
         
-        QMessageBox QPushButton:hover {{
-            background-color: {accent_color};
-            color: white;
-            border-color: {accent_color};
-        }}
+        # Kurumlar vergisi tutarlarını çek (aylık)
+        corporate_tax_data = backend_instance.db.get_corporate_tax(year) or {}
         
-        QMessageBox QPushButton:pressed {{
-            background-color: {text_color};
-            color: white;
-            border-color: {text_color};
-        }}
+        # Aylık toplamları hesapla
+        monthly_income = [0.0] * 12
+        monthly_expense = [0.0] * 12
+        monthly_general = [0.0] * 12
+        monthly_corporate_tax = [0.0] * 12  # Aylık kurumlar vergisi tutarları
+        monthly_income_kdv = [0.0] * 12  # Gelir faturalarındaki KDV
+        monthly_expense_kdv = [0.0] * 12  # Gider faturalarındaki KDV
         
-        QMessageBox QPushButton:default {{
-            background-color: {accent_color};
-            color: white;
-            border-color: {accent_color};
-            font-weight: 600;
-        }}
+        # Gelir faturalarını işle
+        for invoice in income_invoices:
+            tarih = invoice.get('tarih', '')
+            if not tarih: continue
+            
+            parts = tarih.split('.')
+            if len(parts) != 3: continue
+            
+            try:
+                month = int(parts[1])
+                invoice_year = int(parts[2])
+                
+                if invoice_year == year:
+                    amount_tl = float(invoice.get('toplam_tutar_tl', 0))
+                    kdv_tl = float(invoice.get('kdv_tutari', 0))
+                    monthly_income[month-1] += amount_tl
+                    monthly_income_kdv[month-1] += kdv_tl
+            except (ValueError, IndexError):
+                continue
         
-        QMessageBox QPushButton:default:hover {{
-            background-color: {text_color};
-            border-color: {text_color};
-        }}
-        """
+        # Gider faturalarını işle
+        for invoice in expense_invoices:
+            tarih = invoice.get('tarih', '')
+            if not tarih: continue
+            
+            parts = tarih.split('.')
+            if len(parts) != 3: continue
+            
+            try:
+                month = int(parts[1])
+                invoice_year = int(parts[2])
+                
+                if invoice_year == year:
+                    amount_tl = float(invoice.get('toplam_tutar_tl', 0))
+                    kdv_tl = float(invoice.get('kdv_tutari', 0))
+                    monthly_expense[month-1] += amount_tl
+                    monthly_expense_kdv[month-1] += kdv_tl
+            except (ValueError, IndexError):
+                continue
+        
+        # Genel giderleri ay ay ekle
+        month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+        for month_idx in range(12):
+            month_key = month_keys[month_idx]
+            if month_key in general_expenses:
+                monthly_general[month_idx] = float(general_expenses[month_key] or 0)
+            if month_key in corporate_tax_data:
+                monthly_corporate_tax[month_idx] = float(corporate_tax_data[month_key] or 0)
+        
+        # Tabloyu oluştur
+        rows = []
+        total_income = 0.0
+        total_expense = 0.0
+        total_general = 0.0
+        total_kdv_diff = 0.0
+        total_kurumlar_vergisi = 0.0
+        
+        for i, m in enumerate(months):
+            quarter_index = i // 3 
+            current_color = quarter_colors[quarter_index]
+            
+            income = monthly_income[i]
+            expense = monthly_expense[i]
+            general = monthly_general[i]
+            income_kdv = monthly_income_kdv[i]
+            expense_kdv = monthly_expense_kdv[i]
+            
+            # Kurumlar vergisi yüzdesini al
+            tax_percentage = monthly_corporate_tax[i]  # Yüzde olarak girilen değer
+            
+            # Kurumlar vergisi = (Gelir fatura + Gider fatura) * Yüzde / 100
+            # Genel giderler dahil DEĞİL, sadece faturalar
+            taxable_base = income + expense
+            kurumlar_vergisi = (taxable_base * tax_percentage / 100) if tax_percentage > 0 else 0
+            
+            # Toplam gider = Faturalı gider + Genel gider
+            total_month_expense = expense + general
+            
+            # KDV farkı = Mutlak değer (her zaman pozitif)
+            kdv_diff = abs(income_kdv - expense_kdv)
+            
+            # Ödenecek vergi = KDV farkı + Kurumlar Vergisi
+            odenecek_vergi = kdv_diff + kurumlar_vergisi
+            
+            # Toplamları güncelle
+            total_income += income
+            total_expense += total_month_expense
+            total_general += general
+            total_kdv_diff += kdv_diff
+            total_kurumlar_vergisi += kurumlar_vergisi
+            
+            month_cell = ft.DataCell(ft.Container(
+                content=ft.Text(m, color=current_color, weight="bold", size=12), 
+                padding=ft.padding.only(left=8), 
+                border=ft.border.only(left=ft.border.BorderSide(3, current_color)), 
+                alignment=ft.alignment.center_left
+            ))
+            
+            # Gider hücresinde toplam göster (fatura + genel)
+            expense_text = f"{total_month_expense:,.2f} TL"
+            
+            # Kurumlar vergisi hücresi - TextField ile düzenlenebilir
+            if tax_fields and i < len(tax_fields):
+                tax_field = tax_fields[i]
+                kurumlar_cell = ft.DataCell(ft.Container(
+                    content=tax_field,
+                    padding=2,
+                    alignment=ft.alignment.center
+                ))
+            else:
+                kurumlar_text = f"{kurumlar_vergisi:,.2f} TL" if kurumlar_vergisi > 0 else "-"
+                kurumlar_cell = cell(kurumlar_text)
+            
+            rows.append(ft.DataRow(cells=[
+                month_cell, 
+                cell(f"{income:,.2f} TL"),
+                cell(expense_text),
+                cell(f"{kdv_diff:,.2f} TL"),
+                kurumlar_cell,
+                cell(f"{odenecek_vergi:,.2f} TL")
+            ]))
+        
+        table = ft.DataTable(
+            columns=[header("DÖNEM"), header("GELİR (Kesilen)"), header("GİDER (Gelen + Genel)"), header("KDV FARKI"), header("KURUMLAR VERGİSİ"), header("ÖDENECEK VERGİ")], 
+            rows=rows, 
+            heading_row_color=col_table_header_bg, 
+            heading_row_height=45, 
+            data_row_max_height=40, 
+            vertical_lines=ft.border.BorderSide(1, "#E0E0E0"), 
+            horizontal_lines=ft.border.BorderSide(1, "#E0E0E0"), 
+            column_spacing=10, 
+            width=float("inf")
+        )
+        
+        # Toplam kurumlar vergisi ve ödenecek vergi hesapla
+        total_odenecek_vergi = total_kdv_diff + total_kurumlar_vergisi
+        
+        total_card = ft.Container(
+            margin=ft.margin.only(top=10), 
+            padding=20, 
+            bgcolor="#F8F7FC", 
+            border=ft.border.all(1, "#E0DBF5"), 
+            border_radius=12, 
+            shadow=ft.BoxShadow(blur_radius=5, color="#106C5DD3", offset=ft.Offset(0, 3)),
+            content=ft.Row([
+                ft.Row([ft.Icon("functions", color=col_primary), ft.Text("GENEL TOPLAM", color=col_primary, weight="bold", size=16)], spacing=10),
+                ft.Row([
+                    ft.Column([ft.Text("Gelir", color="#9AA1B9", size=11), ft.Text(f"{total_income:,.2f} TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("Gider (Fatura + Genel)", color="#9AA1B9", size=11), ft.Text(f"{total_expense:,.2f} TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("KDV Farkı", color="#9AA1B9", size=11), ft.Text(f"{total_kdv_diff:,.2f} TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("Kurumlar Vergisi", color="#9AA1B9", size=11), ft.Text(f"{total_kurumlar_vergisi:,.2f} TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("Ödenecek Vergi", color=col_danger, size=11, weight="bold"), ft.Text(f"{total_odenecek_vergi:,.2f} TL", color=col_text, weight="bold", size=16)], spacing=2),
+                ], spacing=20)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        )
+        
+        return ft.Column([table, total_card])
+        
+    except Exception as e:
+        pass
+        
+        # Hata durumunda boş tablo döndür
+        rows = []
+        for i, m in enumerate(months):
+            quarter_index = i // 3 
+            current_color = quarter_colors[quarter_index]
+            month_cell = ft.DataCell(ft.Container(content=ft.Text(m, color=current_color, weight="bold", size=12), padding=ft.padding.only(left=8), border=ft.border.only(left=ft.border.BorderSide(3, current_color)), alignment=ft.alignment.center_left))
+            rows.append(ft.DataRow(cells=[month_cell, cell("0.00 TL"), cell("0.00 TL"), cell("0.00 TL"), cell("0.00 TL")]))
+        
+        table = ft.DataTable(columns=[header("DÖNEM"), header("GELİR (Kesilen)"), header("GİDER (Gelen)"), header("KDV FARKI"), header("ÖDENECEK VERGİ")], rows=rows, heading_row_color=col_table_header_bg, heading_row_height=45, data_row_max_height=40, vertical_lines=ft.border.BorderSide(1, "#E0E0E0"), horizontal_lines=ft.border.BorderSide(1, "#E0E0E0"), column_spacing=10, width=float("inf"))
+        
+        total_card = ft.Container(
+            margin=ft.margin.only(top=10), padding=20, bgcolor="#F8F7FC", border=ft.border.all(1, "#E0DBF5"), border_radius=12, shadow=ft.BoxShadow(blur_radius=5, color="#106C5DD3", offset=ft.Offset(0, 3)),
+            content=ft.Row([
+                ft.Row([ft.Icon("functions", color=col_primary), ft.Text("GENEL TOPLAM", color=col_primary, weight="bold", size=16)], spacing=10),
+                ft.Row([
+                    ft.Column([ft.Text("Gelir", color="#9AA1B9", size=11), ft.Text("0.00 TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("Gider", color="#9AA1B9", size=11), ft.Text("0.00 TL", color=col_text, weight="bold")], spacing=2),
+                    ft.Container(width=1, height=30, bgcolor="#D0D0D0"),
+                    ft.Column([ft.Text("Ödenecek Vergi", color=col_danger, size=11, weight="bold"), ft.Text("0.00 TL", color=col_text, weight="bold", size=16)], spacing=2),
+                ], spacing=30)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+        )
+        return ft.Column([table, total_card])
+
+def create_grid_expenses(page):
+    months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+    month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+    
+    # Yıl seçenekleri
+    current_year = datetime.now().year
+    year_options = [ft.dropdown.Option(str(y)) for y in range(current_year - 2, current_year + 2)]
+    
+    year_dropdown = ft.Dropdown(
+        options=year_options,
+        value=str(current_year),
+        text_size=12,
+        content_padding=10,
+        width=95,
+        bgcolor=col_white,
+        border_color=col_border,
+        border_radius=8
     )
     
-    # Pencere boyutunu ayarla
-    msg_box.resize(500, 200)
+    # TextField'ları sakla
+    expense_fields = {}
+    expense_cards = []
     
-    # Pencereyi ortalamak için
-    if parent:
-        parent_geometry = parent.geometry()
-        msg_box.move(
-            parent_geometry.center().x() - msg_box.width() // 2,
-            parent_geometry.center().y() - msg_box.height() // 2
+    for i, m in enumerate(months):
+        text_field = ft.TextField(
+            value="0", 
+            text_size=14, 
+            text_style=ft.TextStyle(weight=ft.FontWeight.BOLD), 
+            color=col_text, 
+            text_align=ft.TextAlign.CENTER, 
+            border_color="#E0E0E0", 
+            focused_border_color=col_primary, 
+            height=35, 
+            content_padding=5, 
+            bgcolor="#FAFAFA", 
+            prefix_text="₺ "
         )
-    
-    return msg_box.exec()
-
-
-# Yardımcı fonksiyonlar - kolay kullanım için
-def show_info(parent, title, message):
-    """Bilgi mesajı gösterir."""
-    return show_styled_message_box(parent, QMessageBox.Icon.Information, title, message)
-
-def show_warning(parent, title, message):
-    """Uyarı mesajı gösterir."""
-    return show_styled_message_box(parent, QMessageBox.Icon.Warning, title, message)
-
-def show_error(parent, title, message):
-    """Hata mesajı gösterir."""
-    return show_styled_message_box(parent, QMessageBox.Icon.Critical, title, message)
-
-def show_question(parent, title, message):
-    """Soru mesajı gösterir (Evet/Hayır)."""
-    return show_styled_message_box(parent, QMessageBox.Icon.Question, title, message, 
-                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-
-
-def get_save_file_name_turkish(parent, title, default_name, file_filter):
-    """
-    Türkçeleştirilmiş dosya kaydetme dialogu.
-    """
-    dialog = QFileDialog(parent)
-    dialog.setWindowTitle(title)
-    dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-    dialog.setNameFilter(file_filter)
-    dialog.selectFile(default_name)
-    dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Kaydet")
-    dialog.setLabelText(QFileDialog.DialogLabel.Reject, "İptal")
-    dialog.setLabelText(QFileDialog.DialogLabel.FileName, "Dosya Adı")
-    dialog.setLabelText(QFileDialog.DialogLabel.FileType, "Dosya Türü")
-    
-    if dialog.exec() == QFileDialog.DialogCode.Accepted:
-        selected_files = dialog.selectedFiles()
-        return selected_files[0] if selected_files else None, file_filter
-    return None, None
-
-# --- Donut Grafik Widget ---
-class DonutChartWidget(QWidget):
-    def __init__(self, value=0, max_value=100, color=QColor("#007bff"), text="", parent=None):
-        super().__init__(parent)
-        self.value = value
-        self.max_value = max_value if max_value > 0 else 100
-        self.color = QColor(color) if isinstance(color, str) else color
-        self.label_text = text
-        self.display_text = ""
-        self.setMinimumSize(120, 120)
-        self.setMaximumSize(200, 200)
-
-    def setValue(self, value):
-        self.value = value
-        self.update()
-
-    def setColor(self, color):
-        self.color = QColor(color) if isinstance(color, str) else color
-        self.update()
-
-    def setMaxValue(self, max_val):
-        self.max_value = max_val if max_val > 0 else 100
-        self.update()
-
-    def setText(self, text):
-        self.label_text = text
-        self.update()
-
-    def setDisplayText(self, text):
-        self.display_text = text
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = self.rect().adjusted(5, 5, -5, -5)
-        if rect.width() <= 0 or rect.height() <= 0:
-            return
-        diameter = min(rect.width(), rect.height())
-        thickness = diameter * 0.15
-        outer_rect = QRectF(rect.center().x() - diameter / 2, rect.center().y() - diameter / 2, diameter, diameter)
-        inner_rect = outer_rect.adjusted(thickness, thickness, -thickness, -thickness)
-        base_color = QColor(STYLES.get("palette", {}).get("donut_base_color", "#E9ECEF"))
-        painter.setBrush(base_color)
-        painter.setPen(Qt.PenStyle.NoPen)
+        expense_fields[month_keys[i]] = text_field
         
-        path_outer = QPainterPath(); path_outer.addEllipse(outer_rect); painter.drawPath(path_outer)
-
-        if self.value > 0 and self.max_value > 0:
-            display_value = max(0, self.value)
-            angle = (display_value / self.max_value) * 360.0
-            painter.setBrush(self.color)
-            painter.drawPie(outer_rect, 90 * 16, -int(angle * 16))
+        card = ft.Container(
+            bgcolor=col_white, 
+            border_radius=12, 
+            padding=10, 
+            width=140, 
+            height=85, 
+            shadow=ft.BoxShadow(blur_radius=5, color="#08000000", offset=ft.Offset(0,3)), 
+            border=ft.border.all(1, "#F0F0F0"), 
+            content=ft.Column([
+                ft.Container(content=ft.Text(m, size=13, weight="bold", color=col_primary), alignment=ft.alignment.center), 
+                ft.Divider(height=5, color="transparent"), 
+                text_field
+            ], spacing=2, alignment=ft.MainAxisAlignment.CENTER)
+        )
+        expense_cards.append(card)
+    
+    # Seçili yılın verilerini yükle
+    def load_year_data(year=None):
+        if year is None:
+            year = int(year_dropdown.value)
+        yearly_data = backend_instance.db.get_yearly_expenses(year)
         
-        painter.setBrush(QColor(STYLES.get("palette", {}).get("card_frame", "#FFFFFF")))
-        painter.drawEllipse(inner_rect)
-
-        text_to_draw = ""
-        font_size_multiplier = 0.12
-
-        if self.display_text:
-            text_to_draw = self.display_text
-            if len(text_to_draw) > 7:
-                font_size_multiplier = 0.08
-            elif len(text_to_draw) > 5:
-                font_size_multiplier = 0.10
+        if yearly_data:
+            for month_key in month_keys:
+                amount = yearly_data.get(month_key, 0)
+                expense_fields[month_key].value = str(amount) if amount else "0"
         else:
-            percent_value = int((self.value / self.max_value) * 100) if self.max_value > 0 else 0
-            text_to_draw = f"{percent_value}%"
-
-        font = self.font()
-        font.setPointSize(int(diameter * font_size_multiplier))
-        font.setBold(True)
-        painter.setFont(font)
-        text_color = QColor(STYLES.get("palette", {}).get("donut_text_color", "#495057"))
-        painter.setPen(text_color)
-        painter.drawText(outer_rect, Qt.AlignmentFlag.AlignCenter, text_to_draw)
-
-
-# --- Tekilleştirilmiş Fatura Sekmesi ---
-class InvoiceTab(QWidget):
-    def __init__(self, invoice_type, backend, parent=None):
-        super().__init__(parent)
-        self.backend = backend
-        self.invoice_type = invoice_type
-        self.current_invoice_id = None
-        self.config = {
-            "outgoing": {"title": "Giden Faturalar (Gelir)", "file_name": "giden_faturalar.xlsx"},
-            "incoming": {"title": "Gelen Faturalar (Gider)", "file_name": "gelen_faturalar.xlsx"}
-        }
-        self.current_page = 0
-        self.page_size = 100  
-        self.total_count = 0
-        self.sort_order = "tarih DESC"  # Varsayılan sıralama: Yakın tarihten uzak tarihe
-        
-        self._setup_ui()
-        self._connect_signals()
-        self.restyle()  # Apply initial styling including green highlighting
-        self.refresh_table()
-
-    def _setup_ui(self):
-        main_layout = QVBoxLayout(self); main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.addLayout(self._create_header_layout())
-        main_layout.addLayout(self._create_form_layout())
-        main_layout.addWidget(self._create_table())
-        main_layout.addLayout(self._create_pagination_layout())
-
-    def _create_header_layout(self):
-        header_layout = QHBoxLayout()
-        self.title_label = QLabel(self.config[self.invoice_type]["title"])
-        header_layout.addWidget(self.title_label)
-        header_layout.addStretch()
-        
-        # Tarihe göre sıralama dropdown'ı
-        sort_label = QLabel("Sıralama:")
-        header_layout.addWidget(sort_label)
-        
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItem("Yakın tarihten uzak tarihe", "tarih DESC")
-        self.sort_combo.addItem("Uzak tarihten yakın tarihe", "tarih ASC")
-        self.sort_combo.addItem("Girilen sıra (ID)", "id ASC")
-        self.sort_combo.setCurrentIndex(0)  # Varsayılan: yakın tarihten uzak tarihe
-        self.sort_combo.setToolTip("Faturaları tarihe göre nasıl sıralayacağınızı seçin")
-        self.sort_combo.setMinimumWidth(200)
-        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
-        header_layout.addWidget(self.sort_combo)
-        
-        # Export dropdown menu button
-        from PyQt6.QtWidgets import QMenu
-        self.export_menu_button = QPushButton("📥 Aktar")
-        self.export_menu_button.setToolTip("Faturaları dışa aktar")
-        
-        export_menu = QMenu(self)
-        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
-        excel_action.triggered.connect(lambda: self.export_combined('excel'))
-        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
-        pdf_action.triggered.connect(lambda: self.export_combined('pdf'))
-        
-        self.export_menu_button.setMenu(export_menu)
-        header_layout.addWidget(self.export_menu_button)
-        
-        return header_layout
-
-    def _create_form_layout(self):
-        form_layout = QVBoxLayout()
-        
-        fields_layout = QHBoxLayout()
-        self.edit_fields = {}
-        headers = ["FATURA NO", "İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM TUTAR", "BİRİM", "KDV %"]
-        tr_locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
-        for header in headers:
-            key = header.replace("İ", "I").replace("Ğ", "G").replace("Ü", "U").replace("Ş", "S").replace("Ç", "C").replace("Ö", "O").replace(" ", "_").replace("%", "yuzdesi").lower()
-            if key == "birim":
-                widget = QComboBox()
-                widget.addItems(["TL", "USD", "EUR"])
-            else:
-                widget = QLineEdit()
-                placeholders = {"TARİH": "gg.aa.yyyy", "TOPLAM TUTAR": "ZORUNLU - KDV DAHİL tutar girin", "FATURA NO": "Fatura numarası", "KDV %": "Örn: 20"}
-                widget.setPlaceholderText(placeholders.get(header, header))
-                if key in ["toplam_tutar", "kdv_yuzdesi"]:
-                    validator = QDoubleValidator()
-                    validator.setLocale(tr_locale)
-                    validator.setNotation(QDoubleValidator.Notation.StandardNotation)
-                    widget.setValidator(validator)
-            
-            # Tooltip'leri ekle
-            tooltips = {
-                "FATURA NO": "Fatura numarası\nBoş bırakılabilir",
-                "İRSALİYE NO": "İrsaliye/Fatura numarası\nBoş bırakılabilir",
-                "TARİH": "Fatura tarihi\nBoş bırakılırsa bugünün tarihi kullanılır\nFormat: gg.aa.yyyy",
-                "FİRMA": "Firma/müşteri adı\nBoş bırakılabilir",
-                "MALZEME": "Ürün/hizmet açıklaması\nBoş bırakılabilir",
-                "MİKTAR": "Miktar bilgisi\nSayı veya yazı girebilirsiniz\nÖrn: 5, 10 adet, beş kilogram, 100 saat vs.",
-                "TOPLAM TUTAR": "ZORUNLU ALAN - KDV DAHİL TUTAR\nToplam tutar (KDV dahil) mutlaka girilmelidir\nVirgül veya nokta kullanabilirsiniz",
-                "BİRİM": "Para birimi seçimi",
-                "KDV %": "KDV yüzdesi\nBoş bırakılırsa varsayılan %20 kullanılır\nSistem girilen tutarı KDV dahil olarak hesaplar"
-            }
-            widget.setToolTip(tooltips.get(header, header))
-            
-            self.edit_fields[key] = widget
-            fields_layout.addWidget(widget)
-        
-        form_layout.addLayout(fields_layout)
-        
-        # KDV kontrol alanı kaldırıldı - sistem otomatik KDV dahil çalışıyor
-        
-        form_layout.addLayout(self._create_button_layout())
-        return form_layout
-
-    def _create_button_layout(self):
-        button_layout = QHBoxLayout()
-        self.new_button = QPushButton("🔄 Yeni / Temizle")
-        self.add_button = QPushButton("➕ Ekle")
-        self.update_button = QPushButton("📝 Güncelle")
-        self.delete_button = QPushButton("🗑️ Sil")
-        self.delete_button.setToolTip("Seçili satır(lar) varsa çoklu sil, yoksa aktif faturayı sil")
-        
-        button_layout.addWidget(self.new_button)
-        button_layout.addWidget(self.add_button)
-        button_layout.addWidget(self.update_button)
-        button_layout.addWidget(self.delete_button)
-        button_layout.addStretch()
-        return button_layout
-
-    def _create_table(self):
-        self.invoice_table = QTableWidget(); self.invoice_table.setColumnCount(10)
-        table_headers = ["FATURA NO", "İRSALİYE NO", "TARİH", "FİRMA", "MALZEME", "MİKTAR", "TOPLAM (KDV DAHİL)", "TUTAR (USD)*", "TUTAR (EUR)*", "KDV TUTARI (%)"]
-        self.invoice_table.setHorizontalHeaderLabels(table_headers)
-        
-        # Enhanced selection behavior for better green highlighting
-        self.invoice_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.invoice_table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
-        self.invoice_table.setAlternatingRowColors(False)  # Disable alternating to show selection better
-        self.invoice_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)  # Better focus handling
-        
-        # --- İSTEĞİNİZ ÜZERİNE DEĞİŞİKLİK ---
-        # Sütunları içeriğe göre değil, PENCEREYE GÖRE ESNETECEK şekilde ayarla
-        self.invoice_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.invoice_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers); self.invoice_table.verticalHeader().setVisible(False)
-        
-        # Tooltip ekle USD/EUR sütunları için
-        self.invoice_table.horizontalHeaderItem(7).setToolTip("* Fatura giriş tarihindeki kurla hesaplanmış değer (Historik Kur)")
-        self.invoice_table.horizontalHeaderItem(8).setToolTip("* Fatura giriş tarihindeki kurla hesaplanmış değer (Historik Kur)")
-        
-        return self.invoice_table
+            # Veri yoksa sıfırla
+            for month_key in month_keys:
+                expense_fields[month_key].value = "0"
+        page.update()
     
-    def _create_pagination_layout(self):
-        """Sayfalama butonları"""
-        pagination_layout = QHBoxLayout()
-        pagination_layout.addStretch()
-        
-        self.prev_button = QPushButton("◀ Önceki")
-        self.prev_button.clicked.connect(self.previous_page)
-        pagination_layout.addWidget(self.prev_button)
-        
-        self.page_label = QLabel("Sayfa 1 / 1")
-        pagination_layout.addWidget(self.page_label)
-        
-        self.next_button = QPushButton("Sonraki ▶")
-        self.next_button.clicked.connect(self.next_page)
-        pagination_layout.addWidget(self.next_button)
-        
-        pagination_layout.addStretch()
-        return pagination_layout
+    # Yıl değiştiğinde verileri yükle
+    def on_year_change(e):
+        load_year_data(int(e.control.value))
     
-    def previous_page(self):
-        if self.current_page > 0:
-            self.current_page -= 1
-            self.refresh_table()
+    year_dropdown.on_change = on_year_change
     
-    def next_page(self):
-        max_page = (self.total_count - 1) // self.page_size
-        if self.current_page < max_page:
-            self.current_page += 1
-            self.refresh_table()
-    
-    def update_pagination_controls(self):
-        """Sayfalama kontrollerini güncelle"""
-        max_page = max(0, (self.total_count - 1) // self.page_size)
-        self.page_label.setText(f"Sayfa {self.current_page + 1} / {max_page + 1} (Toplam: {self.total_count:,} fatura)")
-        self.prev_button.setEnabled(self.current_page > 0)
-        self.next_button.setEnabled(self.current_page < max_page)
-
-    def _connect_signals(self):
-        self.new_button.clicked.connect(self.clear_edit_fields)
-        self.add_button.clicked.connect(lambda: self._handle_invoice_operation('add'))
-        self.update_button.clicked.connect(lambda: self._handle_invoice_operation('update'))
-        self.delete_button.clicked.connect(self.smart_delete)
-        self.invoice_table.itemSelectionChanged.connect(self.on_row_selected)
-        self.invoice_table.itemSelectionChanged.connect(self.update_delete_button_state)
-        if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'):
-            self.backend.data_updated.connect(self.refresh_table)
-
-    def _on_sort_changed(self):
-        """Sıralama seçimi değiştiğinde çağrılır."""
-        selected_sort = self.sort_combo.currentData()
-        if selected_sort:
-            self.sort_order = selected_sort
-            self.current_page = 0  # İlk sayfaya dön
-            self.refresh_table()
-
-    def gather_data_from_fields(self):
-        """Form alanlarından veri toplar ve backend'in beklediği formata dönüştürür."""
-        data = {}
-        numeric_keys_map = {"toplam_tutar": "toplam_tutar", "kdv_yuzdesi": "kdv_yuzdesi"}
-        
-        for key, field in self.edit_fields.items():
-            if isinstance(field, QComboBox): 
-                data[key] = field.currentText()
-            else:
-                text_value = field.text()
-                if key in numeric_keys_map:
-                    backend_key = numeric_keys_map[key]
-                    data[backend_key] = text_value.replace('.', '').replace(',', '.')
-                else: 
-                    data[key] = text_value
-        
-        # KDV dahil sistemi - otomatik olarak true
-        data['kdv_dahil'] = True  # Sistem artık hep KDV dahil çalışıyor
-        data['kdv_tutari'] = 0  # KDV tutarı backend'de hesaplanır
-        
-        return data
-
-    # KDV önizleme fonksiyonu kaldırıldı - sistem artık KDV dahil çalışıyor
-
-    def _handle_invoice_operation(self, operation):
-        if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
-        if operation in ['update', 'delete'] and not self.current_invoice_id: show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız","Lütfen önce bir fatura seçin.", QMessageBox.StandardButton.Ok); return
-        if operation == 'delete':
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", "Bu faturayı silmek istediğinizden emin misiniz?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.No: return
-        
-        data = self.gather_data_from_fields() if operation != 'delete' else None
-        success = self.backend.handle_invoice_operation(operation, self.invoice_type, data=data, record_id=self.current_invoice_id)
-        
-        if success: 
-            self.clear_edit_fields()
-        else: 
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Veri kaydedilemedi. Lütfen en az toplam tutar alanını doldurduğunuzdan emin olun.", QMessageBox.StandardButton.Ok)
-
-    def refresh_table(self):
-        self.invoice_table.setRowCount(0)
-        if not self.backend: return
-        
-        offset = self.current_page * self.page_size
-        invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=self.page_size, offset=offset, order_by=self.sort_order)
-        if invoices is None: invoices = []
-        
-        self.total_count = self.backend.handle_invoice_operation('count', self.invoice_type) or 0
-        self.update_pagination_controls()
-        
-        self.invoice_table.setSortingEnabled(False) 
-        for inv in invoices:
-            row_pos = self.invoice_table.rowCount()
-            self.invoice_table.insertRow(row_pos)
+    # Kaydet butonu fonksiyonu
+    def save_expenses(e):
+        """Genel giderleri database'e kaydet"""
+        try:
+            selected_year = int(year_dropdown.value)
+            monthly_data = {}
             
-            item_id = QTableWidgetItem()
-            item_id.setData(Qt.ItemDataRole.UserRole, inv.get('id'))
-            self.invoice_table.setVerticalHeaderItem(row_pos, item_id)
-
-            # Historik kurları kullan (eğer mevcutsa)
-            usd_amount = inv.get('toplam_tutar_usd', 0) or 0
-            eur_amount = inv.get('toplam_tutar_eur', 0) or 0
+            # Tüm ayların değerlerini topla
+            for month_key in month_keys:
+                value = expense_fields[month_key].value
+                try:
+                    monthly_data[month_key] = float(value) if value else 0
+                except ValueError:
+                    monthly_data[month_key] = 0
             
-            # Eğer historik kur yoksa (eski faturalar için), hesapla
-            if usd_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
-                usd_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'USD') or 0
-            if eur_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
-                eur_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'EUR') or 0
-
-            data_to_display = [
-                inv.get('fatura_no', ''), 
-                inv.get('irsaliye_no', ''), 
-                inv.get('tarih', ''), 
-                inv.get('firma', ''), 
-                inv.get('malzeme', ''), 
-                str(inv.get('miktar', '')), 
-                f"{inv.get('toplam_tutar_tl', 0):,.2f}", 
-                f"{usd_amount:,.2f}", 
-                f"{eur_amount:,.2f}", 
-                f"{inv.get('kdv_tutari', 0):,.2f} ({inv.get('kdv_yuzdesi', 20):.0f}%)"
-            ]
-            for col_idx, data in enumerate(data_to_display):
-                item = QTableWidgetItem(str(data))
-                if col_idx >= 5: item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self.invoice_table.setItem(row_pos, col_idx, item)
-
-        self.invoice_table.setSortingEnabled(True)
-
-    def on_row_selected(self):
-        selected_rows = list(set(item.row() for item in self.invoice_table.selectedItems()))
-        if not selected_rows: return
-        
-        # Force table to update styling to ensure green highlighting is visible
-        self.invoice_table.viewport().update()
-        
-        selected_row = selected_rows[0]
-        id_item = self.invoice_table.verticalHeaderItem(selected_row)
-        if not id_item or not self.backend: return
-        
-        try: 
-            self.current_invoice_id = id_item.data(Qt.ItemDataRole.UserRole)
-            if self.current_invoice_id is None: return
-        except (ValueError, TypeError): 
-            print(f"Hata: Geçersiz fatura ID'si - {id_item.text() if id_item else 'None'}")
-            return
-
-        invoice_data = self.backend.handle_invoice_operation('get_by_id', self.invoice_type, record_id=self.current_invoice_id)
-        if invoice_data:
-            self.edit_fields["fatura_no"].setText(invoice_data.get('fatura_no', ''))
-            self.edit_fields["irsaliye_no"].setText(invoice_data.get('irsaliye_no', ''))
-            self.edit_fields["tarih"].setText(invoice_data.get('tarih', ''))
-            self.edit_fields["firma"].setText(invoice_data.get('firma', ''))
-            self.edit_fields["malzeme"].setText(invoice_data.get('malzeme', ''))
-            self.edit_fields["miktar"].setText(str(invoice_data.get('miktar', '')))
+            # Database'e kaydet
+            result = backend_instance.db.add_or_update_yearly_expenses(selected_year, monthly_data)
             
-            kdv_yuzdesi = invoice_data.get('kdv_yuzdesi', '')
-            self.edit_fields["kdv_yuzdesi"].setText(str(int(kdv_yuzdesi)) if kdv_yuzdesi and isinstance(kdv_yuzdesi, (int, float)) else str(kdv_yuzdesi))
-            
-            birim = invoice_data.get('birim', 'TL')
-            # toplam_tutar_tl artık KDV dahil tutar
-            toplam_kdv_dahil_tl = float(invoice_data.get('toplam_tutar_tl', 0))
-            kdv_tutari_tl = float(invoice_data.get('kdv_tutari', 0))
-            
-            # Historik kurları kullan (eğer mevcutsa)
-            usd_kur = invoice_data.get('usd_kur', 0)
-            eur_kur = invoice_data.get('eur_kur', 0)
-            
-            # Orijinal para birimindeki tutarı hesapla
-            if birim == 'TL':
-                original_amount_in_currency = toplam_kdv_dahil_tl
-                kdv_tutari_in_currency = kdv_tutari_tl
-            elif birim == 'USD' and usd_kur > 0:
-                # Historik kuru kullan
-                original_amount_in_currency = toplam_kdv_dahil_tl / usd_kur
-                kdv_tutari_in_currency = kdv_tutari_tl / usd_kur
-            elif birim == 'EUR' and eur_kur > 0:
-                # Historik kuru kullan
-                original_amount_in_currency = toplam_kdv_dahil_tl / eur_kur
-                kdv_tutari_in_currency = kdv_tutari_tl / eur_kur
-            else:
-                # Fallback: Güncel kurları kullan (eski faturalar için)
-                original_amount_in_currency = self.backend.convert_currency(toplam_kdv_dahil_tl, 'TRY', birim)
-                kdv_tutari_in_currency = self.backend.convert_currency(kdv_tutari_tl, 'TRY', birim)
-            
-            locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
-            formatted_amount = locale.toString(original_amount_in_currency, 'f', 2)
-            formatted_kdv = locale.toString(kdv_tutari_in_currency, 'f', 2)
-            
-            self.edit_fields["toplam_tutar"].setText(formatted_amount)
-            
-            birim_index = self.edit_fields["birim"].findText(birim)
-            self.edit_fields["birim"].setCurrentIndex(birim_index if birim_index != -1 else 0)
-            # KDV dahil checkbox kaldırıldı - sistem otomatik KDV dahil çalışıyor
-
-    def clear_edit_fields(self):
-        self.invoice_table.clearSelection()
-        for key, field in self.edit_fields.items():
-            if isinstance(field, QComboBox): field.setCurrentIndex(0)
-            else: field.clear()
-        # KDV dahil checkbox ve KDV tutarı field kaldırıldı
-        self.current_invoice_id = None
-
-    def export_table_data(self):
-        config = self.config[self.invoice_type]
-        file_path, _ = get_save_file_name_turkish(self, f"{config['title']} Listesini Kaydet", config['file_name'], "Excel Dosyaları (*.xlsx)")
-        if not file_path: return
-        if not self.backend: show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok); return
-        invoices_data = self.backend.handle_invoice_operation('get', self.invoice_type);
-        if not invoices_data: show_styled_message_box(self, QMessageBox.Icon.Warning, "Veri Yok", f"Dışa aktarılacak {self.invoice_type} faturası bulunamadı.", QMessageBox.StandardButton.Ok); return;
-        
-        export_data = []
-        for inv in invoices_data:
-            # Historik kurları kullan
-            usd_amount = inv.get('toplam_tutar_usd', 0) or 0
-            eur_amount = inv.get('toplam_tutar_eur', 0) or 0
-            
-            # Eğer historik kur yoksa (eski faturalar için), hesapla
-            if usd_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
-                usd_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'USD') or 0
-            if eur_amount == 0 and inv.get('toplam_tutar_tl', 0) > 0:
-                eur_amount = self.backend.convert_currency(inv.get('toplam_tutar_tl', 0), 'TRY', 'EUR') or 0
-            
-            export_data.append({
-                "Fatura No": inv.get('fatura_no'),
-                "İrsaliye No": inv.get('irsaliye_no'),
-                "Tarih": inv.get('tarih'),
-                "Firma": inv.get('firma'),
-                "Malzeme": inv.get('malzeme'),
-                "Miktar": inv.get('miktar'),
-                "Birim": inv.get('birim'),
-                "Tutar (TL)": inv.get('toplam_tutar_tl'),
-                "Tutar (USD - Historik)": usd_amount,
-                "Tutar (EUR - Historik)": eur_amount,
-                "KDV (%)": inv.get('kdv_yuzdesi'),
-                "KDV Tutarı (TL)": inv.get('kdv_tutari'),
-                "KDV Dahil mi": "Evet" if inv.get('kdv_dahil') else "Hayır",
-                "USD Kuru (Giriş)": inv.get('usd_kur', 0),
-                "EUR Kuru (Giriş)": inv.get('eur_kur', 0),
-                "Kayıt Tarihi": inv.get('kayit_tarihi', '')
-            })
-
-        sheets_data = {config["title"]: {"data": export_data}}
-        
-        # Excel export'u için yeni modülü kullan
-        if EXCEL_AVAILABLE:
-            exporter = InvoiceExcelExporter()
-            if exporter.export_to_excel(file_path, sheets_data):
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{config['title']} başarıyla dışa aktarıldı:\n{file_path}", QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", "Excel dosyası oluşturulurken bir hata oluştu.", QMessageBox.StandardButton.Ok)
-        else:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", "Excel export modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-
-
-    def update_delete_button_state(self):
-        """Seçili satır sayısına göre silme butonunun metnini günceller."""
-        selected_rows = self.invoice_table.selectionModel().selectedRows()
-        count = len(selected_rows)
-        
-        if count > 1:
-            self.delete_button.setText(f"🗑️ Seçilenleri Sil ({count})")
-            self.delete_button.setEnabled(True)
-        elif count == 1:
-            self.delete_button.setText("🗑️ Sil")
-            self.delete_button.setEnabled(True)
-        else:
-            # Seçili satır yok ama current_invoice_id varsa aktif faturayı silebilir
-            if hasattr(self, 'current_invoice_id') and self.current_invoice_id:
-                self.delete_button.setText("🗑️ Sil")
-                self.delete_button.setEnabled(True)
-            else:
-                self.delete_button.setText("🗑️ Sil")
-                self.delete_button.setEnabled(False)
-
-    def smart_delete(self):
-        """Akıllı silme: Seçili satırlar varsa çoklu sil, yoksa aktif faturayı sil."""
-        selected_items = self.invoice_table.selectionModel().selectedRows()
-        
-        if len(selected_items) > 1:
-            # Çoklu silme
-            count = len(selected_items)
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                            f"{count} faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
-                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-            invoice_ids = []
-            for index in selected_items:
-                id_item = self.invoice_table.verticalHeaderItem(index.row())
-                if id_item and id_item.data(Qt.ItemDataRole.UserRole) is not None:
-                    invoice_ids.append(id_item.data(Qt.ItemDataRole.UserRole))
-
-            if not invoice_ids:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Seçili faturaların ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
-                return
-
-            try:
-                deleted_count = self.backend.delete_multiple_invoices(self.invoice_type, invoice_ids)
+            if result:
+                # Veri güncelleme callback'ini çağır
+                if backend_instance.on_data_updated:
+                    backend_instance.on_data_updated()
                 
-                if deleted_count > 0:
-                    show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} fatura başarıyla silindi.", QMessageBox.StandardButton.Ok)
-                    self.refresh_table()
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Faturalar silinemedi.", QMessageBox.StandardButton.Ok)
-            except Exception as e:
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", f"Silme işlemi sırasında hata: {str(e)}", QMessageBox.StandardButton.Ok)
-        
-        else:
-            # Tek silme (aktif fatura veya seçili 1 satır)
-            if not self.current_invoice_id:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", "Lütfen silmek için bir fatura seçin.", QMessageBox.StandardButton.Ok)
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"✅ {selected_year} yılı genel giderleri kaydedildi!", color=col_white), bgcolor=col_success)
+                page.snack_bar.open = True
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text("❌ Kaydetme işlemi başarısız!", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+                
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ Hata: {str(ex)}", color=col_white), bgcolor=col_danger)
+            page.snack_bar.open = True
+            page.update()
+    
+    def export_general_expenses_excel(e):
+        """Genel giderleri Excel'e aktar - Aylık format"""
+        try:
+            expenses = backend_instance.handle_genel_gider_operation('get', limit=1000)
+            
+            if not expenses:
+                page.snack_bar = ft.SnackBar(content=ft.Text("❌ Dışa aktarılacak genel gider bulunamadı!", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
                 return
             
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                            "Bu faturayı silmek istediğinizden emin misiniz?", 
-                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.No:
-                return
+            # Ayarlardan klasör yolunu al
+            export_folder = state.get("excel_export_path", os.path.join(os.getcwd(), "ExcelReports"))
+            os.makedirs(export_folder, exist_ok=True)
             
-            success = self.backend.handle_invoice_operation('delete', self.invoice_type, record_id=self.current_invoice_id)
+            # Dosya yolu oluştur
+            selected_year = int(year_dropdown.value)
+            timestamp = datetime.now().strftime("%d-%m-%Y")
+            file_path = os.path.join(export_folder, f"GenelGiderler_{selected_year}_{timestamp}.xlsx")
+            
+            # Aylık formatta Excel'e aktar
+            success = export_monthly_general_expenses_to_excel(expenses, year=selected_year, file_path=file_path)
             
             if success:
-                self.clear_edit_fields()
-                self.refresh_table()
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"✅ {len(expenses)} genel gider Excel'e aktarıldı!\n{file_path}", color=col_white), bgcolor=col_success)
+                page.snack_bar.open = True
+                page.update()
             else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Fatura silinemedi.", QMessageBox.StandardButton.Ok)
-
-    def export_combined(self, export_format='excel'):
-        """Excel veya PDF formatında dışa aktarma"""
-        try:
-            # Tüm faturaları al
-            invoices = self.backend.handle_invoice_operation('get', self.invoice_type, limit=10000, offset=0)
-            
-            if not invoices:
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Bilgi", "Dışa aktarılacak fatura bulunamadı.", QMessageBox.StandardButton.Ok)
-                return
-            
-            # Dosya uzantısını belirle
-            config = self.config[self.invoice_type]
-            
-            # Resmi dosya adı oluştur
-            from datetime import datetime
-            bugun = datetime.now().strftime("%d.%m.%Y")
-            if self.invoice_type == "outgoing":
-                base_name = f"GelirFaturalari-{bugun}"
-            else:
-                base_name = f"GiderFaturalari-{bugun}"
-            
-            if export_format == 'excel':
-                file_filter = "Excel Dosyaları (*.xlsx)"
-                default_name = f"{base_name}.xlsx"
-            else:
-                file_filter = "PDF Dosyaları (*.pdf)"
-                default_name = f"{base_name}.pdf"
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 
-                "Rapor Dosyasını Kaydet", 
-                default_name,
-                file_filter
-            )
-            
-            if not file_path:
-                return
-            
-            # Export işlemini gerçekleştir
-            success = False
-            
-            if export_format == 'excel':
-                # Excel modülünü lazy loading ile yükle
-                excel_module = get_excel_module()
-                if excel_module:
-                    # toexcel.py modülünü kullan
-                    if self.invoice_type == "outgoing":
-                        success = excel_module.export_outgoing_invoices_to_excel(invoices, file_path)
-                    else:
-                        success = excel_module.export_incoming_invoices_to_excel(invoices, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            else:  # PDF
-                # PDF modülünü lazy loading ile yükle
-                pdf_module = get_pdf_module()
-                if pdf_module:
-                    # topdf.py modülünü kullan
-                    if self.invoice_type == "outgoing":
-                        success = pdf_module.export_outgoing_invoices_to_pdf(invoices, file_path)
-                    else:
-                        success = pdf_module.export_incoming_invoices_to_pdf(invoices, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            
-            # Sonuç mesajı
-            if success:
-                format_name = "Excel" if export_format == 'excel' else "PDF"
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
-                                      QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                      f"❌ Rapor oluşturulamadı.", 
-                                      QMessageBox.StandardButton.Ok)
+                page.snack_bar = ft.SnackBar(content=ft.Text("❌ Excel aktarımı başarısız!", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
                 
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                  f"Rapor oluşturma hatası:\n{str(e)}", 
-                                  QMessageBox.StandardButton.Ok)
-
-
-    def restyle(self):
-        self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_menu_button.setStyleSheet(STYLES["export_button"])
-        
-        # Enhanced table styling with prominent green selection highlighting
-        palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
-        table_style = f"""
-            QTableWidget {{
-                background-color: {palette['table_background']};
-                border: 1px solid {palette['table_border']};
-                gridline-color: {palette['table_border']};
-                color: {palette['text_primary']};
-                selection-background-color: {palette['table_selection']};
-                selection-color: {palette['text_primary']};
-            }}
-            QHeaderView::section {{
-                background-color: {palette['table_header']};
-                color: {palette['text_primary']};
-                font-weight: bold;
-                padding: 5px;
-                border: 1px solid {palette['table_border']};
-            }}
-            QTableWidget::item:selected {{
-                background-color: {palette['table_selection']};
-                color: {palette['text_primary']};
-                border: 2px solid #4CAF50;
-            }}
-            QTableWidget::item:hover {{
-                background-color: #E8F5E8;
-            }}
-        """
-        self.invoice_table.setStyleSheet(table_style)
-        
-        # ComboBox için temel stil
-        self.sort_combo.setStyleSheet(f"padding: 8px; border: 1px solid {palette.get('input_border', '#D0D0D0')}; border-radius: 6px; font-size: 13px; color: {palette.get('text_primary', '#0b2d4d')}; background-color: {palette.get('card_frame', '#FFFFFF')};")
-        
-        # Renkli buton stilleri
-        self.new_button.setStyleSheet(STYLES.get("button_style", ""))  # Gri
-        self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
-        self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Mavi
-        self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
-        for field in self.edit_fields.values(): field.setStyleSheet(STYLES["input_style"])
-
-# --- Genel Giderler Sekmesi ---
-class GenelGiderTab(QWidget):
-    def __init__(self, backend, parent=None):
-        super().__init__(parent)
-        self.backend = backend
-        self.current_gider_id = None
-        self.current_page = 0
-        self.page_size = 100
-        self.total_count = 0
-        self.sort_order = "tarih DESC"  # Default: newest to oldest
-        self.config = {"title": "Genel Giderler", "file_name": "genel_giderler.xlsx"}
-        self.setup_ui()
-        self._apply_initial_styling()
-        self.refresh_table()
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ Excel hatası: {str(ex)}", color=col_white), bgcolor=col_danger)
+            page.snack_bar.open = True
+            page.update()
     
-    def setup_ui(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        self.setLayout(main_layout)
-        
-        # Header layout with controls
-        header_layout = QHBoxLayout()
-        self.title_label = QLabel(self.config["title"])
-        header_layout.addWidget(self.title_label)
-        header_layout.addStretch()
-        
-        # Sorting dropdown
-        sort_label = QLabel("Sıralama:")
-        header_layout.addWidget(sort_label)
-        
-        self.sort_combo = QComboBox()
-        self.sort_combo.addItem("Yakın tarihten uzak tarihe", "tarih DESC")
-        self.sort_combo.addItem("Uzak tarihten yakın tarihe", "tarih ASC")
-        self.sort_combo.addItem("Girilen sıra (ID)", "id ASC")
-        self.sort_combo.addItem("Yüksek tutardan düşük tutara", "miktar DESC")
-        self.sort_combo.addItem("Düşük tutardan yüksek tutara", "miktar ASC")
-        self.sort_combo.setCurrentIndex(0)  # Default: newest to oldest
-        self.sort_combo.setToolTip("Genel giderleri nasıl sıralayacağınızı seçin")
-        self.sort_combo.setMinimumWidth(200)
-        self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
-        header_layout.addWidget(self.sort_combo)
-        
-        # Export dropdown menu button
-        from PyQt6.QtWidgets import QMenu
-        self.export_menu_button = QPushButton("📥 Aktar")
-        self.export_menu_button.setToolTip("Genel gider listesini dışa aktar")
-        
-        export_menu = QMenu(self)
-        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
-        excel_action.triggered.connect(lambda: self.export_combined('excel'))
-        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
-        pdf_action.triggered.connect(lambda: self.export_combined('pdf'))
-        
-        self.export_menu_button.setMenu(export_menu)
-        header_layout.addWidget(self.export_menu_button)
-        
-        main_layout.addLayout(header_layout)
-        
-        # Form layout - kutucuklu tasarım
-        form_layout = QVBoxLayout()
-        
-        # Input fields - horizontal layout
-        fields_layout = QHBoxLayout()
-        tr_locale = QLocale(QLocale.Language.Turkish, QLocale.Country.Turkey)
-        
-        # Miktar field
-        self.miktar_input = QLineEdit()
-        self.miktar_input.setPlaceholderText("💰 Miktar girin (sayı veya yazı)")
-        self.miktar_input.setToolTip("Genel gider miktarı\nSayı veya yazı girebilirsiniz\nÖrn: 5000, 500 TL, beş bin lira, 10 adet vs.")
-        fields_layout.addWidget(self.miktar_input)
-        
-        # Tür field
-        self.tur_input = QLineEdit()
-        self.tur_input.setPlaceholderText("🏷️ Tür (Opsiyonel)")
-        self.tur_input.setToolTip("Gider türü (opsiyonel)\nÖrn: Ofis kira, elektrik, yakıt, temizlik...")
-        fields_layout.addWidget(self.tur_input)
-        
-        # Tarih field
-        self.tarih_input = QLineEdit()
-        self.tarih_input.setText(datetime.now().strftime('%d.%m.%Y'))
-        self.tarih_input.setPlaceholderText("📅 gg.aa.yyyy")
-        self.tarih_input.setToolTip("Gider tarihi\nFormat: gg.aa.yyyy\nBoş bırakılırsa bugünün tarihi kullanılır")
-        fields_layout.addWidget(self.tarih_input)
-        
-        form_layout.addLayout(fields_layout)
-        
-        # Buttons layout - InvoiceTab stilinde
-        button_layout = QHBoxLayout()
-        self.new_button = QPushButton("🔄 Yeni / Temizle")
-        self.add_button = QPushButton("➕ Ekle")
-        self.update_button = QPushButton("📝 Güncelle")
-        self.delete_button = QPushButton("🗑️ Sil")
-        
-        # Connect signals
-        self.new_button.clicked.connect(self.clear_fields)
-        self.add_button.clicked.connect(lambda: self._handle_operation('add'))
-        self.update_button.clicked.connect(lambda: self._handle_operation('update'))
-        self.delete_button.clicked.connect(self.smart_delete)
-        
-        # Add buttons to layout - same order as InvoiceTab
-        button_layout.addWidget(self.new_button)
-        button_layout.addWidget(self.add_button)
-        button_layout.addWidget(self.update_button)
-        button_layout.addWidget(self.delete_button)
-        button_layout.addStretch()
-        
-        form_layout.addLayout(button_layout)
-        main_layout.addLayout(form_layout)
-        
-        # Table with enhanced selection capabilities
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Miktar (TL)", "Tür", "Tarih"])
-        
-        # Enhanced selection for multiple delete functionality
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)  # Allow multiple selection
-        self.table.setAlternatingRowColors(False)  # Better selection visibility
-        self.table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.verticalHeader().setVisible(False)
-        
-        # Enhanced table styling with green selection
-        self.table.setStyleSheet(STYLES.get("table_style", ""))
-        
-        # Connect table signals
-        self.table.itemSelectionChanged.connect(self.on_selection_changed)
-        self.table.itemSelectionChanged.connect(self.update_delete_button_state)
-        
-        main_layout.addWidget(self.table)
-        
-        # Add pagination layout
-        main_layout.addLayout(self._create_pagination_layout())
-    
-    def _handle_operation(self, operation):
-        if not self.backend:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Backend yüklenemedi.", QMessageBox.StandardButton.Ok)
-            return
-        
-        if operation in ['update', 'delete'] and not self.current_gider_id:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Gerekli", "Lütfen önce bir kayıt seçin.", QMessageBox.StandardButton.Ok)
-            return
-        
-        if operation == 'delete':
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                           "Bu genel gider kaydını silmek istediğinizden emin misiniz?",
-                                           QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.No:
+    def export_general_expenses_pdf(e):
+        """Genel giderleri PDF'e aktar - Aylık format"""
+        try:
+            expenses = backend_instance.handle_genel_gider_operation('get', limit=1000)
+            
+            if not expenses:
+                page.snack_bar = ft.SnackBar(content=ft.Text("❌ Dışa aktarılacak genel gider bulunamadı!", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
                 return
-        
-        data = self.gather_data() if operation != 'delete' else None
-        success = self.backend.handle_genel_gider_operation(operation, data=data, record_id=self.current_gider_id)
-        
-        if success:
-            self.clear_fields()
-            self.refresh_table()
-            show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", "İşlem başarıyla tamamlandı.", QMessageBox.StandardButton.Ok)
-        else:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "İşlem başarısız. Lütfen bilgileri kontrol edin.", QMessageBox.StandardButton.Ok)
-    
-    def gather_data(self):
-        miktar_text = self.miktar_input.text().strip().replace(',', '.')
-        
-        if not miktar_text:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Eksik Bilgi", "Miktar alanı zorunludur.", QMessageBox.StandardButton.Ok)
-            return None
-        
-        try:
-            miktar = float(miktar_text)
-            if miktar <= 0:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Geçersiz Miktar", "Miktar pozitif olmalıdır.", QMessageBox.StandardButton.Ok)
-                return None
-        except ValueError:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Geçersiz Miktar", "Lütfen geçerli bir sayı girin.", QMessageBox.StandardButton.Ok)
-            return None
-        
-        # Tarihi backend formatına çevir (YYYY-MM-DD)
-        tarih_text = self.tarih_input.text().strip()
-        try:
-            if '.' in tarih_text:
-                day, month, year = tarih_text.split('.')
-                tarih = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+            
+            # Ayarlardan klasör yolunu al
+            export_folder = state.get("pdf_export_path", os.path.join(os.getcwd(), "PDFExports"))
+            os.makedirs(export_folder, exist_ok=True)
+            
+            # Dosya yolu oluştur
+            selected_year = int(year_dropdown.value)
+            timestamp = datetime.now().strftime("%d-%m-%Y")
+            file_path = os.path.join(export_folder, f"GenelGiderler_{selected_year}_{timestamp}.pdf")
+            
+            # Aylık formatta PDF'e aktar
+            success = export_monthly_general_expenses_to_pdf(expenses, year=selected_year, file_path=file_path)
+            
+            if success:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"✅ {len(expenses)} genel gider PDF'e aktarıldı!\n{file_path}", color=col_white), bgcolor=col_success)
+                page.snack_bar.open = True
+                page.update()
             else:
-                tarih = tarih_text
+                page.snack_bar = ft.SnackBar(content=ft.Text("❌ PDF aktarımı başarısız!", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+                
+        except Exception as ex:
+            page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ PDF hatası: {str(ex)}", color=col_white), bgcolor=col_danger)
+            page.snack_bar.open = True
+            page.update()
+    
+    # Sayfa yüklendiğinde mevcut verileri yükle
+    load_year_data()
+    
+    # Dinamik güncelleme için callback oluştur
+    def refresh_general_expenses():
+        """Genel giderleri yeniden yükle"""
+        try:
+            load_year_data()
         except:
-            tarih = datetime.now().strftime('%Y-%m-%d')
-        
-        return {
-            'miktar': miktar,
-            'tur': self.tur_input.text().strip(),
-            'tarih': tarih
-        }
+            pass
     
-    def refresh_table(self):
-        if not self.backend:
-            return
-        
-        self.table.setRowCount(0)
-        
-        # Get all expenses (backend doesn't support order_by)
-        all_giderler = self.backend.handle_genel_gider_operation('get')
-        
-        if all_giderler is None:
-            all_giderler = []
-        
-        # Sort the data on frontend
-        if self.sort_order == "tarih DESC":
-            all_giderler.sort(key=lambda x: x.get('tarih', ''), reverse=True)
-        elif self.sort_order == "tarih ASC":
-            all_giderler.sort(key=lambda x: x.get('tarih', ''))
-        elif self.sort_order == "id ASC":
-            all_giderler.sort(key=lambda x: x.get('id', 0))
-        elif self.sort_order == "miktar DESC":
-            all_giderler.sort(key=lambda x: float(x.get('toplam_tutar_tl', x.get('miktar', 0)) or 0), reverse=True)
-        elif self.sort_order == "miktar ASC":
-            all_giderler.sort(key=lambda x: float(x.get('toplam_tutar_tl', x.get('miktar', 0)) or 0))
-        
-        # Update total count and pagination
-        self.total_count = len(all_giderler)
-        self.update_pagination_controls()
-        
-        # Apply pagination
-        start_idx = self.current_page * self.page_size
-        end_idx = start_idx + self.page_size
-        giderler = all_giderler[start_idx:end_idx]
-        
-        self.table.setSortingEnabled(False)  # Disable during population
-        
-        for row, gider in enumerate(giderler):
-            self.table.insertRow(row)
-            
-            # Format date to DD.MM.YYYY
-            tarih = gider.get('tarih', '')
-            if '-' in tarih:
-                try:
-                    year, month, day = tarih.split('-')
-                    tarih_formatted = f"{day}.{month}.{year}"
-                except:
-                    tarih_formatted = tarih
-            else:
-                tarih_formatted = tarih
-            
-            # Handle amount value and store ID as hidden data
-            miktar_value = gider.get('toplam_tutar_tl', gider.get('miktar', 0))
-            try:
-                miktar_float = float(miktar_value) if miktar_value else 0.0
-                miktar_item = QTableWidgetItem(f"{miktar_float:.2f}")
-            except (ValueError, TypeError):
-                miktar_item = QTableWidgetItem("0.00")
-            
-            # Store ID as hidden data in the amount item
-            miktar_item.setData(Qt.ItemDataRole.UserRole, gider.get('id', ''))
-            miktar_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            
-            self.table.setItem(row, 0, miktar_item)
-            self.table.setItem(row, 1, QTableWidgetItem(gider.get('firma', gider.get('tur', ''))))
-            self.table.setItem(row, 2, QTableWidgetItem(tarih_formatted))
-        
-        self.table.setSortingEnabled(True)
+    state["update_callbacks"]["general_expenses"] = refresh_general_expenses
     
-    def on_selection_changed(self):
-        current_row = self.table.currentRow()
-        if current_row >= 0:
-            miktar_item = self.table.item(current_row, 0)
-            tur_item = self.table.item(current_row, 1)
-            tarih_item = self.table.item(current_row, 2)
-            
-            if miktar_item:
-                # ID'yi gizli data'dan al
-                self.current_gider_id = miktar_item.data(Qt.ItemDataRole.UserRole)
-                self.miktar_input.setText(miktar_item.text() if miktar_item else "")
-                self.tur_input.setText(tur_item.text() if tur_item else "")
-                self.tarih_input.setText(tarih_item.text() if tarih_item else "")
-        else:
-            self.current_gider_id = None
+    # Butonları event handler'larla oluştur
+    btn_save = ScaleButton("save", "#4CD964", "Kaydet", width=40, height=40)
+    btn_save.on_click = save_expenses
     
-    def clear_fields(self):
-        self.table.clearSelection()
-        self.miktar_input.clear()
-        self.tur_input.clear()
-        self.tarih_input.setText(datetime.now().strftime('%d.%m.%Y'))
-        self.current_gider_id = None
-
-    def _create_pagination_layout(self):
-        """Sayfalama butonları"""
-        pagination_layout = QHBoxLayout()
-        pagination_layout.addStretch()
-        
-        self.prev_button = QPushButton("◀ Önceki")
-        self.prev_button.clicked.connect(self.previous_page)
-        pagination_layout.addWidget(self.prev_button)
-        
-        self.page_label = QLabel("Sayfa 1 / 1")
-        pagination_layout.addWidget(self.page_label)
-        
-        self.next_button = QPushButton("Sonraki ▶")
-        self.next_button.clicked.connect(self.next_page)
-        pagination_layout.addWidget(self.next_button)
-        
-        pagination_layout.addStretch()
-        return pagination_layout
-
-    def previous_page(self):
-        if self.current_page > 0:
-            self.current_page -= 1
-            self.refresh_table()
-
-    def next_page(self):
-        max_page = (self.total_count - 1) // self.page_size if self.total_count > 0 else 0
-        if self.current_page < max_page:
-            self.current_page += 1
-            self.refresh_table()
-
-    def update_pagination_controls(self):
-        """Sayfalama kontrollerini güncelle"""
-        max_page = max(0, (self.total_count - 1) // self.page_size) if self.total_count > 0 else 0
-        self.page_label.setText(f"Sayfa {self.current_page + 1} / {max_page + 1} (Toplam: {self.total_count:,} gider)")
-        self.prev_button.setEnabled(self.current_page > 0)
-        self.next_button.setEnabled(self.current_page < max_page)
-
-    def _on_sort_changed(self):
-        """Sıralama seçimi değiştiğinde çağrılır"""
-        selected_sort = self.sort_combo.currentData()
-        if selected_sort:
-            self.sort_order = selected_sort
-            self.current_page = 0  # İlk sayfaya dön
-            self.refresh_table()
-
-    def update_delete_button_state(self):
-        """Seçili satır sayısına göre silme butonunun metnini günceller."""
-        selected_rows = self.table.selectionModel().selectedRows()
-        count = len(selected_rows)
-        
-        if count > 1:
-            self.delete_button.setText(f"🗑️ Seçilenleri Sil ({count})")
-            self.delete_button.setEnabled(True)
-        elif count == 1:
-            self.delete_button.setText("🗑️ Sil")
-            self.delete_button.setEnabled(True)
-        else:
-            # Seçili satır yok ama current_gider_id varsa aktif gideri silebilir
-            if hasattr(self, 'current_gider_id') and self.current_gider_id:
-                self.delete_button.setText("🗑️ Sil")
-                self.delete_button.setEnabled(True)
-            else:
-                self.delete_button.setText("🗑️ Sil")
-                self.delete_button.setEnabled(False)
-
-    def smart_delete(self):
-        """Akıllı silme: Seçili satırlar varsa çoklu sil, yoksa aktif gideri sil."""
-        selected_items = self.table.selectionModel().selectedRows()
-        
-        if len(selected_items) > 1:
-            # Çoklu silme
-            count = len(selected_items)
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                            f"{count} genel gider kaydını silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz!", 
-                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-            expense_ids = []
-            for index in selected_items:
-                miktar_item = self.table.item(index.row(), 0)
-                if miktar_item and miktar_item.data(Qt.ItemDataRole.UserRole) is not None:
-                    expense_ids.append(miktar_item.data(Qt.ItemDataRole.UserRole))
-
-            if not expense_ids:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Seçili giderlerin ID'leri alınamadı.", QMessageBox.StandardButton.Ok)
-                return
-
-            try:
-                deleted_count = 0
-                for expense_id in expense_ids:
-                    if self.backend.handle_genel_gider_operation('delete', record_id=expense_id):
-                        deleted_count += 1
-                
-                if deleted_count > 0:
-                    show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", f"{deleted_count} genel gider kaydı başarıyla silindi.", QMessageBox.StandardButton.Ok)
-                    self.clear_fields()
-                    self.refresh_table()
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Gider kayıtları silinemedi.", QMessageBox.StandardButton.Ok)
-            except Exception as e:
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Kritik Hata", f"Silme işlemi sırasında hata: {str(e)}", QMessageBox.StandardButton.Ok)
-        
-        else:
-            # Tek silme (aktif gider veya seçili 1 satır)
-            if not self.current_gider_id:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Seçim Yok", "Lütfen silmek için bir gider seçin.", QMessageBox.StandardButton.Ok)
-                return
-            
-            reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Silme Onayı", 
-                                            "Bu genel gider kaydını silmek istediğinizden emin misiniz?", 
-                                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.No:
-                return
-            
-            success = self.backend.handle_genel_gider_operation('delete', record_id=self.current_gider_id)
-            
-            if success:
-                self.clear_fields()
-                self.refresh_table()
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "İşlem Başarısız", "Gider kaydı silinemedi.", QMessageBox.StandardButton.Ok)
-
-    def export_combined(self, export_format='excel'):
-        """Genel giderleri Excel veya PDF formatında dışa aktarır"""
-        try:
-            if not self.backend:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", 
-                                      "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok)
-                return
-
-            # Tüm genel giderleri al
-            all_expenses = self.backend.handle_genel_gider_operation('get')
-            if not all_expenses:
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Bilgi", 
-                                      "Dışa aktarılacak genel gider bulunamadı.", QMessageBox.StandardButton.Ok)
-                return
-
-            # Dosya uzantısını belirle
-            from datetime import datetime
-            bugun = datetime.now().strftime("%d.%m.%Y")
-            
-            if export_format == 'excel':
-                file_filter = "Excel Dosyaları (*.xlsx)"
-                default_name = f"GenelGiderler-{bugun}.xlsx"
-            else:
-                file_filter = "PDF Dosyaları (*.pdf)"
-                default_name = f"GenelGiderler-{bugun}.pdf"
-            
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 
-                "Rapor Dosyasını Kaydet", 
-                default_name,
-                file_filter
-            )
-            
-            if not file_path:
-                return
-            
-            # Export işlemini gerçekleştir
-            success = False
-            
-            if export_format == 'excel':
-                # Excel modülünü lazy loading ile yükle
-                excel_module = get_excel_module()
-                if excel_module:
-                    # toexcel.py modülünü kullan
-                    success = excel_module.export_general_expenses_to_excel(all_expenses, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            else:  # PDF
-                # PDF modülünü lazy loading ile yükle
-                pdf_module = get_pdf_module()
-                if pdf_module:
-                    # topdf.py modülünü kullan
-                    success = pdf_module.export_general_expenses_to_pdf(all_expenses, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            
-            # Sonuç mesajı
-            if success:
-                format_name = "Excel" if export_format == 'excel' else "PDF"
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
-                                      QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                      f"❌ Rapor oluşturulamadı.", 
-                                      QMessageBox.StandardButton.Ok)
-                
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                  f"Rapor oluşturma hatası:\n{str(e)}", 
-                                  QMessageBox.StandardButton.Ok)
-
-    def _apply_initial_styling(self):
-        """Apply initial styling to match invoice tabs"""
-        self.restyle()
-
-    def restyle(self):
-        """Apply consistent styling like invoice tabs"""
-        self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_menu_button.setStyleSheet(STYLES["export_button"])
-        
-        # Enhanced table styling with prominent green selection highlighting
-        palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
-        table_style = f"""
-            QTableWidget {{
-                background-color: {palette['table_background']};
-                border: 1px solid {palette['table_border']};
-                gridline-color: {palette['table_border']};
-                color: {palette['text_primary']};
-                selection-background-color: {palette['table_selection']};
-                selection-color: {palette['text_primary']};
-            }}
-            QHeaderView::section {{
-                background-color: {palette['table_header']};
-                color: {palette['text_primary']};
-                font-weight: bold;
-                padding: 5px;
-                border: 1px solid {palette['table_border']};
-            }}
-            QTableWidget::item:selected {{
-                background-color: {palette['table_selection']};
-                color: {palette['text_primary']};
-                border: 2px solid #4CAF50;
-            }}
-            QTableWidget::item:hover {{
-                background-color: #E8F5E8;
-            }}
-        """
-        self.table.setStyleSheet(table_style)
-        
-        # ComboBox styling
-        self.sort_combo.setStyleSheet(f"padding: 8px; border: 1px solid {palette.get('input_border', '#D0D0D0')}; border-radius: 6px; font-size: 13px; color: {palette.get('text_primary', '#0b2d4d')}; background-color: {palette.get('card_frame', '#FFFFFF')};")
-        
-        # Button styling to match invoice tabs exactly
-        self.new_button.setStyleSheet(STYLES.get("button_style", ""))  # Gri
-        self.add_button.setStyleSheet(STYLES.get("success_button_style", ""))  # Yeşil
-        self.update_button.setStyleSheet(STYLES.get("warning_button_style", ""))  # Mavi
-        self.delete_button.setStyleSheet(STYLES.get("delete_button_style", ""))  # Kırmızı
-        
-        # Input field styling
-        for field in [self.miktar_input, self.tur_input, self.tarih_input]:
-            field.setStyleSheet(STYLES["input_style"])
-
-# --- HistoryWidget (Fatura İşlem Geçmişi) ---
-class HistoryWidget(QWidget):
-    def __init__(self, parent=None, backend=None):
-        super().__init__(parent)
-        self.backend = backend
-        self.setup_ui()
-        self.load_history()
-
-    def setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(15)
-
-        # Başlık
-        title = QLabel("İşlem Geçmişi")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("""
-            QLabel {
-                font-size: 18px;
-                font-weight: bold;
-                color: #2c3e50;
-                padding: 10px;
-                background-color: #ecf0f1;
-                border-radius: 8px;
-                border: 2px solid #bdc3c7;
-            }
-        """)
-        main_layout.addWidget(title)
-
-        # Kontrol paneli
-        control_panel = QVBoxLayout()
-        
-        # Tarih filtreleme bölümü
-        filter_frame = QFrame()
-        filter_frame.setFrameStyle(QFrame.Shape.Box)
-        filter_frame.setStyleSheet("""
-            QFrame {
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                background-color: #f8f9fa;
-                margin: 5px;
-            }
-        """)
-        
-        filter_layout = QHBoxLayout(filter_frame)
-        filter_layout.setContentsMargins(10, 8, 10, 8)
-        
-        # Tarih seçici label
-        date_label = QLabel("📅 Tarih Filtresi:")
-        date_label.setStyleSheet("font-weight: bold; color: #2c3e50;")
-        filter_layout.addWidget(date_label)
-        
-        # Tarih seçici
-        from PyQt6.QtWidgets import QDateEdit
-        from PyQt6.QtCore import QDate
-        
-        self.date_filter = QDateEdit()
-        self.date_filter.setDate(QDate.currentDate())
-        self.date_filter.setCalendarPopup(True)
-        self.date_filter.setStyleSheet("""
-            QDateEdit {
-                border: 1px solid #3498db;
-                border-radius: 3px;
-                padding: 5px;
-                font-size: 12px;
-            }
-            QDateEdit:focus {
-                border: 2px solid #2980b9;
-            }
-        """)
-        self.date_filter.dateChanged.connect(self.filter_by_date)
-        filter_layout.addWidget(self.date_filter)
-        
-        # Tüm geçmiş gösterme butonu
-        show_all_btn = QPushButton("📋 Tümünü Göster")
-        show_all_btn.clicked.connect(self.show_all_history)
-        show_all_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #95a5a6;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #7f8c8d;
-            }
-        """)
-        filter_layout.addWidget(show_all_btn)
-        
-        filter_layout.addStretch()
-        control_panel.addWidget(filter_frame)
-        
-        # Butonlar paneli
-        buttons_layout = QHBoxLayout()
-        
-        refresh_btn = QPushButton("🔄 Yenile")
-        refresh_btn.clicked.connect(self.load_history)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        
-        clear_btn = QPushButton("🗑️ Eski Kayıtları Temizle")
-        clear_btn.clicked.connect(self.clear_old_history)
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-        """)
-        
-        buttons_layout.addWidget(refresh_btn)
-        buttons_layout.addWidget(clear_btn)
-        buttons_layout.addStretch()
-        
-        control_panel.addLayout(buttons_layout)
-        main_layout.addLayout(control_panel)
-
-        # İşlem geçmişi listesi (scroll edilebilir alan)
-        from PyQt6.QtWidgets import QScrollArea
-        
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        # İçerik widget'ı
-        self.history_content = QWidget()
-        self.history_layout = QVBoxLayout(self.history_content)
-        self.history_layout.setSpacing(5)
-        self.history_layout.setContentsMargins(5, 5, 5, 5)
-        
-        scroll_area.setWidget(self.history_content)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                background-color: white;
-            }
-        """)
-        
-        main_layout.addWidget(scroll_area)
-
-    def filter_by_date(self):
-        """Seçilen tarihe göre işlem geçmişini filtrele"""
-        if not self.backend:
-            return
-            
-        selected_date = self.date_filter.date().toString("dd.MM.yyyy")
-        self.load_filtered_history(selected_date)
+    btn_excel = ScaleButton("table_view", "#217346", "Excel İndir", width=40, height=40)
+    btn_excel.on_click = export_general_expenses_excel
     
-    def show_all_history(self):
-        """Tüm işlem geçmişini göster"""
-        self.load_history()
+    btn_pdf = ScaleButton("picture_as_pdf", "#D32F2F", "PDF İndir", width=40, height=40)
+    btn_pdf.on_click = export_general_expenses_pdf
     
-    def load_filtered_history(self, target_date):
-        """Belirli bir tarihe göre filtrelenmiş geçmişi yükle"""
-        if not self.backend:
-            return
-            
-        try:
-            # Önceki içerikleri temizle
-            for i in reversed(range(self.history_layout.count())):
-                widget = self.history_layout.itemAt(i).widget()
-                if widget:
-                    widget.deleteLater()
-            
-            # Tarih aralığı (aynı gün için başlangıç ve bitiş)
-            history = self.backend.db.get_history_by_date_range(target_date, target_date, 100)
-            
-            if not history:
-                no_history_label = QLabel(f"📅 {target_date} tarihinde işlem geçmişi bulunmuyor.")
-                no_history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                no_history_label.setStyleSheet("""
-                    QLabel {
-                        color: #7f8c8d;
-                        font-style: italic;
-                        padding: 20px;
-                        font-size: 14px;
-                    }
-                """)
-                self.history_layout.addWidget(no_history_label)
-                return
-                
-            # Filtrelenmiş sonuçları göster
-            for record in history:
-                self._create_history_item(record)
-                
-        except Exception as e:
-            logging.error(f"Tarih filtreleme hatası: {e}")
+    expense_buttons = ft.Container(padding=ft.padding.only(right=40), content=ft.Row([ft.Container(height=38, content=year_dropdown), btn_save, btn_excel, btn_pdf, ScaleButton("print", "#607D8B", "Yazdır", width=40, height=40)], spacing=5))
     
-    def _create_history_item(self, record):
-        """İşlem geçmişi öğesi oluştur"""
-        # Durum bildirisi metni oluştur
-        operation_date = record.get('operation_date', '')
-        operation_time = record.get('operation_time', '')
-        operation_type = record.get('operation_type', '')
-        invoice_type = record.get('invoice_type', '')
-        invoice_date = record.get('invoice_date', '')
-        firma = record.get('firma', '')
-        amount = record.get('amount', 0)
-                
-        # İşlem tipine göre renk
-        if operation_type == "EKLEME":
-            bg_color = "#d5f4e6"  # Açık yeşil
-            border_color = "#27ae60"
-            icon = "✅"
-        elif operation_type == "GÜNCELLEME":
-            bg_color = "#fff3cd"  # Açık sarı
-            border_color = "#f39c12"
-            icon = "📝"
-        elif operation_type == "SİLME":
-            bg_color = "#f8d7da"  # Açık kırmızı
-            border_color = "#e74c3c"
-            icon = "🗑️"
-        else:
-            bg_color = "#e8f4f8"  # Açık mavi
-            border_color = "#3498db"
-            icon = "📋"
-                
-        # Fatura tipi çeviri
-        type_translation = {
-            "gelir": "Giden Fatura",
-            "gider": "Gelen Fatura", 
-            "genel_gider": "Genel Gider"
-        }
-        display_invoice_type = type_translation.get(invoice_type, invoice_type)
-                
-        # Ana metin oluştur
-        if firma:
-            status_text = f"{icon} {operation_type} - {display_invoice_type} ({firma})"
-        else:
-            status_text = f"{icon} {operation_type} - {display_invoice_type}"
-                
-        # Detay metni
-        details = []
-        if operation_date and operation_time:
-            details.append(f"📅 {operation_date} {operation_time}")
-        if invoice_date and invoice_date != operation_date:
-            details.append(f"📄 Fatura Tarihi: {invoice_date}")
-        if amount > 0:
-            details.append(f"💰 Tutar: {amount:,.2f} TL")
-                
-        detail_text = " | ".join(details)
-                
-        # Widget oluştur
-        history_widget = QFrame()
-        history_widget.setFrameStyle(QFrame.Shape.Box)
-        history_widget.setStyleSheet(f"""
-            QFrame {{
-                background-color: {bg_color};
-                border: 2px solid {border_color};
-                border-radius: 8px;
-                margin: 2px;
-                padding: 5px;
-            }}
-        """)
-                
-        widget_layout = QVBoxLayout(history_widget)
-        widget_layout.setContentsMargins(8, 6, 8, 6)
-                
-        # Ana durum etiketi
-        status_label = QLabel(status_text)
-        status_label.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                font-size: 13px;
-                color: #2c3e50;
-            }
-        """)
-        widget_layout.addWidget(status_label)
-                
-        # Detay etiketi
-        if detail_text:
-            detail_label = QLabel(detail_text)
-            detail_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    color: #555;
-                }
-            """)
-            widget_layout.addWidget(detail_label)
-                
-        self.history_layout.addWidget(history_widget)
+    return ft.Container(padding=ft.padding.only(top=15), content=ft.Column([ft.Row([ft.Row([ft.Icon("calendar_month", color=col_secondary, size=20), ft.Text("Yıllık Genel Giderler", size=16, weight="bold", color=col_text)], spacing=8), expense_buttons], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=10), ft.Row(controls=expense_cards, wrap=True, spacing=15, run_spacing=15, alignment=ft.MainAxisAlignment.CENTER)]))
 
-    def load_history(self):
-        """Son işlem geçmişini yükler ve durum bildirisi formatında gösterir."""
-        if not self.backend:
-            return
-            
-        try:
-            # Önceki içerikleri temizle
-            for i in reversed(range(self.history_layout.count())):
-                widget = self.history_layout.itemAt(i).widget()
-                if widget:
-                    widget.deleteLater()
-            
-            history = self.backend.get_recent_history(20)  # Son 20 işlem
-            
-            if not history:
-                no_history_label = QLabel("Henüz işlem geçmişi bulunmuyor.")
-                no_history_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                no_history_label.setStyleSheet("""
-                    QLabel {
-                        color: #7f8c8d;
-                        font-style: italic;
-                        padding: 20px;
-                    }
-                """)
-                self.history_layout.addWidget(no_history_label)
-                return
-            
-            for record in history:
-                self._create_history_item(record)
-                
-        except Exception as e:
-            logging.error(f"Geçmiş yükleme hatası: {e}")
-            error_label = QLabel(f"Geçmiş yüklenirken hata oluştu: {str(e)}")
-            error_label.setStyleSheet("color: red; font-style: italic; padding: 10px;")
-            self.history_layout.addWidget(error_label)
-
-    def clear_old_history(self):
-        """Eski işlem geçmişi kayıtlarını temizler."""
-    def clear_old_history(self):
-        """90 günden eski kayıtları temizler."""
-        if not self.backend:
-            return
-            
-        reply = show_question(
-            self,
-            "Geçmiş Temizle",
-            "90 günden eski işlem geçmişi kayıtları silinecek.\n\nDevam etmek istediğinizden emin misiniz?"
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                deleted_count = self.backend.clear_old_history(90)
-                if deleted_count > 0:
-                    show_info(self, "Başarılı", f"{deleted_count} eski kayıt temizlendi.")
-                    self.load_history()  # Listeyi yenile
-                else:
-                    show_info(self, "Bilgi", "Temizlenecek eski kayıt bulunamadı.")
-            except Exception as e:
-                show_error(self, "Hata", f"Geçmiş temizlenirken hata oluştu:\n{str(e)}")
-
-    def refresh_history(self):
-        """Geçmişi yeniden yükler (dış çağrılar için)."""
-        self.load_history()
-
-# --- HomePage ---
-class HomePage(QWidget):
-    CONFIG = {"page_title": "Genel Durum Paneli", "currencies": [{"code": "TRY", "symbol": "₺"}, {"code": "USD", "symbol": "$"}, {"code": "EUR", "symbol": "€"}]}
-    def __init__(self, backend, parent=None):
-        super().__init__(parent)
-        self.backend = backend
-        self.current_currency = "TRY"
-        self.current_graph_year = datetime.now().year
-        self.base_data = {}
-        self.monthly_data = {'income': [0]*12, 'expenses': [0]*12}
-        self._setup_ui()
-        self._connect_signals()
-        if self.backend:
-            self.backend.data_updated.connect(self.refresh_data)
-        self.populate_graph_year_dropdown()
-        self.refresh_data()
-
-    def _get_monthly_data_for_year(self, year):
-        if not self.backend: return {'income': [0]*12, 'expenses': [0]*12}
-        monthly_results, _ = self.backend.get_calculations_for_year(year)
-        income = [m['kesilen'] for m in monthly_results]
-        expenses = [m['gelen'] for m in monthly_results]
-        return {'income': income, 'expenses': expenses}
-
-    def _setup_ui(self):
-        self.setStyleSheet("background-color: transparent;")
-        self.main_content_card = QFrame()
-        self.main_content_card.setObjectName("mainContentCard")
-        self.main_content_card.setMaximumWidth(1400)
-        self.main_content_card.setStyleSheet("#mainContentCard { background-color: transparent; border: none; }")
-        
-        card_layout = QVBoxLayout(self.main_content_card)
-        card_layout.setContentsMargins(20, 20, 20, 20)
-        card_layout.setSpacing(15)
-        
-        card_layout.addLayout(self._create_header())
-        
-        all_donuts_layout = QHBoxLayout(); all_donuts_layout.setSpacing(15)
-        self.donut_profit = DonutChartWidget(color="#a2d5f2"); all_donuts_layout.addWidget(self.donut_profit)
-        self.donut_income = DonutChartWidget(color="#fceecb"); all_donuts_layout.addWidget(self.donut_income)
-        self.donut_avg = DonutChartWidget(color="#f5d4e5"); all_donuts_layout.addWidget(self.donut_avg)
-        self.donut_expense = DonutChartWidget(color="#c8e6c9"); all_donuts_layout.addWidget(self.donut_expense)
-
-        all_labels_layout = QHBoxLayout(); all_labels_layout.setSpacing(15)
-        self.donut_profit_label = QLabel("Anlık Net Kâr"); self.donut_profit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.donut_income_label = QLabel("Toplam Gelir"); self.donut_income_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.donut_avg_label = QLabel("Aylık Ortalama"); self.donut_avg_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.donut_expense_label = QLabel("Toplam Gider"); self.donut_expense_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        all_labels_layout.addWidget(self.donut_profit_label)
-        all_labels_layout.addWidget(self.donut_income_label)
-        all_labels_layout.addWidget(self.donut_avg_label)
-        all_labels_layout.addWidget(self.donut_expense_label)
-
-        card_layout.addLayout(all_donuts_layout)
-        card_layout.addLayout(all_labels_layout)
-        
-        bottom_layout = QHBoxLayout(); bottom_layout.setSpacing(20)
-        
-        graph_container = QFrame()
-        graph_container_layout = QVBoxLayout(graph_container)
-        graph_container_layout.setContentsMargins(0,0,0,0)
-        
-        graph_title_layout = QHBoxLayout()
-        self.graph_title_label = QLabel(f"{self.current_graph_year} Yılı Analiz Grafiği")
-        self.graph_year_dropdown = QComboBox(); self.graph_year_dropdown.setMinimumWidth(80)
-        graph_title_layout.addWidget(self.graph_title_label); graph_title_layout.addStretch()
-        graph_title_layout.addWidget(QLabel("Yıl:")); graph_title_layout.addWidget(self.graph_year_dropdown)
-        graph_container_layout.addLayout(graph_title_layout)
-        
-        self.plot_widget = self._create_financial_graph_widget()
-        graph_container_layout.addWidget(self.plot_widget)
-        bottom_layout.addWidget(graph_container, 3)
-        
-        self.history_widget = HistoryWidget(backend=self.backend)
-        bottom_layout.addWidget(self.history_widget, 2)
-
-        card_layout.addLayout(bottom_layout)
-        
-        page_layout = QHBoxLayout(self); page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.addStretch(); page_layout.addWidget(self.main_content_card); page_layout.addStretch()
-
-    def _create_header(self):
-        header_layout = QHBoxLayout(); self.title_label = QLabel(self.CONFIG["page_title"]); header_layout.addWidget(self.title_label); header_layout.addStretch(); self.exchange_rate_label = QLabel(); self.update_exchange_rate_display(); header_layout.addWidget(self.exchange_rate_label); header_layout.addSpacing(15); header_layout.addWidget(self._create_currency_selector())
-        return header_layout
-
-    def _create_currency_selector(self):
-        self.currency_selector_frame = QFrame()
-        layout = QHBoxLayout(self.currency_selector_frame)
-        layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(5)
-        self.currency_group = QButtonGroup(self)
-        for currency_info in self.CONFIG["currencies"]:
-            btn = QPushButton(f"{currency_info['symbol']} {currency_info['code']}")
-            btn.setCheckable(True); btn.setProperty("currency", currency_info["code"])
-            self.currency_group.addButton(btn); layout.addWidget(btn)
-            if currency_info["code"] == self.current_currency: btn.setChecked(True)
-        return self.currency_selector_frame
-        
-    def _create_financial_graph_widget(self): 
-        if pg:
-            plot_widget = pg.PlotWidget(); months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]; ticks = [(i, month) for i, month in enumerate(months)]; plot_widget.getAxis('bottom').setTicks([ticks]); self.legend = plot_widget.addLegend(offset=(10, 10)); self.income_line = pg.PlotDataItem(pen=pg.mkPen(color=(40, 167, 69), width=2.5), symbol='o', symbolBrush=(40, 167, 69), symbolSize=7, name='Gelir'); self.expenses_line = pg.PlotDataItem(pen=pg.mkPen(color=(220, 53, 69), width=2.5), symbol='o', symbolBrush=(220, 53, 69), symbolSize=7, name='Gider'); plot_widget.addItem(self.income_line); plot_widget.addItem(self.expenses_line); return plot_widget
-        else:
-            return QLabel("Grafik kütüphanesi (pyqtgraph) yüklenemedi.") # Kütüphane yoksa
-    
-    def _connect_signals(self): 
-        self.currency_group.buttonClicked.connect(self.update_currency)
-        self.graph_year_dropdown.currentTextChanged.connect(self.on_graph_year_changed)
-        if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'): 
-            self.backend.data_updated.connect(self.refresh_data)
-            # History widget'ini de yenile
-            self.backend.data_updated.connect(lambda: self.history_widget.refresh_history() if hasattr(self, 'history_widget') else None)
-        
-    def populate_graph_year_dropdown(self):
-        years = [str(datetime.now().year)]
-        if self.backend: years = self.backend.get_year_range()
-        current_selection = self.graph_year_dropdown.currentText()
-        self.graph_year_dropdown.blockSignals(True)
-        self.graph_year_dropdown.clear()
-        self.graph_year_dropdown.addItems(years if years else [])
-        index = self.graph_year_dropdown.findText(current_selection) if current_selection in years else (0 if years else -1)
-        self.graph_year_dropdown.setCurrentIndex(index)
-        self.current_graph_year = int(self.graph_year_dropdown.currentText()) if self.graph_year_dropdown.count() > 0 else datetime.now().year
-        self.graph_year_dropdown.blockSignals(False)
-        self.graph_title_label.setText(f"{self.current_graph_year} Yılı Analiz Grafiği")
-        
-    def on_graph_year_changed(self, year_str):
-        if year_str:
-            try:
-                self.current_graph_year = int(year_str)
-                self.graph_title_label.setText(f"{self.current_graph_year} Yılı Analiz Grafiği")
-                if self.backend: self.monthly_data = self._get_monthly_data_for_year(self.current_graph_year)
-                else: self.monthly_data = {'income': [0]*12, 'expenses': [0]*12}
-                self.update_graph()
-            except ValueError: print(f"Hata: Geçersiz yıl formatı - {year_str}")
-            except Exception as e: print(f"Grafik yılı değiştirme hatası: {e}")
-        
-    def restyle(self):
-        palette = STYLES.get("palette", LIGHT_THEME_PALETTE); self.main_content_card.setStyleSheet(STYLES.get("main_card_frame")); self.title_label.setStyleSheet(STYLES.get("title")); self.currency_selector_frame.setStyleSheet("background-color: #f0f5fa; border-radius: 8px; padding: 3px;");
-        for btn in self.currency_group.buttons(): btn.setStyleSheet("QPushButton { background-color: transparent; border: none; padding: 6px 18px; color: #505050; font-weight: 500; border-radius: 6px; font-size: 13px; } QPushButton:checked { background-color: #ffffff; color: #0066CC; font-weight: 600; }")
-        
-        if hasattr(self, 'donut_profit_label'):
-            self.donut_profit_label.setStyleSheet(STYLES.get("donut_label_style"))
-            self.donut_avg_label.setStyleSheet(STYLES.get("donut_label_style"))
-            self.donut_income_label.setStyleSheet(STYLES.get("donut_label_style"))
-            self.donut_expense_label.setStyleSheet(STYLES.get("donut_label_style"))
-                    
-        self.load_donuts()
-        
-        self.graph_title_label.setStyleSheet(STYLES.get("info_panel_title"))
-        self.graph_year_dropdown.setStyleSheet(STYLES.get("input_style"))
-        
-        if pg and isinstance(self.plot_widget, pg.PlotWidget):
-            graph_bg = STYLES.get("palette", {}).get("graph_background", 'w'); graph_fg = STYLES.get("palette", {}).get("graph_foreground", '#404040')
-            pg.setConfigOption('background', graph_bg); pg.setConfigOption('foreground', graph_fg); self.plot_widget.setBackground(graph_bg); self.plot_widget.getAxis('left').setTextPen(graph_fg); self.plot_widget.getAxis('bottom').setTextPen(graph_fg); self.plot_widget.showGrid(x=True, y=True, alpha=0.2);
-            if hasattr(self, 'legend'): self.legend.setLabelTextColor(graph_fg)
-        
-        if hasattr(self, 'notes_widget') and hasattr(self.notes_widget, 'restyle'):
-            self.notes_widget.restyle()
-        
-    def refresh_data(self):
-        if not self.backend: print("UYARI: Backend bulunamadığı için HomePage verileri yenilenemiyor."); self.base_data = {'net_kar':0, 'aylik_ortalama':0, 'son_gelirler':0, 'toplam_giderler':0}; self.monthly_data = {'income': [0]*12, 'expenses': [0]*12}; self.update_exchange_rate_display(); self.load_donuts(); self.update_graph(); self.populate_graph_year_dropdown(); return
-        self.base_data, _ = self.backend.get_summary_data() 
-        self.monthly_data = self._get_monthly_data_for_year(self.current_graph_year)
-        self.update_exchange_rate_display(); self.load_donuts(); self.update_graph(); self.populate_graph_year_dropdown()
-        if hasattr(self, 'notes_widget'): self.notes_widget.update_calendar_notes()
-        
-    def update_currency(self, button):
-        self.current_currency = button.property("currency")
-        self.refresh_data()
-        
-    def update_exchange_rate_display(self):
-        if not self.backend: self.exchange_rate_label.setText("Kur bilgisi yok"); return
-        try:
-            rates = getattr(self.backend, 'exchange_rates', {})
-            usd_tl = 1.0 / rates.get('USD', 0) if rates.get('USD', 0) > 0 else 0
-            eur_tl = 1.0 / rates.get('EUR', 0) if rates.get('EUR', 0) > 0 else 0
-            rate_text = f"💱 1 USD = {usd_tl:.2f} TL  |  1 EUR = {eur_tl:.2f} TL"
-            self.exchange_rate_label.setText(rate_text)
-            self.exchange_rate_label.setStyleSheet("font-size: 11px; color: #505050; padding: 5px 10px; background-color: #f0f5fa; border-radius: 6px;")
-        except Exception as e: self.exchange_rate_label.setText("Kur bilgisi yok"); print(f"Kur gösterme hatası: {e}")
-        
-    def load_donuts(self):
-        donuts_data = [{"value_key": "net_kar", "donut": self.donut_profit}, {"value_key": "aylik_ortalama", "donut": self.donut_avg}, {"value_key": "son_gelirler", "donut": self.donut_income}, {"value_key": "toplam_giderler", "donut": self.donut_expense}]
-        max_donut_value = 0
-        for data in donuts_data:
-            value_tl = abs(self.base_data.get(data["value_key"], 0.0))
-            if value_tl > max_donut_value: max_donut_value = value_tl
-        if max_donut_value == 0: max_donut_value = 1
-        
-        for data in donuts_data:
-            value_tl = self.base_data.get(data["value_key"], 0.0)
-            converted_value, symbol = self._convert_value(value_tl)
-            
-            donut_fill_value = max(0, value_tl)
-            data["donut"].setValue(donut_fill_value)
-            data["donut"].setMaxValue(max_donut_value)
-            
-            formatted_donut_text = ""
-            abs_converted_value_for_format = abs(converted_value)
-            sign = "-" if converted_value < 0 else ""
-            
-            if abs_converted_value_for_format >= 1_000_000: formatted_donut_text = f"{sign}{symbol} {abs_converted_value_for_format / 1_000_000:.1f}M"
-            elif abs_converted_value_for_format >= 1_000: formatted_donut_text = f"{sign}{symbol} {abs_converted_value_for_format / 1_000:.1f}K"
-            else: formatted_donut_text = f"{sign}{symbol} {abs_converted_value_for_format:.0f}"
-            
-            data["donut"].setDisplayText(formatted_donut_text) 
-            
-    def _convert_value(self, value_tl: float):
-        if not self.backend: return value_tl, "₺"
-        currency_info = next((c for c in self.CONFIG["currencies"] if c["code"] == self.current_currency), None)
-        symbol = currency_info["symbol"] if currency_info else ""
-        converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v)
-        converted_value = converter(value_tl, 'TRY', self.current_currency)
-        return converted_value, symbol
-        
-    def update_graph(self):
-        if not pg or not isinstance(self.plot_widget, pg.PlotWidget): return
-        if not self.backend: self.income_line.setData([], []); self.expenses_line.setData([], []); return
-        converter = getattr(self.backend, 'convert_currency', lambda v, f, t: v); income = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('income', [0]*12)]; expenses = [converter(v, 'TRY', self.current_currency) for v in self.monthly_data.get('expenses', [0]*12)]; months_indices = list(range(12)); self.income_line.setData(x=months_indices, y=income); self.expenses_line.setData(x=months_indices, y=expenses); graph_fg = '#404040'; self.plot_widget.setLabel('left', f"Tutar ({self.current_currency})", color=graph_fg); self.plot_widget.autoRange()
-        
-# --- Fatura Sayfası ---
-class InvoicesPage(QWidget):
-    def __init__(self, backend, parent=None):
-        super().__init__(parent)
-        self.backend = backend
-        self._setup_ui()
-        self.restyle()
-
-    def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        
-        header_layout = QHBoxLayout()
-        self.title_label = QLabel("Fatura Yönetimi")
-        header_layout.addWidget(self.title_label)
-        header_layout.addStretch()
-        
-        self.qr_button = QPushButton("📷 Otomatik Fatura Ekle (QR)")
-        self.qr_button.setToolTip("QR kodlarını okuyarak faturaları otomatik sisteme ekler.\n⭐ SATIS faturaları GELİR'e, ALIS faturaları GİDER'e otomatik eklenir!")
-        self.qr_button.clicked.connect(self.start_qr_processing_flow)
-        header_layout.addWidget(self.qr_button)
-        
-        main_layout.addLayout(header_layout)
-        
-        self.tab_widget = QTabWidget()
-        self.outgoing_tab = InvoiceTab("outgoing", self.backend)
-        self.incoming_tab = InvoiceTab("incoming", self.backend)
-        self.genel_gider_tab = GenelGiderTab(self.backend)
-        self.tab_widget.addTab(self.outgoing_tab, "Giden Faturalar (Gelir)")
-        self.tab_widget.addTab(self.incoming_tab, "Gelen Faturalar (Gider)")
-        self.tab_widget.addTab(self.genel_gider_tab, "Genel Giderler")
-        main_layout.addWidget(self.tab_widget)
-
-    def restyle(self):
-        self.title_label.setStyleSheet(STYLES["page_title"])
-        
-        qr_button_style = """
-            QPushButton {
-                background-color: #007bff; color: white; border: none;
-                border-radius: 6px; font-size: 12px; font-weight: bold;
-                padding: 8px 12px; margin: 2px;
-            }
-            QPushButton:hover { background-color: #0056b3; }
-            QPushButton:pressed { background-color: #004085; }
-        """
-        self.qr_button.setStyleSheet(qr_button_style)
-        
-        palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
-        tab_style = f"""
-            QTabWidget::pane {{ 
-                border: 1px solid {palette.get('card_border', '#E0E0E0')}; 
-                background-color: {palette.get('card_background', '#FFFFFF')};
-            }}
-            QTabBar::tab {{ 
-                background-color: {palette.get('tab_background', '#F8F9FA')};
-                border: 1px solid {palette.get('card_border', '#E0E0E0')};
-                padding: 10px 15px;
-                margin-right: 2px;
-                font-size: 14px;
-                font-weight: bold;
-                color: {palette.get('text_color', '#2C3E50')};
-                min-width: 180px;
-            }}
-            QTabBar::tab:selected {{ 
-                background-color: {palette.get('primary', '#3498DB')};
-                color: white;
-                border-bottom: none;
-            }}
-            QTabBar::tab:hover {{
-                background-color: {palette.get('secondary', '#95A5A6')};
-                color: white;
-            }}
-        """
-        self.tab_widget.setStyleSheet(tab_style)
-        self.outgoing_tab.restyle()
-        self.incoming_tab.restyle()
-
-    def refresh_data(self):
-        self.outgoing_tab.refresh_table()
-        self.incoming_tab.refresh_table()
-    
-    def _move_failed_files(self, source_folder, failed_file_paths):
-        """Başarısız dosyaları 'QR_Basarisiz' klasörüne taşı"""
-        import shutil
-        
-        try:
-            # Hedef klasör oluştur
-            failed_folder = os.path.join(source_folder, "QR_Basarisiz")
-            os.makedirs(failed_folder, exist_ok=True)
-            
-            # Dosyaları taşı
-            moved_count = 0
-            for file_path in failed_file_paths:
-                if os.path.exists(file_path):
-                    try:
-                        file_name = os.path.basename(file_path)
-                        dest_path = os.path.join(failed_folder, file_name)
-                        
-                        # Aynı isimde dosya varsa, numara ekle
-                        if os.path.exists(dest_path):
-                            base, ext = os.path.splitext(file_name)
-                            counter = 1
-                            while os.path.exists(dest_path):
-                                dest_path = os.path.join(failed_folder, f"{base}_{counter}{ext}")
-                                counter += 1
-                        
-                        shutil.move(file_path, dest_path)
-                        moved_count += 1
-                        logging.info(f"📦 Taşındı: {file_name} -> QR_Basarisiz/")
-                    except Exception as e:
-                        logging.warning(f"⚠️ Dosya taşıma hatası ({os.path.basename(file_path)}): {e}")
-            
-            if moved_count > 0:
-                logging.info(f"✅ {moved_count} başarısız dosya taşındı: {failed_folder}")
-                return failed_folder
-            
-        except Exception as e:
-            logging.error(f"❌ Başarısız dosya klasörü oluşturma hatası: {e}")
-        
-        return None
-
-    def start_qr_processing_flow(self):
-        """GELİŞTİRİLMİŞ QR sistemi - QR'dan fatura ekleme akışını yönetir."""
-        if not self.backend:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", "Backend modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-            return
-        
-        # ⭐ ÖNCE FATURA TİPİNİ SOR ⭐
-        reply = show_styled_message_box(
-            self, 
-            QMessageBox.Icon.Question, 
-            "Fatura Tipi Seçimi", 
-            "Bu faturalar hangi kategoriye eklensin?\n\n"
-            "💰 GELİR: Satış faturaları\n"
-            "💸 GİDER: Alış faturaları\n\n"
-            "Lütfen seçim yapın:",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            yes_text="💰 GELİR",
-            no_text="💸 GİDER"
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            invoice_type = 'outgoing'  # Gelir
-            type_text = "GELİR (Satış)"
-            type_icon = "💰"
-        else:
-            invoice_type = 'incoming'  # Gider
-            type_text = "GİDER (Alış)"
-            type_icon = "💸"
-        
-        logging.info(f"📋 Kullanıcı seçimi: {type_text}")
-
-        # QR modülünü test et
-        try:
-            logging.info("🔧 QR modülü test ediliyor...")
-            
-            # Yeni entegrasyon yapısı - QR entegratörü lazy loading ile başlatılacak
-            # QR kütüphanelerini test etmek için integrator'ü çağır
-            qr_integrator = self.backend.qr_integrator
-            # QR processor'ü başlat
-            qr_integrator.qr_processor._init_qr_tools()
-            logging.info("✅ QR modülü hazır.")
-            
-        except ImportError as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR Kütüphaneleri Eksik", 
-                                  f"❌ QR okuma kütüphaneleri eksik:\n{e}\n\n"
-                                  f"🔧 Gerekli kütüphaneler:\n"
-                                  f"• PyMuPDF (PDF okuma)\n"
-                                  f"• opencv-python-headless (görüntü işleme)\n"
-                                  f"• pyzbar (QR kod okuma)\n\n"
-                                  f"💻 Kurulum komutu:\n"
-                                  f"pip install PyMuPDF opencv-python-headless pyzbar", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR Sistemi Hatası", 
-                                  f"❌ QR okuma sistemi başlatılamadı:\n{e}\n\n"
-                                  f"🔧 Olası çözümler:\n"
-                                  f"1. Kütüphaneleri yeniden kurun\n"
-                                  f"2. Python sürümünü kontrol edin\n"
-                                  f"3. Sistem yeniden başlatın", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-
-        # Klasör seçimi
-        file_dialog = QFileDialog(self)
-        file_dialog.setWindowTitle("📁 QR Kodlu Fatura Dosyalarının Klasörünü Seçin")
-        file_dialog.setFileMode(QFileDialog.FileMode.Directory)
-        file_dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
-        file_dialog.setLabelText(QFileDialog.DialogLabel.Accept, "Seç")
-        file_dialog.setLabelText(QFileDialog.DialogLabel.Reject, "İptal")
-        
-        if file_dialog.exec() != QFileDialog.DialogCode.Accepted:
-            return
-        
-        folder_path = file_dialog.selectedFiles()[0] if file_dialog.selectedFiles() else None
-        if not folder_path:
-            return
-
-        # Klasörde dosya sayısı kontrolü
-        try:
-            import os
-            files = [f for f in os.listdir(folder_path) 
-                    if f.lower().endswith(('.pdf', '.jpg', '.jpeg', '.png', '.bmp'))]
-            if not files:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Dosya Bulunamadı", 
-                                      f"📂 Seçilen klasörde işlenebilir dosya bulunamadı.\n\n"
-                                      f"Desteklenen formatlar: PDF, JPG, PNG, BMP", 
-                                      QMessageBox.StandardButton.Ok)
-                return
-                
-            if len(files) > 50:
-                reply = show_styled_message_box(self, QMessageBox.Icon.Question, "Çok Fazla Dosya", 
-                                              f"⚠️ {len(files)} dosya bulundu. İşlem uzun sürebilir.\n\n"
-                                              f"Devam etmek istiyor musunuz?", 
-                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-                if reply == QMessageBox.StandardButton.No:
-                    return
-                    
-            logging.info(f"📁 Klasörde {len(files)} dosya bulundu")
-            
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Klasör Okuma Hatası", 
-                                  f"❌ Klasör okunamadı: {e}", QMessageBox.StandardButton.Ok)
-            return
-
-        # İlerleme çubuğu
-        progress = QProgressDialog("🔍 QR kodlar okunuyor...", "İptal", 0, 100, self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setCancelButtonText("İptal")
-        progress.setAutoClose(False)
-        progress.setAutoReset(False)
-        progress.show()
-        QApplication.processEvents()
-
-        try:
-            # QR işleme - backend metodunu kullan
-            def status_update(message, progress_val=None):
-                if progress.wasCanceled():
-                    return False
-                progress.setLabelText(f"🔍 {message}")
-                if progress_val is not None:
-                    progress.setValue(min(progress_val, 99))
-                QApplication.processEvents()
-                return True
-
-            qr_results = self.backend.process_qr_files_in_folder(folder_path, max_workers=6, status_callback=status_update)
-            
-        except Exception as e:
-            logging.error(f"❌ QR işleme hatası: {e}")
-            progress.close()
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "QR İşleme Hatası", 
-                                  f"❌ QR kodları işlenirken hata oluştu:\n{e}", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-
-        progress.close()
-
-        if qr_results is None:
-            show_styled_message_box(self, QMessageBox.Icon.Critical, "İşlem Hatası", 
-                                  "❌ QR kodları işlenirken kritik hata oluştu.", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-        
-        # Sonuçları analiz et
-        successful_qrs = [r for r in qr_results if r.get('durum') == 'BAŞARILI']
-        json_errors = [r for r in qr_results if r.get('durum') == 'JSON HATASI']
-        qr_not_found = [r for r in qr_results if r.get('durum') == 'QR BULUNAMADI']
-        
-        total_files = len(qr_results)
-        success_count = len(successful_qrs)
-
-        logging.info(f"📊 QR İşlem Sonuçları - Toplam: {total_files}, Başarılı: {success_count}, JSON Hatası: {len(json_errors)}, QR Yok: {len(qr_not_found)}")
-
-        if success_count == 0:
-            error_details = []
-            if json_errors:
-                error_details.append(f"📝 JSON hatası: {len(json_errors)} dosya")
-            if qr_not_found:
-                error_details.append(f"🔍 QR bulunamadı: {len(qr_not_found)} dosya")
-                
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "QR Bulunamadı", 
-                                  f"❌ {total_files} dosyadan hiç birinde geçerli QR kod bulunamadı.\n\n"
-                                  f"📋 Detaylar:\n" + "\n".join(error_details) +
-                                  f"\n\n💡 İpuçları:\n"
-                                  f"• PDF dosyaların kaliteli olduğundan emin olun\n"
-                                  f"• QR kodun net görünür olduğunu kontrol edin\n"
-                                  f"• E-fatura PDF'lerini kullanın", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-
-        # Başarılı QR'lar varsa veritabanına ekle
-        if success_count > 0:
-            progress = QProgressDialog("💾 Faturalar veritabanına ekleniyor...", "İptal", 0, success_count, self)
-            progress.setWindowModality(Qt.WindowModality.WindowModal)
-            progress.show()
-            QApplication.processEvents()
-
-            try:
-                # ⭐ MANUEL TİP SEÇİMİ - Kullanıcının seçtiği tipi kullan ⭐
-                result = self.backend.add_invoices_from_qr_data(qr_results, invoice_type)
-                
-                progress.close()
-                
-                if result and result.get('success'):
-                    added = result.get('added', 0)
-                    failed = result.get('failed', 0)
-                    skipped_duplicates = result.get('skipped_duplicates', 0)
-                    failed_files = result.get('failed_files', [])
-                    
-                    type_icon = "💰" if invoice_type == 'outgoing' else "💸"
-                    type_name = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
-                    
-                    message = f"✅ QR işleme tamamlandı!\n\n"
-                    message += f"📊 Sonuçlar:\n"
-                    message += f"• Toplam işlenen: {total_files}\n"
-                    message += f"• {type_icon} {type_name} olarak eklendi: {added}\n"
-                    
-                    if skipped_duplicates > 0:
-                        message += f"• ⏭️  Atlanan (Duplicate): {skipped_duplicates}\n"
-                    
-                    message += f"• Başarısız: {failed}\n\n"
-                    
-                    # Başarısız dosyaları ayrı klasöre taşı
-                    if failed_files:
-                        failed_folder = self._move_failed_files(folder_path, failed_files)
-                        if failed_folder:
-                            message += f"📁 Başarısız dosyalar taşındı:\n{failed_folder}\n\n"
-                    
-                    if result.get('processing_details'):
-                        message += f"📋 Detaylar:\n"
-                        for detail in result['processing_details'][:8]:  # İlk 8 detayı göster
-                            status = detail.get('status', '')
-                            if status == 'BAŞARILI':
-                                status_icon = "✅"
-                                detail_type = f" ({type_name})"
-                            elif status.startswith('ATLANDI'):
-                                status_icon = "⏭️"
-                                detail_type = f" (Fatura No: {detail.get('fatura_no', 'N/A')})"
-                            else:
-                                status_icon = "❌"
-                                detail_type = ""
-                            
-                            message += f"{status_icon} {detail.get('file', 'Bilinmeyen')}{detail_type}\n"
-                        
-                        if len(result['processing_details']) > 8:
-                            message += f"... ve {len(result['processing_details']) - 8} dosya daha\n"
-                    
-                    message += f"\n🎯 Tüm faturalar {type_icon} {type_name} olarak eklendi!"
-                    
-                    show_styled_message_box(self, QMessageBox.Icon.Information, "QR İşleme Başarılı", message, QMessageBox.StandardButton.Ok)
-                    
-                    # Tabloları yenile
-                    self.refresh_data()
-                    
-                else:
-                    error_msg = result.get('message', 'Bilinmeyen hata') if result else 'Sonuç alınamadı'
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Fatura Ekleme Hatası", 
-                                          f"❌ Faturalar veritabanına eklenemedi:\n{error_msg}", 
-                                          QMessageBox.StandardButton.Ok)
-                    
-            except Exception as e:
-                progress.close()
-                logging.error(f"❌ Veritabanına ekleme hatası: {e}")
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Veritabanı Hatası", 
-                                      f"❌ Faturalar veritabanına eklenirken hata oluştu:\n{e}", 
-                                      QMessageBox.StandardButton.Ok)
-                return
-        
-        else:
-            # Hata durumu - başarılı QR yok
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "QR İşlemi Tamamlanamadı", 
-                                  f"❌ QR kodlardan fatura eklenemedi.", 
-                                  QMessageBox.StandardButton.Ok)
-            return
-
-    def show_export_progress(self, title, export_func, *args):
-        """Export işlemi için progress göster."""
-        progress = QProgressDialog(title, "İptal", 0, 0, self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setValue(0)
-        progress.show()
-        QApplication.processEvents()
-        
-        try:
-            result = export_func(*args)
-            progress.close()
-            return result
-        except Exception as e:
-            progress.close()
-            raise e
-        if result.get('failed', 0) > 0:
-            details.append(f"❌ Başarısız: {result.get('failed', 0)}")
-        details.append(f"📊 Toplam işlenen QR: {success_count}")
-        details.append(f"📂 Tarafanan dosya: {total_files}")
-
-        show_styled_message_box(self, icon, title,
-                                f"🎉 Otomatik fatura ekleme tamamlandı!\n\n" + 
-                                "\n".join(details) +
-                                f"\n\n💾 Veriler güncellendi.",
-                                QMessageBox.StandardButton.Ok)
-
-    def _process_qr_files_with_processor(self, qr_processor, folder_path):
-        """QR processor kullanarak dosyaları işler."""
-        import os
-        import time
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        file_paths = []
-        allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.pdf'}
-        
-        try:
-            for file_name in os.listdir(folder_path):
-                file_path = os.path.join(folder_path, file_name)
-                if os.path.isfile(file_path) and os.path.splitext(file_name)[1].lower() in allowed_extensions:
-                    file_paths.append(file_path)
-        except Exception as e:
-            logging.error(f"Klasör okunurken hata: {e}")
-            return None
-        
-        if not file_paths:
-            return []
-        
-        # Dinamik worker sayısı
-        cpu_count = 4  # varsayılan değer
-        try:
-            import psutil
-            cpu_count = psutil.cpu_count() or 4
-        except (ImportError, AttributeError):
-            # psutil yoksa veya çalışmıyorsa os modülünü dene
-            try:
-                import os
-                cpu_count = os.cpu_count() or 4
-            except AttributeError:
-                cpu_count = 4  # çok eski Python versiyonları için varsayılan
-        
-        max_workers = min(cpu_count, max(2, len(file_paths) // 2), 8)
-        
-        results = []
-        start_time = time.time()
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {executor.submit(qr_processor.process_file, path): path for path in file_paths}
-            
-            for i, future in enumerate(as_completed(future_to_path), 1):
-                try:
-                    result = future.result(timeout=45)
-                    results.append(result)
-                except Exception as e:
-                    file_path = future_to_path[future]
-                    logging.error(f"QR işleme hatası '{os.path.basename(file_path)}': {e}")
-                    results.append({'dosya_adi': os.path.basename(file_path), 'durum': 'HATA', 'json_data': {}})
-        
-        return results
-
-    def _add_qr_invoices_to_backend(self, qr_results, invoice_type):
-        """QR sonuçlarını backend'e fatura olarak ekler."""
-        import time
-        
-        if not qr_results:
-            return 0, 0
-
-        successful_imports = 0
-        failed_imports = 0
-        
-        for result in qr_results:
-            if result.get('durum') == 'BAŞARILI':
-                json_data = result.get('json_data', {})
-                parsed_data = self._parse_qr_to_invoice_fields(json_data)
-                
-                if self.backend.handle_invoice_operation('add', invoice_type, data=parsed_data):
-                    successful_imports += 1
-                else:
-                    failed_imports += 1
-            else:
-                failed_imports += 1
-        
-        return successful_imports, failed_imports
-
-    def _parse_qr_to_invoice_fields(self, qr_json):
-        """QR JSON verisini fatura alanlarına dönüştürür."""
-        import time
-        
-        if not qr_json:
-            return {}
-
-        key_map = {
-            'fatura_no': ['faturaNo', 'invoiceNumber', 'faturanumarasi', 'belgeNo', 'documentNo', 'seriNo', 'faturaid'],
-            'irsaliye_no': ['invoiceId', 'irsaliyeNo', 'belgeno', 'uuid', 'id', 'no'],
-            'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date'],
-            'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company'],
-            'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme'],
-            'miktar': ['quantity', 'miktar', 'adet', 'qty'],
-            'toplam_tutar': ['payableAmount', 'totalAmount', 'toplamTutar', 'total'],
-            'kdv_yuzdesi': ['taxRate', 'kdvOrani', 'vatRate'],
-        }
-
-        def get_value(keys):
-            for key in keys:
-                if key in qr_json and qr_json[key]:
-                    return qr_json[key]
-            qr_json_lower = {k.lower(): v for k, v in qr_json.items()}
-            for key in keys:
-                if key.lower() in qr_json_lower:
-                    return qr_json_lower[key.lower()]
-            return None
-
-        parsed = {}
-        parsed['fatura_no'] = str(get_value(key_map['fatura_no']) or '')
-        parsed['irsaliye_no'] = str(get_value(key_map['irsaliye_no']) or f"QR-{int(time.time())}")
-        parsed['tarih'] = str(get_value(key_map['tarih']) or datetime.now().strftime("%d.%m.%Y"))
-        parsed['firma'] = str(get_value(key_map['firma']) or 'QR Fatura Firma')
-        parsed['malzeme'] = str(get_value(key_map['malzeme']) or 'QR Kodlu E-Fatura')
-        parsed['miktar'] = str(get_value(key_map['miktar']) or '1')
-        parsed['toplam_tutar'] = float(get_value(key_map['toplam_tutar']) or 0)
-        parsed['kdv_yuzdesi'] = float(get_value(key_map['kdv_yuzdesi']) or 20)
-        parsed['birim'] = 'TL'
-
-        return parsed
-        
-
-# --- Dönemsel/Yıllık Gelir Sayfası ---
-class MonthlyIncomePage(QWidget):
-    def __init__(self, backend, parent=None):
-        super().__init__(parent)
-        self.backend = backend
-        self._setup_ui()
-        self._connect_signals()
-        self.populate_years_dropdown()
-
-    def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(10,10,10,10)
-        
-        header_layout = QHBoxLayout()
-        self.title_label = QLabel("Dönemsel ve Yıllık Gelir")
-        header_layout.addWidget(self.title_label)
-        header_layout.addStretch()
-        self.tax_label = QLabel("Kurumlar Vergisi (%):")
-        self.tax_input = QLineEdit()
-        self.tax_input.setValidator(QDoubleValidator(0, 100, 2))
-        self.tax_input.setMaximumWidth(60)
-        self.tax_input.setText(f"{getattr(self.backend, 'settings', {}).get('kurumlar_vergisi_yuzdesi', 22.0):.1f}")
-        self.tax_save_btn = QPushButton("Kaydet")
-        self.tax_save_btn.setStyleSheet("background-color: #28a745; color: white; padding: 4px 8px; border-radius: 4px;")
-        self.tax_save_btn.setFixedWidth(60)
-        header_layout.addWidget(self.tax_label)
-        header_layout.addWidget(self.tax_input)
-        header_layout.addWidget(self.tax_save_btn)
-        header_layout.addSpacing(20)
-        self.year_dropdown = QComboBox()
-        self.year_dropdown.setPlaceholderText("Yıl Seçin")
-        self.year_dropdown.setMinimumWidth(100)
-        header_layout.addWidget(QLabel("Yıl:"))
-        header_layout.addWidget(self.year_dropdown)
-        
-        # Export dropdown menu button
-        from PyQt6.QtWidgets import QMenu
-        self.export_menu_button = QPushButton("📥 Aktar")
-        self.export_menu_button.setToolTip("Dönemsel gelir raporunu dışa aktar")
-        
-        export_menu = QMenu(self)
-        excel_action = export_menu.addAction("📊 Excel (.xlsx)")
-        excel_action.triggered.connect(lambda: self.export_table_data('excel'))
-        pdf_action = export_menu.addAction("📄 PDF (.pdf)")
-        pdf_action.triggered.connect(lambda: self.export_table_data('pdf'))
-        
-        self.export_menu_button.setMenu(export_menu)
-        header_layout.addWidget(self.export_menu_button)
-        
-        main_layout.addLayout(header_layout)
-        
-        tables_layout = QHBoxLayout()
-        self.income_table = QTableWidget(14, 5)
-        self.income_table.setHorizontalHeaderLabels(["AYLAR", "GELİR (Kesilen)", "GİDER (Gelen)", "KDV FARKI", "ÖDENECEK VERGİ"])
-        months = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
-        self.colors = {"mavi": "#D4EBF2", "pembe": "#F9E7EF", "sarı": "#FFF2D6", "yeşil": "#D9F2E7"}
-        for row, month_name in enumerate(months):
-            month_item = QTableWidgetItem(month_name)
-            month_item.setFlags(month_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.income_table.setItem(row, 0, month_item)
-        total_item = QTableWidgetItem("GENEL TOPLAM")
-        total_item.setFlags(total_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.income_table.setItem(12, 0, total_item)
-        kar_zarar_item = QTableWidgetItem("YILLIK NET KÂR")
-        kar_zarar_item.setFlags(kar_zarar_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.income_table.setItem(13, 0, kar_zarar_item)
-        self.income_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.income_table.verticalHeader().setVisible(False)
-        # --- İSTEĞİNİZ ÜZERİNE DEĞİŞİKLİK ---
-        # Tablonun dikeyde tüm alanı kaplamasını sağla
-        self.income_table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        tables_layout.addWidget(self.income_table)
-        main_layout.addLayout(tables_layout)
-        main_layout.setStretchFactor(tables_layout, 1)
-
-    def _connect_signals(self):
-        self.year_dropdown.currentTextChanged.connect(self.refresh_data)
-        self.tax_save_btn.clicked.connect(self.save_tax_percentage)
-        if self.backend and hasattr(self.backend, 'data_updated') and hasattr(self.backend.data_updated, 'connect'):
-            self.backend.data_updated.connect(self.refresh_data)
-
-    def save_tax_percentage(self):
-        if not self.backend:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için ayar kaydedilemiyor.", QMessageBox.StandardButton.Ok)
-            return
-        try:
-            tax_percent = float(self.tax_input.text().replace(',', '.'))
-            if 0 <= tax_percent <= 100:
-                self.backend.save_setting('kurumlar_vergisi_yuzdesi', tax_percent)
-                # Ayar kaydedildikten sonra tabloyu yenile
-                self.refresh_data()
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                        f"Kurumlar vergisi oranı %{tax_percent:.1f} olarak güncellendi.\nTablo verileri yenilendi.", 
-                                        QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Vergi oranı 0-100 arasında olmalıdır.", QMessageBox.StandardButton.Ok)
-        except ValueError:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", "Geçerli bir sayı giriniz.", QMessageBox.StandardButton.Ok)
-
-    def restyle(self):
-        self.title_label.setStyleSheet(STYLES["page_title"])
-        self.export_menu_button.setStyleSheet(STYLES["export_button"])
-        self.income_table.setStyleSheet(STYLES["table_style"])
-        self.tax_input.setStyleSheet(STYLES["input_style"])
-        self.year_dropdown.setStyleSheet(STYLES["input_style"])
-        for row in range(12):
-            month_item = self.income_table.item(row, 0)
-            if month_item:
-                color_key = "mavi" if row < 3 else "pembe" if row < 6 else "sarı" if row < 9 else "yeşil"
-                month_item.setBackground(QBrush(QColor(self.colors[color_key])))
-        try:
-            palette = STYLES.get("palette", LIGHT_THEME_PALETTE)
-            total_bg_color = QColor(palette.get("table_header", "#F0F0F0"))
-            total_font = QFont()
-            total_font.setBold(True)
-            for col in range(5):
-                item12 = self.income_table.item(12, col)
-                if not item12:
-                    item12 = QTableWidgetItem()
-                    self.income_table.setItem(12, col, item12)
-                item12.setBackground(total_bg_color)
-                item12.setFont(total_font)
-                item12.setFlags(item12.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                if col == 0 or col == 4:
-                    item13 = self.income_table.item(13, col)
-                    if not item13:
-                        item13 = QTableWidgetItem()
-                        self.income_table.setItem(13, col, item13)
-                    item13.setBackground(total_bg_color)
-                    item13.setFont(total_font)
-                    item13.setFlags(item13.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.income_table.setSpan(13, 0, 1, 4)
-            kar_item_label = self.income_table.item(13, 0)
-            if kar_item_label:
-                kar_item_label.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        except Exception as e:
-            print(f"Toplam satırlarını stillerken hata: {e}")
-
-    def populate_years_dropdown(self):
-        years = [str(datetime.now().year)]
-        if self.backend:
-            years = self.backend.get_year_range()
-        current_selection = self.year_dropdown.currentText()
-        self.year_dropdown.blockSignals(True)
-        self.year_dropdown.clear()
-        self.year_dropdown.addItems(years if years else [])
-        index = self.year_dropdown.findText(current_selection) if current_selection in years else (0 if years else -1)
-        self.year_dropdown.setCurrentIndex(index)
-        self.year_dropdown.blockSignals(False)
-        self.refresh_data()
-
-    def refresh_data(self):
-        if self.backend:
-            self.tax_input.setText(f"{getattr(self.backend, 'settings', {}).get('kurumlar_vergisi_yuzdesi', 22.0):.1f}")
-        year_str = self.year_dropdown.currentText()
-        for i in range(14):
-            for j in range(1, 5):
-                self.income_table.setItem(i, j, QTableWidgetItem(""))
-        if not year_str or not self.backend:
-            return
-        try:
-            year = int(year_str)
-            monthly_results, quarterly_results = self.backend.get_calculations_for_year(year)
-            summary = self.backend.get_yearly_summary(year)
-            total_kdv_farki = 0.0
-            total_odenen_vergi = 0.0
-            for i, data in enumerate(monthly_results):
-                kdv_farki = data.get('kdv', 0)
-                total_kdv_farki += kdv_farki
-                self.income_table.setItem(i, 1, QTableWidgetItem(f"{data.get('kesilen', 0):,.2f} TL"))
-                self.income_table.setItem(i, 2, QTableWidgetItem(f"{data.get('gelen', 0):,.2f} TL"))
-                self.income_table.setItem(i, 3, QTableWidgetItem(f"{kdv_farki:,.2f} TL"))
-            quarter_indices = {0: 2, 1: 5, 2: 8, 3: 11}
-            for q, data in enumerate(quarterly_results):
-                odenecek_kv = data.get('odenecek_kv', 0)
-                total_odenen_vergi += odenecek_kv
-                if q in quarter_indices:
-                    row_index = quarter_indices[q]
-                    self.income_table.setItem(row_index, 4, QTableWidgetItem(f"{odenecek_kv:,.2f} TL"))
-            self.income_table.setItem(12, 1, QTableWidgetItem(f"{summary.get('toplam_gelir', 0):,.2f} TL"))
-            self.income_table.setItem(12, 2, QTableWidgetItem(f"{summary.get('toplam_gider', 0):,.2f} TL"))
-            self.income_table.setItem(12, 3, QTableWidgetItem(f"{total_kdv_farki:,.2f} TL"))
-            self.income_table.setItem(12, 4, QTableWidgetItem(f"{total_odenen_vergi:,.2f} TL"))
-            self.income_table.setItem(13, 4, QTableWidgetItem(f"{summary.get('yillik_kar', 0):,.2f} TL"))
-            for r in range(14):
-                for c in range(1, 5):
-                    item = self.income_table.item(r, c)
-                    if item:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self.restyle()
-        except ValueError:
-            print(f"Hata: Geçersiz yıl formatı - {year_str}")
-        except Exception as e:
-            print(f"Veri yenileme hatası (MonthlyIncomePage): {e}")
-
-    def export_table_data(self, export_format='excel'):
-        """Dönemsel gelir raporunu Excel veya PDF formatında dışa aktarır"""
-        year_str = self.year_dropdown.currentText()
-        if not year_str:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Yıl Seçilmedi", "Lütfen dışa aktarmak için bir yıl seçin.", QMessageBox.StandardButton.Ok)
-            return
-        if not self.backend:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Backend Hatası", "Backend modülü yüklenemediği için işlem yapılamıyor.", QMessageBox.StandardButton.Ok)
-            return
-
-        # Dosya uzantısını belirle
-        from datetime import datetime
-        bugun = datetime.now().strftime("%d.%m.%Y")
-        
-        if export_format == 'excel':
-            file_filter = "Excel Dosyaları (*.xlsx)"
-            default_name = f"DonemselGelirRaporu-{year_str}-{bugun}.xlsx"
-        else:
-            file_filter = "PDF Dosyaları (*.pdf)"
-            default_name = f"DonemselGelirRaporu-{year_str}-{bugun}.pdf"
-        
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, 
-            f"{year_str} Yılı Raporunu Kaydet", 
-            default_name,
-            file_filter
-        )
-        
-        if not file_path:
-            return
-        
-        try:
-            year = int(year_str)
-            monthly_results, quarterly_results = self.backend.get_calculations_for_year(year)
-            summary = self.backend.get_yearly_summary(year)
-            
-            # Export işlemini gerçekleştir
-            success = False
-            
-            if export_format == 'excel':
-                # Excel modülünü lazy loading ile yükle
-                excel_module = get_excel_module()
-                if excel_module:
-                    success = excel_module.export_monthly_income_to_excel(year, monthly_results, quarterly_results, summary, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "Excel modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            else:  # PDF
-                # PDF modülünü lazy loading ile yükle
-                pdf_module = get_pdf_module()
-                if pdf_module:
-                    success = pdf_module.export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summary, file_path)
-                else:
-                    show_styled_message_box(self, QMessageBox.Icon.Warning, "Modül Hatası", 
-                                          "PDF modülü bulunamadı.", QMessageBox.StandardButton.Ok)
-                    return
-            
-            # Sonuç mesajı
-            if success:
-                format_name = "Excel" if export_format == 'excel' else "PDF"
-                show_styled_message_box(self, QMessageBox.Icon.Information, "Başarılı", 
-                                      f"✅ {format_name} raporu başarıyla oluşturuldu:\n\n{file_path}", 
-                                      QMessageBox.StandardButton.Ok)
-            else:
-                show_styled_message_box(self, QMessageBox.Icon.Critical, "Hata", 
-                                      f"❌ Rapor oluşturulamadı.", 
-                                      QMessageBox.StandardButton.Ok)
-                
-        except ValueError:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Hata", f"Geçersiz yıl formatı: {year_str}", QMessageBox.StandardButton.Ok)
-        except Exception as e:
-            show_styled_message_box(self, QMessageBox.Icon.Warning, "Dışa Aktarma Hatası", f"Rapor oluşturma sırasında bir hata oluştu: {e}", QMessageBox.StandardButton.Ok)
-
-
-# --- Ana Pencere ---
-from PyQt6.QtWidgets import QDialog, QRadioButton
-
-class InvoiceTypeDialog(QDialog):
-    """Fatura türü seçimi için dialog"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.selected_type = 'outgoing'  # Varsayılan
-        self.init_ui()
-    
-    def init_ui(self):
-        self.setWindowTitle("📋 Fatura Türü Seçimi")
-        self.setFixedSize(480, 320)
-        self.setModal(True)
-        
-        layout = QVBoxLayout()
-        
-        # Başlık
-        title_label = QLabel("QR kodlardan okunan faturalar hangi kategoriye eklensin?")
-        title_label.setWordWrap(True)
-        title_label.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                font-weight: 600;
-                color: #0b2d4d;
-                margin: 15px;
-                padding: 15px;
-                background-color: #f8f9fa;
-                border-radius: 12px;
-                border: 1px solid #e5eaf0;
-            }
-        """)
-        layout.addWidget(title_label)
-        
-        # Seçenekler
-        self.outgoing_radio = QRadioButton("💰 GELİR (Outgoing) - Müşteriye kesilen faturalar")
-        self.outgoing_radio.setChecked(True)
-        self.outgoing_radio.setStyleSheet("""
-            QRadioButton {
-                font-size: 15px;
-                font-weight: 500;
-                padding: 15px;
-                margin: 10px;
-                color: #0b2d4d;
-                background-color: #e8f5e8;
-                border-radius: 8px;
-                border: 1px solid #d1e7dd;
-            }
-            QRadioButton::indicator {
-                width: 24px;
-                height: 24px;
-                margin-right: 10px;
-            }
-        """)
-        
-        self.incoming_radio = QRadioButton("📋 GİDER (Incoming) - Tedarikçiden gelen faturalar")
-        self.incoming_radio.setStyleSheet("""
-            QRadioButton {
-                font-size: 15px;
-                font-weight: 500;
-                padding: 15px;
-                margin: 10px;
-                color: #0b2d4d;
-                background-color: #fff2e8;
-                border-radius: 8px;
-                border: 1px solid #ffeaa7;
-            }
-            QRadioButton::indicator {
-                width: 24px;
-                height: 24px;
-                margin-right: 10px;
-            }
-        """)
-        
-        layout.addWidget(self.outgoing_radio)
-        layout.addWidget(self.incoming_radio)
-        
-        # Açıklama
-        info_label = QLabel("💡 İpucu: Müşterilerinize kestiğiniz faturalar için 'GELİR', "
-                           "satın aldığınız ürün/hizmet faturaları için 'GİDER' seçin.")
-        info_label.setWordWrap(True)
-        info_label.setStyleSheet("""
-            QLabel {
-                font-size: 13px;
-                font-weight: 500;
-                color: #505050;
-                background-color: #ecf0f1;
-                padding: 15px;
-                border-radius: 8px;
-                margin: 15px 5px;
-                border: 2px solid #bdc3c7;
-            }
-        """)
-        layout.addWidget(info_label)
-        
-        # Butonlar
-        button_layout = QHBoxLayout()
-        
-        cancel_btn = QPushButton("❌ İptal")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: 500;
-                min-width: 120px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
-            QPushButton:pressed {
-                background-color: #bd2130;
-            }
-        """)
-        cancel_btn.clicked.connect(self.reject)
-        
-        ok_btn = QPushButton("✅ Devam Et")
-        ok_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #198754;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 8px;
-                font-size: 15px;
-                font-weight: 500;
-                min-width: 120px;
-            }
-            QPushButton:hover {
-                background-color: #157347;
-            }
-            QPushButton:pressed {
-                background-color: #146c43;
-            }
-        """)
-        ok_btn.clicked.connect(self.accept)
-        
-        button_layout.addWidget(cancel_btn)
-        button_layout.addWidget(ok_btn)
-        
-        layout.addLayout(button_layout)
-        self.setLayout(layout)
-    
-    def get_selected_type(self):
-        if self.outgoing_radio.isChecked():
-            return 'outgoing'
-        else:
-            return 'incoming'
-
-class MainWindow(QMainWindow):
-    def __init__(self):
+class AnimatedDonut(ft.Stack):
+    def __init__(self, value, total, color, text_value):
         super().__init__()
+        self.width = 110
+        self.height = 110
+        self.alignment = ft.alignment.center
+        hex_code = color.lstrip("#")
+        shadow_color = f"#66{hex_code}"
+        remainder_color = f"#1A{hex_code}"
+        self.chart_rotate = ft.Rotate(-3.14, alignment=ft.alignment.center)
+        self.chart = ft.PieChart(
+            sections=[
+                ft.PieChartSection(value=value, color=color, radius=14, title=""),
+                ft.PieChartSection(value=total - value, color=remainder_color, radius=14, title=""),
+            ],
+            center_space_radius=38, sections_space=0, start_degree_offset=-90
+        )
+        self.chart_container = ft.Container(
+            content=self.chart, width=110, height=110, bgcolor=col_white, shape=ft.BoxShape.CIRCLE,
+            shadow=ft.BoxShadow(blur_radius=20, spread_radius=2, color=shadow_color, offset=ft.Offset(0, 8)),
+            rotate=self.chart_rotate, opacity=0, animate_opacity=ft.Animation(800, "easeIn"), animate_rotation=ft.Animation(1500, "easeOutBack")
+        )
+        self.text_container = ft.Container(content=ft.Text(text_value, size=15, weight="bold", color=col_text, text_align="center"), alignment=ft.alignment.center, rotate=ft.Rotate(0, alignment=ft.alignment.center))
+        self.controls = [self.chart_container, self.text_container]
+        state["donuts"].append(self)
+
+    def start_animation(self):
         try:
-            self.backend = Backend(self)
-        except Exception as e:
-            print(f"KRİTİK HATA: Backend başlatılamadı: {e}")
-            self.backend = None # Backend olmadan devam etmeyi dene
-            
-        self.setWindowTitle("Excellent MVP - Inşaat Finans Yönetimi")
-        self.setGeometry(100, 100, 1600, 900)
-        icon_path="favicon.ico"
-        def resource_path(relative_path):
-            """ Get absolute path to resource, works for dev and for PyInstaller """
-            try:
-                # PyInstaller geçici bir klasör oluşturur ve yolu _MEIPASS içine saklar
-                base_path = sys._MEIPASS
-            except Exception:
-                base_path = os.path.abspath(".")
-            return os.path.join(base_path, relative_path)
+            # Sayfa yüklü değilse veya obje sayfada değilse çalışma
+            if not self.chart_container.page: return
 
-        app_icon_path = resource_path(icon_path)
-
-        if os.path.exists(app_icon_path):
-            self.setWindowIcon(QIcon(app_icon_path))
-        else:
-            # Geliştirme ortamı için (eğer paketlenmemişse) normal yoldan tekrar dene
-            if os.path.exists(icon_path):
-                 self.setWindowIcon(QIcon(icon_path))
+            if state["animation_completed"]:
+                self.chart_container.opacity = 1
+                self.chart_container.rotate.angle = 0
+                self.chart_container.animate_opacity = None 
+                self.chart_container.animate_rotation = None
+                self.chart_container.update()
             else:
-                print(f"UYARI: Simge dosyası bulunamadı: {icon_path} veya {app_icon_path}")
-        self.setup_fonts()
-        update_styles(LIGHT_THEME_PALETTE)
-        self.setup_ui()
-        self.connect_signals()
-        self.restyle_all()
-        self.menu_buttons[0].click()
-        if hasattr(self.backend, 'start_timers'):
-            self.backend.start_timers()
-
-    def setup_fonts(self):
-        """Özel font yükleme - opsiyonel, yoksa sistem fontları kullanılır."""
+                self.chart_container.rotate.angle = 0
+                self.chart_container.opacity = 1
+                self.chart_container.update()
+        except: pass
+    
+    def update_value(self, new_value, new_total, new_text):
+        """Donut değerlerini günceller"""
         try:
-            # Birkaç olası font konumunu dene
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), '..', 'fonts', 'Poppins-Regular.ttf'),
-                os.path.join(os.path.dirname(__file__), 'fonts', 'Poppins-Regular.ttf'),
-                'fonts/Poppins-Regular.ttf'
-            ]
+            if not self.chart_container.page: return
             
-            for font_path in possible_paths:
-                if os.path.exists(font_path):
-                    font_id = QFontDatabase.addApplicationFont(font_path)
-                    if font_id != -1:
-                        family = QFontDatabase.applicationFontFamilies(font_id)[0]
-                        self.setFont(QFont(family, 10))
-                        return
+            # Chart sections'ı güncelle
+            self.chart.sections[0].value = new_value
+            self.chart.sections[1].value = max(0, new_total - new_value)
             
-            self.setFont(QFont("Segoe UI", 10))
-        except Exception:
+            # Text'i güncelle
+            self.text_container.content.value = new_text
+            
+            # Güncellemeyi uygula
+            self.chart_container.update()
+            self.text_container.update()
+        except Exception as e:
+            print(f"Donut update hatası: {e}")
+
+class DonutStatCard(ft.Container):
+    def __init__(self, title, icon, color, trend_text, donut_val, donut_total, display_text):
+        super().__init__()
+        self.bgcolor = col_white
+        self.border_radius = 24
+        self.padding = ft.padding.all(20)
+        self.expand = 1
+        self.shadow = ft.BoxShadow(blur_radius=15, color="#08000000", offset=ft.Offset(0, 5))
+        self.donut = AnimatedDonut(value=donut_val, total=donut_total, color=color, text_value=display_text)
+        self.content = ft.Row([
+            ft.Column([
+                ft.Container(content=ft.Icon(icon, color=col_white, size=24), bgcolor=color, border_radius=14, width=48, height=48, alignment=ft.alignment.center, shadow=ft.BoxShadow(blur_radius=10, color=f"#4D{color.lstrip('#')}", offset=ft.Offset(0,4))),
+                ft.Container(height=5),
+                ft.Text(title, size=14, color=col_text_light, weight="w600"),
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=2),
+            ft.Container(content=self.donut, alignment=ft.alignment.center_right)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+class TransactionRow(ft.Container):
+    def __init__(self, title, date, amount, is_income=True, is_updated=False, invoice_date=None):
+        super().__init__()
+        self.padding = ft.padding.symmetric(vertical=10)
+        self.border = ft.border.only(bottom=ft.border.BorderSide(1, "#F0F0F0"))
+        color = col_success if is_income else col_danger
+        icon = "arrow_upward" if is_income else "arrow_downward"
+        sign = "+" if is_income else "-"
+        
+        # Güncellenmiş faturalar için özel gösterge
+        status_indicator = None
+        if is_updated:
+            status_indicator = ft.Container(
+                width=8,
+                height=8,
+                bgcolor="#FF9F43",  # Turuncu nokta
+                border_radius=4,
+                tooltip="Güncellenmiş fatura"
+            )
+        
+        # İkon container'ı
+        icon_container = ft.Container(
+            width=40, 
+            height=40, 
+            bgcolor=f"{color}20", 
+            border_radius=10, 
+            content=ft.Icon(icon, color=color, size=20), 
+            alignment=ft.alignment.center
+        )
+        
+        # Güncellenmiş ise border ekle
+        if is_updated:
+            icon_container.border = ft.border.all(2, "#FF9F43")
+        
+        # Row içeriği
+        row_controls = [icon_container]
+        
+        # Tarih formatı: işlem tarihi (Fat.Tar. fatura_tarihi)
+        date_text = date
+        if invoice_date and invoice_date != date:
+            date_text = f"{date} (Fat.Tar. {invoice_date})"
+        
+        # Tarih için Row - normal kısım ve parantez kısmı farklı fontlarla
+        if invoice_date and invoice_date != date:
+            date_row = ft.Row([
+                ft.Text(date, size=12, color=col_text_light),
+                ft.Text(f" (Fat.Tar. {invoice_date})", size=10, color=col_text_light, italic=True)
+            ], spacing=0)
+        else:
+            date_row = ft.Text(date, size=12, color=col_text_light)
+        
+        # Başlık ve tarih - güncellenmiş ise yanında turuncu nokta
+        if is_updated:
+            title_row = ft.Row([
+                ft.Text(title, weight="bold", size=14, color=col_text),
+                status_indicator
+            ], spacing=5)
+            row_controls.append(
+                ft.Column([title_row, date_row], spacing=2, expand=True)
+            )
+        else:
+            row_controls.append(
+                ft.Column([ft.Text(title, weight="bold", size=14, color=col_text), date_row], spacing=2, expand=True)
+            )
+        
+        row_controls.append(ft.Text(f"{sign} {amount}", weight="bold", size=15, color=color))
+        
+        self.content = ft.Row(row_controls, spacing=12)
+
+def currency_button(text, currency_code, current_selection, on_click_handler):
+    is_selected = (currency_code == current_selection)
+    return ft.Container(
+        content=ft.Text(text, color=col_primary if is_selected else col_text_light, weight="bold" if is_selected else "normal"),
+        bgcolor=col_white if is_selected else "transparent",
+        padding=ft.padding.symmetric(horizontal=12, vertical=8),
+        border_radius=10,
+        shadow=ft.BoxShadow(blur_radius=5, color="#10000000", offset=ft.Offset(0,2)) if is_selected else None,
+        on_click=lambda e: on_click_handler(currency_code),
+        animate=ft.Animation(200, "easeOut")
+    )
+
+# --- ANA UYGULAMA ---
+def main(page: ft.Page):
+    page.title = "Excellent MVP Dashboard"
+    page.padding = 0
+    page.bgcolor = col_bg
+    page.window_width = 1400 
+    page.window_height = 900
+    page.theme_mode = ft.ThemeMode.LIGHT
+
+    # --- Grafik Verileri için Backend'den Gerçek Veri Çekme Fonksiyonu ---
+    def get_all_available_years():
+        """Veritabanındaki tüm yılları döndürür (gelir, gider ve genel gider tablolarından) - sadece veri olan yıllar"""
+        years = set()
+        try:
+            # Gelir faturalarından yılları topla
+            income_invoices = backend_instance.handle_invoice_operation('get', 'outgoing') or []
+            for invoice in income_invoices:
+                tarih = invoice.get('tarih', '')
+                if tarih:
+                    parts = tarih.split('.')
+                    if len(parts) == 3:
+                        try:
+                            years.add(int(parts[2]))
+                        except ValueError:
+                            pass
+            
+            # Gider faturalarından yılları topla
+            expense_invoices = backend_instance.handle_invoice_operation('get', 'incoming') or []
+            for invoice in expense_invoices:
+                tarih = invoice.get('tarih', '')
+                if tarih:
+                    parts = tarih.split('.')
+                    if len(parts) == 3:
+                        try:
+                            years.add(int(parts[2]))
+                        except ValueError:
+                            pass
+            
+            # Genel giderlerden yılları topla (sadece en az bir aya veri girilmişse)
+            try:
+                all_general_expenses = backend_instance.db.get_all_yearly_expenses()
+                month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 
+                             'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+                
+                for expense_data in all_general_expenses:
+                    if expense_data and 'yil' in expense_data:
+                        # En az bir ayda veri var mı kontrol et
+                        has_data = False
+                        for month in month_keys:
+                            if expense_data.get(month) and float(expense_data.get(month, 0) or 0) > 0:
+                                has_data = True
+                                break
+                        
+                        if has_data:
+                            try:
+                                years.add(int(expense_data['yil']))
+                            except (ValueError, TypeError):
+                                pass
+            except:
+                pass
+            
+        except Exception as e:
+            print(f"Yıl toplama hatası: {e}")
+        
+        # Eğer hiç yıl bulunamadıysa mevcut yılı ekle
+        if not years:
+            years.add(datetime.now().year)
+        
+        return sorted(years, reverse=True)
+    
+    def get_line_chart_data():
+        """Backend'den aylık gelir/gider verilerini çeker ve line chart formatında döndürür"""
+        try:
+            # Backend'den tüm faturaları al (operation='get')
+            income_invoices = backend_instance.handle_invoice_operation('get', 'outgoing') or []
+            expense_invoices = backend_instance.handle_invoice_operation('get', 'incoming') or []
+            
+            # Yıllara göre grupla
+            yearly_data = {}
+            
+            # Gelir faturalarını işle
+            for idx, invoice in enumerate(income_invoices):
+                tarih = invoice.get('tarih', '')
+                if not tarih: 
+                    continue
+                
+                parts = tarih.split('.')
+                if len(parts) != 3: 
+                    continue
+                
+                try:
+                    month = int(parts[1])
+                    year = int(parts[2])
+                    amount_tl = float(invoice.get('toplam_tutar_tl', 0)) / 1000  # K (bin) cinsine çevir
+                    
+                    if year not in yearly_data:
+                        yearly_data[year] = {"gelir": [0]*12, "gider": [0]*12}
+                    
+                    yearly_data[year]["gelir"][month-1] += amount_tl
+                except (ValueError, IndexError) as ex:
+                    continue
+            
+            # Gider faturalarını işle
+            for invoice in expense_invoices:
+                tarih = invoice.get('tarih', '')
+                if not tarih: continue
+                
+                parts = tarih.split('.')
+                if len(parts) != 3: continue
+                
+                try:
+                    month = int(parts[1])
+                    year = int(parts[2])
+                    amount_tl = float(invoice.get('toplam_tutar_tl', 0)) / 1000  # K (bin) cinsine çevir
+                    
+                    if year not in yearly_data:
+                        yearly_data[year] = {"gelir": [0]*12, "gider": [0]*12}
+                    
+                    yearly_data[year]["gider"][month-1] += amount_tl
+                except (ValueError, IndexError):
+                    continue
+            
+            # Genel giderleri ekle - her yıl için
+            month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+            for year in list(yearly_data.keys()):
+                general_expenses = backend_instance.db.get_yearly_expenses(year)
+                if general_expenses:
+                    for month_idx, month_key in enumerate(month_keys):
+                        if month_key in general_expenses:
+                            general_amount = float(general_expenses[month_key] or 0) / 1000  # K cinsine çevir
+                            yearly_data[year]["gider"][month_idx] += general_amount
+            
+            # Eğer veri yoksa boş dict döndür
+            if not yearly_data:
+                return {}
+            
+            return yearly_data
+        except Exception as e:
+            return {}
+    
+    # --- Grafik Verileri ve Tanımı ---
+    full_data = get_line_chart_data()  # Backend'den gerçek veri
+    
+    # Max değeri hesapla (dinamik Y ekseni için)
+    def calculate_max_y(year=None):
+        """Grafikteki maksimum değeri bulur ve uygun Y ekseni limiti döndürür. Eğer yıl belirtilirse sadece o yılın verilerini kullanır."""
+        if not full_data:
+            return 150  # Varsayılan
+        
+        max_value = 0
+        
+        if year and year in full_data:
+            # Sadece belirtilen yılın verileri
+            year_data = full_data[year]
+            max_value = max(max(year_data.get("gelir", [0])), max(year_data.get("gider", [0])))
+        else:
+            # Tüm yılların verileri
+            for year_data in full_data.values():
+                max_value = max(max_value, max(year_data.get("gelir", [0])), max(year_data.get("gider", [0])))
+        
+        # Yuvarla (50'lik artışlarla)
+        if max_value == 0:
+            return 150
+        
+        # Daha iyi görünüm için biraz boşluk bırak
+        return ((int(max_value) // 50) + 2) * 50
+    
+    chart_max_y = calculate_max_y()
+    
+    # Y ekseni label'larını dinamik oluştur
+    def get_y_axis_labels(max_y):
+        """Y ekseni için dinamik label'lar oluşturur"""
+        step = max_y // 3
+        return [
+            ft.ChartAxisLabel(value=0, label=ft.Text("0", size=10, color=col_text_light)),
+            ft.ChartAxisLabel(value=step, label=ft.Text(f"{step}K", size=10, color=col_text_light)),
+            ft.ChartAxisLabel(value=step*2, label=ft.Text(f"{step*2}K", size=10, color=col_text_light)),
+            ft.ChartAxisLabel(value=max_y, label=ft.Text(f"{max_y}K", size=10, color=col_text_light))
+        ]
+    
+    line_chart = ft.LineChart(data_series=[ft.LineChartData(data_points=[], stroke_width=5, color=col_primary, curved=True, stroke_cap_round=True, below_line_gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.bottom_center, colors=[col_primary_50, transparent_white])), ft.LineChartData(data_points=[], stroke_width=5, color=col_secondary, curved=True, stroke_cap_round=True, below_line_gradient=ft.LinearGradient(begin=ft.alignment.top_center, end=ft.alignment.bottom_center, colors=[col_secondary_50, transparent_white]))], border=ft.border.all(0, "transparent"), bottom_axis=ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(m, size=12, color=col_text_light)) for i, m in enumerate(["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"])], labels_size=30), left_axis=ft.ChartAxis(labels=get_y_axis_labels(chart_max_y), labels_size=40), tooltip_bgcolor=tooltip_bg, min_y=0, max_y=chart_max_y, min_x=0, max_x=11, expand=True, horizontal_grid_lines=ft.ChartGridLines(color="#F0F0F0", width=1, dash_pattern=[5, 5]), animate=None)
+
+    def draw_snake_chart(year):
+        """Yılan grafiğini çizen fonksiyon - yıl parametresi int veya str olabilir"""
+        # Yıl değerini int'e çevir
+        try:
+            year = int(year)
+        except (ValueError, TypeError):
+            return
+            
+        if state["current_page"] != "home": return
+        
+        # SAYFADAN KONTROL: Eğer bileşen sayfada yoksa işlem yapma
+        if not line_chart.page: return
+        
+        # Veri kontrolü - Eğer seçili yıl veya veri yoksa boş grafik göster
+        if not full_data or year not in full_data:
+            line_chart.data_series[0].data_points = []
+            line_chart.data_series[1].data_points = []
+            try: line_chart.update()
+            except: pass
+            return
+        
+        # Seçili yıla göre Y eksenini yeniden hesapla ve güncelle
+        year_max_y = calculate_max_y(year)
+        line_chart.max_y = year_max_y
+        line_chart.left_axis.labels = get_y_axis_labels(year_max_y)
+
+        # Animasyon bittiyse direkt çiz
+        if state["animation_completed"]:
+            line_chart.data_series[0].data_points = [ft.LineChartDataPoint(i, full_data[year]["gelir"][i], tooltip=f"{full_data[year]['gelir'][i]:.1f}K") for i in range(12)]
+            line_chart.data_series[1].data_points = [ft.LineChartDataPoint(i, full_data[year]["gider"][i], tooltip=f"{full_data[year]['gider'][i]:.1f}K") for i in range(12)]
+            try: 
+                line_chart.update()
+            except Exception as ex:
+                pass
+            return
+
+        # Animasyonlu Çizim Başlangıcı
+        line_chart.data_series[0].data_points = []
+        line_chart.data_series[1].data_points = []
+        try: line_chart.update()
+        except: pass
+        
+        time.sleep(0.2) 
+        
+        gelir_data = full_data[year]["gelir"]
+        gider_data = full_data[year]["gider"]
+        
+        for i in range(len(gelir_data)):
+            if state["current_page"] != "home": 
+                state["animation_completed"] = True
+                return
+            
+            line_chart.data_series[0].data_points.append(ft.LineChartDataPoint(i, gelir_data[i], tooltip=f"{gelir_data[i]:.1f}K"))
+            line_chart.data_series[1].data_points.append(ft.LineChartDataPoint(i, gider_data[i], tooltip=f"{gider_data[i]:.1f}K"))
+            
+            try:
+                if line_chart.page: line_chart.update()
+            except: pass
+            time.sleep(0.04) 
+        
+        state["animation_completed"] = True 
+        try:
+            if line_chart.page: line_chart.update()
+        except Exception as ex:
             pass
 
-    def setup_ui(self):
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        menu_frame = QFrame()
-        menu_frame.setFixedWidth(250)
-        self.menu_layout = QVBoxLayout(menu_frame)
-        self.menu_layout.setContentsMargins(15, 15, 15, 15)
-        self.menu_layout.setSpacing(10)
-        
-        # --- YENİ LOGO DÜZENİ (LOGO SOLDA, YAZI SAĞDA - 60px) ---
-        logo_layout = QHBoxLayout() # Düzeni QHBoxLayout (Yatay) olarak değiştirdik
-        logo_layout.setSpacing(10) # Logo ile yazı arasına boşluk koyduk
-
-        # 1. Logoyu (logo.png) sola ekliyoruz
-        logo_label = QLabel()
-        logo_found = False
+    def on_year_change(e): 
+        state["animation_completed"] = False
+        # Hem yılan grafik hem de donut'ları güncelle
+        threading.Thread(target=draw_snake_chart, args=(e.control.value,), daemon=True).start()
+        # Donut'ları da güncelle
+        update_donuts_for_year(int(e.control.value))
+    
+    def update_donuts_for_year(year):
+        """Seçili yıla göre donut'ları günceller"""
         try:
-            # Logo dosyasını ANA DİZİNDE arayacak
-            possible_logo_paths = [
-                os.path.join(os.path.dirname(__file__), 'logo.png'),
-                'logo.png'
-            ]
+            # Seçili yıl için istatistikleri al
+            year_stats = get_dashboard_stats(year)
             
-            for logo_path in possible_logo_paths:
-                if os.path.exists(logo_path):
-                    logo_pixmap = QPixmap(logo_path)
-                    if not logo_pixmap.isNull():
-                        # Logonun 60x60 piksel boyutunu KORUYORUZ
-                        logo_pixmap = logo_pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-                        logo_label.setPixmap(logo_pixmap)
-                        logo_found = True
-                        break
-            if not logo_found:
-                logo_label.setText("[Logo Yok]") # Hata durumunda
-                print("UYARI: 'logo.png' dosyası ana dizinde bulunamadı.")
+            # Her donut için yeni değerleri hesapla
+            profit_max = max(abs(year_stats['net_profit']) * 1.2, 10000)
+            income_max = max(year_stats['total_income'] * 1.2, 10000)
+            expense_max = max(year_stats['total_expense'] * 1.2, 10000)
+            avg_max = max(year_stats['monthly_avg'] * 1.2, 10000)
+            
+            # Donut'ları güncelle
+            if len(state["donuts"]) >= 4:
+                # Net kâr donut
+                state["donuts"][0].update_value(abs(year_stats['net_profit']), profit_max, format_currency(year_stats['net_profit'], compact=True))
                 
+                # Toplam gelir donut
+                state["donuts"][1].update_value(year_stats['total_income'], income_max, format_currency(year_stats['total_income'], compact=True))
+                
+                # Toplam gider donut
+                state["donuts"][2].update_value(year_stats['total_expense'], expense_max, format_currency(year_stats['total_expense'], compact=True))
+                
+                # Aylık ortalama donut
+                state["donuts"][3].update_value(year_stats['monthly_avg'], avg_max, format_currency(year_stats['monthly_avg'], compact=True))
         except Exception as e:
-            print(f"Logo yükleme hatası: {e}")
-            logo_label.setText("[Hata]")
-        
-        logo_layout.addWidget(logo_label) # Logoyu önce ekle
+            print(f"Donut güncelleme hatası: {e}")
 
-        # 2. Metni (Excellent MVP) sağa ekliyoruz
-        self.logo_text = QLabel("Excellent MVP")
-        logo_layout.addWidget(self.logo_text) 
-
-        logo_layout.addStretch() # Öğeleri sola yaslamak için sona esneme ekle
-        
-        self.menu_layout.addLayout(logo_layout)
-        # --- YENİ DÜZENİN SONU ---
-
-        self.menu_layout.addSpacing(20)
-        self.menu_button_group = QButtonGroup(self)
-        self.menu_button_group.setExclusive(True)
-        self.menu_buttons = []
-        menu_items = [("🏠", "Genel Durum"), ("📄", "Faturalar"), ("📅", "Dönemsel Gelir")]
-        for icon, text in menu_items:
-            button = QPushButton(f"{icon}    {text}")
-            button.setCheckable(True)
-            self.menu_buttons.append(button)
-            self.menu_layout.addWidget(button)
-            self.menu_button_group.addButton(button)
-        self.menu_layout.addStretch()
-        main_layout.addWidget(menu_frame)
-        self.menu_frame = menu_frame
-        content_frame = QFrame()
-        content_layout = QVBoxLayout(content_frame)
-        self.stacked_widget = QStackedWidget()
-        content_layout.addWidget(self.stacked_widget)
-        main_layout.addWidget(content_frame)
-        self.content_frame = content_frame
-        self.home_page = HomePage(self.backend)
-        self.invoices_page = InvoicesPage(self.backend)
-        self.monthly_income_page = MonthlyIncomePage(self.backend)
-        self.stacked_widget.addWidget(self.home_page)
-        self.stacked_widget.addWidget(self.invoices_page)
-        self.stacked_widget.addWidget(self.monthly_income_page)
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_label = QLabel("Durum: Hazır")
-        self.status_bar.addPermanentWidget(self.status_label)
-
-    def connect_signals(self):
-        for i, button in enumerate(self.menu_buttons):
-            button.clicked.connect(lambda checked, idx=i: self.on_menu_button_clicked(idx))
-        if self.backend:
-            self.backend.status_updated.connect(self.update_status_bar)
-            self.backend.data_updated.connect(self.refresh_all_pages)
-
-    def on_menu_button_clicked(self, index):
-        self.stacked_widget.setCurrentIndex(index)
-        self.refresh_all_pages()
-
-    def refresh_all_pages(self):
+    # Backend callback'ini yeniden tanımla (grafikleri güncellemek için)
+    def refresh_charts_and_data():
+        """Grafikleri ve verileri yeniden yükler"""
         try:
-            self.home_page.refresh_data()
-            self.invoices_page.refresh_data()
-            self.monthly_income_page.refresh_data()
+            nonlocal full_data, chart_max_y, year_dropdown_options, available_years
+            
+            # 1. Grafik verilerini yeniden yükle
+            full_data = get_line_chart_data()
+            
+            # 2. Yıl seçeneklerini güncelle - tüm veritabanı yıllarını çek
+            available_years = get_all_available_years()
+            year_dropdown_options = [ft.dropdown.Option(str(year)) for year in available_years]
+            
+            # 3. Dropdown'ı güncelle
+            if year_dropdown_ref and hasattr(year_dropdown_ref, 'page') and year_dropdown_ref.page:
+                year_dropdown_ref.options = year_dropdown_options
+                # Eğer seçili yıl hala mevcut değilse, ilk yılı seç
+                current_selected = year_dropdown_ref.value
+                if current_selected not in [str(y) for y in available_years]:
+                    year_dropdown_ref.value = str(available_years[0]) if available_years else str(datetime.now().year)
+                year_dropdown_ref.update()
+            
+            # 4. Seçili yılı al
+            selected_year = int(year_dropdown_ref.value) if year_dropdown_ref and year_dropdown_ref.value else (available_years[0] if available_years else datetime.now().year)
+            
+            # 5. Seçili yıla göre Max Y değerini hesapla
+            chart_max_y = calculate_max_y(selected_year)
+            
+            # 6. Line chart'ı güncelle
+            if line_chart:
+                try:
+                    line_chart.left_axis.labels = get_y_axis_labels(chart_max_y)
+                    line_chart.max_y = chart_max_y
+                    
+                    if selected_year in full_data:
+                        # Grafiği direkt çiz (animasyonsuz)
+                        line_chart.data_series[0].data_points = [ft.LineChartDataPoint(i, full_data[selected_year]["gelir"][i], tooltip=f"{full_data[selected_year]['gelir'][i]:.1f}K") for i in range(12)]
+                        line_chart.data_series[1].data_points = [ft.LineChartDataPoint(i, full_data[selected_year]["gider"][i], tooltip=f"{full_data[selected_year]['gider'][i]:.1f}K") for i in range(12)]
+                    else:
+                        # Veri yoksa grafiği temizle
+                        line_chart.data_series[0].data_points = []
+                        line_chart.data_series[1].data_points = []
+                    
+                    # Update sadece page varsa
+                    if hasattr(line_chart, 'page') and line_chart.page:
+                        line_chart.update()
+                except:
+                    pass
+            
+            # 7. Donut grafikleri güncelle - seçili yıla göre
+            update_donuts_for_year(selected_year)
+            
+            # 7. Sayfayı güncelle
+            try:
+                page.update()
+            except:
+                pass
+                        
         except Exception as e:
-            print(f"Sayfa yenileme hatası: {e}")
+            pass
+    
+    # Ana sayfa callback'ini henüz kaydetme - animasyon başladıktan sonra kaydedeceğiz
+    # state["update_callbacks"]["home_page"] = refresh_charts_and_data
 
-    def update_status_bar(self, message, timeout=3000):
-        self.status_label.setText(f"Durum: {message}")
-        QTimer.singleShot(timeout, lambda: self.status_label.setText("Durum: Hazır"))
+    # --- SIDEBAR (GÜNCELLENDİ: GİRİŞ BUTONU DA STANDARDİZE EDİLDİ) ---
+    class SidebarButton(ft.Container):
+        def __init__(self, icon_name, text, page_name, is_selected=False):
+            super().__init__()
+            self.data = page_name
+            self.is_selected = is_selected
+            self.icon_name = icon_name  # İkon adını sakla
+            self.width = 50
+            self.height = 50
+            self.border_radius = 12
+            self.padding = 0
+            self.alignment = ft.alignment.center
+            self.animate = ft.Animation(200, "easeOut") 
+            # Başlangıç rengi - seçili ise beyaz, değilse koyu gri
+            initial_color = col_white if is_selected else "#374151"
+            # İKİ AYRI IKON OLUŞTUR
+            self.icon_expanded = ft.Icon(icon_name, size=24, color=initial_color)
+            self.icon_collapsed = ft.Icon(icon_name, size=24, color=initial_color)
+            self.text_control = ft.Text(text, size=15, weight="w600", visible=state["sidebar_expanded"], color=initial_color)
+            self.content_row = ft.Row([self.icon_expanded, self.text_control], spacing=15, alignment=ft.MainAxisAlignment.START, visible=state["sidebar_expanded"])
+            self.content_icon_only = ft.Container(content=self.icon_collapsed, alignment=ft.alignment.center, visible=not state["sidebar_expanded"])
+            self.content = ft.Stack([self.content_row, self.content_icon_only])
+            self.update_visuals(run_update=False)
 
-    def restyle_all(self):
-        self.menu_frame.setStyleSheet(STYLES["menu_frame_style"])
-        self.logo_text.setStyleSheet(STYLES["logo_text_style"])
-        for button in self.menu_buttons:
-            button.setStyleSheet(STYLES["menu_button_style"])
-        self.content_frame.setStyleSheet(STYLES["page_background"])
-        self.home_page.restyle()
-        self.invoices_page.restyle()
-        self.monthly_income_page.restyle()
+        def update_visuals(self, run_update=True):
+            self.text_control.visible = state["sidebar_expanded"]
+            self.content_row.visible = state["sidebar_expanded"]
+            self.content_icon_only.visible = not state["sidebar_expanded"]
+            self.width = 220 if state["sidebar_expanded"] else 50
+            self.padding = ft.padding.only(left=15) if state["sidebar_expanded"] else 0
+            self.alignment = ft.alignment.center_left if state["sidebar_expanded"] else ft.alignment.center
+            
+            # --- STANDART KURAL ---
+            if self.is_selected:
+                self.bgcolor = col_primary
+                new_color = col_white
+                self.shadow = ft.BoxShadow(blur_radius=10, color=col_primary_50, offset=ft.Offset(0, 4))
+            else:
+                self.bgcolor = "#F5F5F5"  # Açık gri arka plan
+                new_color = "#374151"  # Daha koyu gri - neredeyse siyah
+                self.shadow = None
+            
+            # Her iki ikonu da güncelle
+            self.icon_expanded.color = new_color
+            self.icon_collapsed.color = new_color
+            self.text_control.color = new_color
+                
+            if run_update: self.update()
 
+    def toggle_sidebar(e):
+        state["sidebar_expanded"] = not state["sidebar_expanded"]
+        sidebar_container.width = 260 if state["sidebar_expanded"] else 90
+        logo_text.visible = state["sidebar_expanded"]
+        menu_row.alignment = ft.MainAxisAlignment.START if state["sidebar_expanded"] else ft.MainAxisAlignment.CENTER
+        
+        # Nested Column yapısında butonları güncelle
+        for col in sidebar_column.controls:
+            if isinstance(col, ft.Column):
+                for btn in col.controls:
+                    if isinstance(btn, SidebarButton):
+                        # Önce görünürlük ayarlarını güncelle
+                        btn.text_control.visible = state["sidebar_expanded"]
+                        btn.content_row.visible = state["sidebar_expanded"]
+                        btn.content_icon_only.visible = not state["sidebar_expanded"]
+                        btn.width = 220 if state["sidebar_expanded"] else 50
+                        btn.padding = ft.padding.only(left=15) if state["sidebar_expanded"] else 0
+                        btn.alignment = ft.alignment.center_left if state["sidebar_expanded"] else ft.alignment.center
+                        
+                        # Renkleri güncelle
+                        if btn.is_selected:
+                            btn.bgcolor = col_primary
+                            btn.icon_expanded.color = col_white
+                            btn.icon_collapsed.color = col_white
+                            btn.text_control.color = col_white
+                            btn.shadow = ft.BoxShadow(blur_radius=10, color=col_primary_50, offset=ft.Offset(0, 4))
+                        else:
+                            btn.bgcolor = "#F5F5F5"
+                            btn.icon_expanded.color = "#374151"
+                            btn.icon_collapsed.color = "#374151"
+                            btn.text_control.color = "#374151"
+                            btn.shadow = None
+                        
+                        btn.update()
+        page.update()
 
-def main():
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+    # --- DÖNEMSEL GELİR SAYFASI ---
+    def create_donemsel_page():
+        # Yıl dropdown'ı için seçenekler
+        current_year = datetime.now().year
+        year_options = [ft.dropdown.Option(str(y)) for y in range(current_year - 2, current_year + 2)]
+        
+        year_dropdown = ft.Dropdown(
+            options=year_options,
+            value=str(current_year),
+            text_size=12,
+            content_padding=10,
+            width=95,
+            bgcolor=col_white,
+            border_color=col_border,
+            border_radius=8
+        )
+        
+        # Kurumlar vergisi input field'ları - tabloda kullanılacak
+        month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+        tax_fields_dict = {}
+        tax_fields_list = []
+        
+        # Kaydetme fonksiyonu - odak kaybedildiğinde çalışır
+        def on_tax_field_blur(e):
+            """TextField'dan çıkıldığında otomatik kaydet"""
+            try:
+                selected_year = int(year_dropdown.value)
+                monthly_data = {}
+                
+                for month_key in month_keys:
+                    value = tax_fields_dict[month_key].value
+                    try:
+                        monthly_data[month_key] = float(value.replace(',', '.')) if value else 0
+                    except ValueError:
+                        monthly_data[month_key] = 0
+                
+                # Database'e kaydet
+                backend_instance.db.add_or_update_corporate_tax(selected_year, monthly_data)
+                
+                # Veri güncelleme callback'ini çağır
+                if backend_instance.on_data_updated:
+                    backend_instance.on_data_updated()
+                
+                # Tabloyu güncelle (ödenecek vergi hesabı için)
+                table_container.content = create_donemsel_table(selected_year, tax_fields_list, on_tax_field_blur)
+                page.update()
+            except:
+                pass
+        
+        # 12 aylık TextField oluştur
+        for i, month_key in enumerate(month_keys):
+            text_field = ft.TextField(
+                value="0",
+                text_size=12,
+                color=col_text,
+                text_align=ft.TextAlign.CENTER,
+                border_color="#E0E0E0",
+                focused_border_color=col_primary,
+                height=35,
+                width=120,
+                content_padding=ft.padding.symmetric(horizontal=5, vertical=5),
+                bgcolor="#FAFAFA",
+                suffix_text=" %",
+                hint_text="0",
+                on_blur=on_tax_field_blur
+            )
+            tax_fields_dict[month_key] = text_field
+            tax_fields_list.append(text_field)
+        
+        # Database'den kurumlar vergisi verilerini yükle
+        def load_corporate_tax_data():
+            selected_year = int(year_dropdown.value)
+            tax_data = backend_instance.db.get_corporate_tax(selected_year) or {}
+            for month_key in month_keys:
+                amount = tax_data.get(month_key, 0)
+                tax_fields_dict[month_key].value = str(amount) if amount else "0"
+            # Tabloya field'ları geç ve güncelle
+            table_container.content = create_donemsel_table(selected_year, tax_fields_list, on_tax_field_blur)
+            page.update()
+        
+        # Dinamik güncelleme için callback kaydet
+        def refresh_donemsel_data():
+            """Veri değiştiğinde dönemsel tabloyu güncelle"""
+            try:
+                # Sadece dönemsel sayfadayken güncelle
+                if state["current_page"] != "donemsel":
+                    return
+                    
+                selected_year = int(year_dropdown.value)
+                
+                # Kurumlar vergisi verilerini yeniden yükle
+                tax_data = backend_instance.db.get_corporate_tax(selected_year) or {}
+                month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+                for month_key in month_keys:
+                    amount = tax_data.get(month_key, 0)
+                    if month_key in tax_fields_dict:
+                        tax_fields_dict[month_key].value = str(amount) if amount else "0"
+                
+                # Tabloyu güncelle
+                table_container.content = create_donemsel_table(selected_year, tax_fields_list, on_tax_field_blur)
+                if table_container.page:
+                    table_container.update()
+                    page.update()
+            except:
+                pass
+        
+        state["update_callbacks"]["donemsel_page"] = refresh_donemsel_data
+        
+        # Tablo container - başlangıçta field'ları ile oluştur
+        table_container = ft.Container(
+            width=1100,
+            bgcolor=col_white,
+            padding=20,
+            border_radius=12,
+            shadow=ft.BoxShadow(blur_radius=10, color="#1A000000", offset=ft.Offset(0, 5)),
+            content=create_donemsel_table(current_year, tax_fields_list, on_tax_field_blur)
+        )
+        
+        # İlk yüklemede verileri doldur
+        load_corporate_tax_data()
+        
+        def on_year_change(e):
+            """Yıl değiştiğinde tabloyu güncelle"""
+            selected_year = int(e.control.value)
+            
+            # Kurumlar vergisi verilerini yükle
+            tax_data = backend_instance.db.get_corporate_tax(selected_year) or {}
+            month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+            for month_key in month_keys:
+                amount = tax_data.get(month_key, 0)
+                tax_fields_dict[month_key].value = str(amount) if amount else "0"
+            
+            # Tabloyu güncelle
+            table_container.content = create_donemsel_table(selected_year, tax_fields_list, on_tax_field_blur)
+            page.update()
+        
+        year_dropdown.on_change = on_year_change
+        
+        # Export fonksiyonları
+        def export_to_excel_donemsel(e):
+            """Dönemsel gelir raporunu Excel'e aktar"""
+            try:
+                selected_year = int(year_dropdown.value)
+                
+                # Verileri topla
+                monthly_results, quarterly_results, summary = calculate_periodic_data(selected_year)
+                
+                # Dosya yolu oluştur
+                timestamp = datetime.now().strftime("%d-%m-%Y")
+                filename = f"DonemselGelir_{selected_year}_{timestamp}.xlsx"
+                export_folder = state.get("excel_export_path", os.path.join(os.getcwd(), "ExcelReports"))
+                if not os.path.exists(export_folder):
+                    os.makedirs(export_folder)
+                file_path = os.path.join(export_folder, filename)
+                
+                # Export
+                from toexcel import export_monthly_income_to_excel
+                success = export_monthly_income_to_excel(selected_year, monthly_results, quarterly_results, summary, file_path)
+                
+                if success:
+                    print(f"✅ Excel raporu oluşturuldu: {filename}")
+                else:
+                    print("❌ Excel raporu oluşturulamadı")
+            except Exception as ex:
+                print(f"❌ Hata: {str(ex)}")
+        
+        def export_to_pdf_donemsel(e):
+            """Dönemsel gelir raporunu PDF'e aktar"""
+            try:
+                selected_year = int(year_dropdown.value)
+                
+                # Verileri topla
+                monthly_results, quarterly_results, summary = calculate_periodic_data(selected_year)
+                
+                # Dosya yolu oluştur
+                timestamp = datetime.now().strftime("%d-%m-%Y")
+                filename = f"DonemselGelir_{selected_year}_{timestamp}.pdf"
+                export_folder = state.get("pdf_export_path", os.path.join(os.getcwd(), "PDFExports"))
+                if not os.path.exists(export_folder):
+                    os.makedirs(export_folder)
+                file_path = os.path.join(export_folder, filename)
+                
+                # Export
+                from topdf import export_monthly_income_to_pdf
+                success = export_monthly_income_to_pdf(selected_year, monthly_results, quarterly_results, summary, file_path)
+                
+                if success:
+                    print(f"✅ PDF raporu oluşturuldu: {filename}")
+                else:
+                    print("❌ PDF raporu oluşturulamadı")
+            except Exception as ex:
+                print(f"❌ Hata: {str(ex)}")
+        
+        def calculate_periodic_data(year):
+            """Dönemsel veriler için hesaplama yap"""
+            # Backend'den verileri çek
+            income_invoices = backend_instance.handle_invoice_operation('get', 'outgoing') or []
+            expense_invoices = backend_instance.handle_invoice_operation('get', 'incoming') or []
+            general_expenses = backend_instance.db.get_yearly_expenses(year) or {}
+            corporate_tax_data = backend_instance.db.get_corporate_tax(year) or {}
+            
+            # Aylık hesaplamalar
+            monthly_income = [0.0] * 12
+            monthly_expense = [0.0] * 12
+            monthly_general = [0.0] * 12
+            monthly_income_kdv = [0.0] * 12
+            monthly_expense_kdv = [0.0] * 12
+            monthly_corporate_tax = [0.0] * 12
+            
+            # Gelir faturalarını işle
+            for invoice in income_invoices:
+                tarih = invoice.get('tarih', '')
+                if not tarih: continue
+                parts = tarih.split('.')
+                if len(parts) != 3: continue
+                try:
+                    month = int(parts[1])
+                    invoice_year = int(parts[2])
+                    if invoice_year == year:
+                        monthly_income[month-1] += float(invoice.get('toplam_tutar_tl', 0))
+                        monthly_income_kdv[month-1] += float(invoice.get('kdv_tutari', 0))
+                except:
+                    continue
+            
+            # Gider faturalarını işle
+            for invoice in expense_invoices:
+                tarih = invoice.get('tarih', '')
+                if not tarih: continue
+                parts = tarih.split('.')
+                if len(parts) != 3: continue
+                try:
+                    month = int(parts[1])
+                    invoice_year = int(parts[2])
+                    if invoice_year == year:
+                        monthly_expense[month-1] += float(invoice.get('toplam_tutar_tl', 0))
+                        monthly_expense_kdv[month-1] += float(invoice.get('kdv_tutari', 0))
+                except:
+                    continue
+            
+            # Genel gider ve kurumlar vergisi
+            month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+            for i in range(12):
+                month_key = month_keys[i]
+                if month_key in general_expenses:
+                    monthly_general[i] = float(general_expenses[month_key] or 0)
+                if month_key in corporate_tax_data:
+                    monthly_corporate_tax[i] = float(corporate_tax_data[month_key] or 0)
+            
+            # Aylık sonuçlar
+            monthly_results = []
+            for i in range(12):
+                total_expense = monthly_expense[i] + monthly_general[i]
+                kdv_farki = abs(monthly_income_kdv[i] - monthly_expense_kdv[i])
+                monthly_results.append({
+                    'kesilen': monthly_income[i],
+                    'gelen': total_expense,
+                    'kdv': kdv_farki
+                })
+            
+            # Çeyreklik sonuçlar
+            quarterly_results = []
+            for q in range(4):
+                start_month = q * 3
+                end_month = start_month + 3
+                q_income = sum(monthly_income[start_month:end_month])
+                q_expense = sum(monthly_expense[start_month:end_month]) + sum(monthly_general[start_month:end_month])
+                q_tax_percent = monthly_corporate_tax[end_month - 1]  # Son ayın yüzdesi
+                q_kurumlar = (q_income + sum(monthly_expense[start_month:end_month])) * q_tax_percent / 100 if q_tax_percent > 0 else 0
+                q_kdv = sum(abs(monthly_income_kdv[i] - monthly_expense_kdv[i]) for i in range(start_month, end_month))
+                quarterly_results.append({
+                    'odenecek_kv': q_kurumlar + q_kdv
+                })
+            
+            # Özet
+            total_income = sum(monthly_income)
+            total_expense = sum(monthly_expense) + sum(monthly_general)
+            total_kdv = sum(abs(monthly_income_kdv[i] - monthly_expense_kdv[i]) for i in range(12))
+            total_kurumlar = sum(q['odenecek_kv'] for q in quarterly_results)
+            net_profit = total_income - total_expense - total_kdv - (total_kurumlar - total_kdv)  # KDV daha önce çıkarıldı
+            
+            summary = {
+                'toplam_gelir': total_income,
+                'toplam_gider': total_expense,
+                'yillik_kar': net_profit
+            }
+            
+            return monthly_results, quarterly_results, summary
+        
+        right_buttons = ft.Container(
+            padding=ft.padding.only(right=40),
+            content=ft.Row([
+                ScaleButton("table_view", "#217346", "Excel", width=45, height=40, on_click=export_to_excel_donemsel),
+                ScaleButton("picture_as_pdf", "#D32F2F", "PDF", width=45, height=40, on_click=export_to_pdf_donemsel),
+                ScaleButton("print", "#607D8B", "Yazdır", width=45, height=40),
+            ], spacing=8)
+        )
 
+        top_bar = ft.Row([
+            ft.Container(height=38, content=year_dropdown),
+            right_buttons
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 
-if __name__ == '__main__':
-    main()
+        return ft.Container(
+            alignment=ft.alignment.top_center,
+            padding=30,
+            content=ft.Column([
+                ft.Row([ft.Text("Dönemsel ve Yıllık Gelir", size=26, weight="bold", color=col_text)]),
+                ft.Container(height=15),
+                ft.Container(content=top_bar, width=1100),
+                ft.Container(height=15),
+                table_container
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO, expand=True)
+        )
 
+    # --- FATURA SAYFASI ---
+    def create_invoices_page():
+        general_expenses_section = create_grid_expenses(page)
+        # Başlangıç durumuna göre visibility ayarla (income=gelir ise gizli, expense=gider ise görünür)
+        general_expenses_section.visible = (state.get("invoice_type", "income") == "expense")
 
+        # Seçili fatura sayısını gösteren text
+        selected_count_text = ft.Text("", size=12, color=col_danger, weight="bold", visible=False)
+        
+        # Input alanları önce tanımlanmalı (update_selected_count bunları kullanacak)
+        input_fatura_no = ft.TextField(hint_text="FAT-2025...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_irsaliye = ft.TextField(hint_text="IRS...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_tarih = ft.TextField(hint_text="25.11.2025", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_firma = ft.TextField(hint_text="Firma seçiniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_malzeme = ft.TextField(hint_text="Ürün giriniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_miktar = ft.TextField(hint_text="0", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_tutar = ft.TextField(hint_text="0.00", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_para_birimi = ft.Dropdown(options=[ft.dropdown.Option("TL"), ft.dropdown.Option("USD"), ft.dropdown.Option("EUR")], text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=5), hint_text="TL", hint_style=ft.TextStyle(color="#D0D0D0", size=12), value="TL")
+        input_kdv = ft.TextField(hint_text="20.0", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        
+        # Manuel döviz kuru girişi (opsiyonel)
+        input_usd_kur = ft.TextField(hint_text="Opsiyonel (TCMB)", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_eur_kur = ft.TextField(hint_text="Opsiyonel (TCMB)", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        
+        def update_selected_count(e=None):
+            """Seçili fatura sayısını güncelle ve tek seçimde inputları doldur"""
+            try:
+                if table_container.content and hasattr(table_container.content, 'rows'):
+                    # Checkbox'lardan seçili olanları bul
+                    selected_rows = []
+                    for row in table_container.content.rows:
+                        # İlk hücredeki checkbox'u kontrol et
+                        if len(row.cells) > 0:
+                            first_cell = row.cells[0]
+                            if hasattr(first_cell, 'content') and isinstance(first_cell.content, ft.Checkbox):
+                                if first_cell.content.value:
+                                    selected_rows.append(row)
+                    
+                    selected_count = len(selected_rows)
+                    
+                    if selected_count > 0:
+                        selected_count_text.value = f"({selected_count})"
+                        selected_count_text.visible = True
+                        
+                        # Tek satır seçiliyse inputları doldur
+                        if selected_count == 1 and isinstance(selected_rows[0].data, dict):
+                            invoice = selected_rows[0].data
+                            input_fatura_no.value = str(invoice.get('fatura_no', ''))
+                            input_irsaliye.value = str(invoice.get('irsaliye_no', ''))
+                            input_tarih.value = str(invoice.get('tarih', ''))
+                            input_firma.value = str(invoice.get('firma', ''))
+                            input_malzeme.value = str(invoice.get('malzeme', ''))
+                            input_miktar.value = str(invoice.get('miktar', ''))
+                            
+                            # Para birimine göre doğru tutar alanını seç
+                            birim = str(invoice.get('birim', 'TL'))
+                            input_para_birimi.value = birim
+                            
+                            if birim == 'TL':
+                                tutar = round(float(invoice.get('toplam_tutar_tl', 0)), 5)
+                            elif birim == 'USD':
+                                tutar = round(float(invoice.get('toplam_tutar_usd', 0)), 5)
+                            elif birim == 'EUR':
+                                tutar = round(float(invoice.get('toplam_tutar_eur', 0)), 5)
+                            else:
+                                tutar = round(float(invoice.get('toplam_tutar_tl', 0)), 5)
+                            
+                            input_tutar.value = str(tutar) if tutar else '0'
+                            input_kdv.value = str(round(float(invoice.get('kdv_yuzdesi', 20.0)), 5))
+                            
+                            # Manuel döviz kurlarını doldur (varsa)
+                            usd_rate = round(float(invoice.get('usd_rate', 0)), 5)
+                            eur_rate = round(float(invoice.get('eur_rate', 0)), 5)
+                            
+                            input_usd_kur.value = str(usd_rate) if usd_rate and usd_rate > 0 else ''
+                            input_eur_kur.value = str(eur_rate) if eur_rate and eur_rate > 0 else ''
+                    else:
+                        selected_count_text.value = ""
+                        selected_count_text.visible = False
+                    
+                    # Hem selected_count_text hem de tüm input alanlarını güncelle
+                    selected_count_text.update()
+                    table_container.update()
+                    page.update()
+            except Exception as ex:
+                pass
+        
+        table_container = ft.Container(
+            width=1200, 
+            border_radius=12, 
+            shadow=ft.BoxShadow(blur_radius=15, color="#1A000000", offset=ft.Offset(0, 5)), 
+            bgcolor=col_white, 
+            content=create_invoice_table_content("newest", state.get("invoice_type", "income"), on_select_changed=update_selected_count)
+        )
+
+        def update_invoice_table(sort_option=None):
+            # Sadece fatura sayfasındayken güncelle
+            if state["current_page"] != "invoices":
+                return
+                
+            # Güncel invoice_type'ı kullan
+            if sort_option is None:
+                sort_option = state.get("invoice_sort_option", "newest")
+            current_invoice_type = state.get("invoice_type", "income")
+            table_container.content = create_invoice_table_content(sort_option, current_invoice_type, on_select_changed=update_selected_count)
+            if table_container.page:
+                table_container.update()
+        
+        # Dinamik güncelleme için callback kaydet
+        state["update_callbacks"]["invoice_page"] = update_invoice_table
+
+        def on_sort_change(e): update_invoice_table(e.control.value)
+
+        def toggle_invoice_type(e):
+            # State'i değiştir
+            state["invoice_type"] = "expense" if state["invoice_type"] == "income" else "income"
+            is_expense = state["invoice_type"] == "expense"
+            
+            # Buton görünümünü güncelle
+            active_color = col_secondary if is_expense else col_primary
+            btn_container = e.control
+            btn_container.content.controls[0].value = "Gelen Faturalar (Gider)" if is_expense else "Giden Faturalar (Gelir)"
+            btn_container.bgcolor = active_color
+            btn_container.shadow.color = col_secondary_50 if is_expense else col_primary_50
+            btn_container.update()
+            
+            # Genel giderler bölümünü göster/gizle
+            general_expenses_section.visible = is_expense
+            general_expenses_section.update()
+            
+            # Fatura tablosunu güncelle
+            update_invoice_table(state.get("invoice_sort_option", "newest"))
+
+        # Başlangıç durumuna göre buton ayarla (state başlangıçta "income")
+        initial_is_expense = state.get("invoice_type", "income") == "expense"
+        initial_color = col_secondary if initial_is_expense else col_primary
+        initial_text = "Gelen Faturalar (Gider)" if initial_is_expense else "Giden Faturalar (Gelir)"
+        initial_shadow = col_secondary_50 if initial_is_expense else col_primary_50
+        
+        type_toggle_btn = ft.Container(
+            content=ft.Row([
+                ft.Text(initial_text, color=col_white, weight="bold", size=14), 
+                ft.Icon("swap_horiz", color=col_white, size=20)
+            ], alignment=ft.MainAxisAlignment.CENTER, spacing=5), 
+            bgcolor=initial_color, 
+            padding=ft.padding.symmetric(horizontal=20, vertical=10), 
+            border_radius=8, 
+            on_click=toggle_invoice_type, 
+            ink=False, 
+            shadow=ft.BoxShadow(blur_radius=5, color=initial_shadow, offset=ft.Offset(0,2)), 
+            animate=ft.Animation(100, "easeOut")
+        )
+
+        def clear_inputs(e=None):
+            """Input alanlarını temizle ve seçimleri kaldır"""
+            try:
+                input_fatura_no.value = ""
+                input_irsaliye.value = ""
+                input_tarih.value = ""
+                input_firma.value = ""
+                input_malzeme.value = ""
+                input_miktar.value = ""
+                input_tutar.value = ""
+                input_para_birimi.value = "TL"
+                input_kdv.value = ""
+                input_usd_kur.value = ""
+                input_eur_kur.value = ""
+                state["selected_invoice_id"] = None
+                
+                # Tüm checkbox seçimlerini kaldır
+                if table_container.content and hasattr(table_container.content, 'rows'):
+                    for row in table_container.content.rows:
+                        if len(row.cells) > 0:
+                            first_cell = row.cells[0]
+                            if hasattr(first_cell, 'content') and isinstance(first_cell.content, ft.Checkbox):
+                                first_cell.content.value = False
+                
+                # Seçim sayısını sıfırla
+                selected_count_text.value = ""
+                selected_count_text.visible = False
+                
+                page.update()
+            except Exception as ex:
+                pass
+
+        def add_invoice(e):
+            """Fatura ekle"""
+            try:
+                # Input verilerini topla
+                invoice_data = {
+                    'fatura_no': input_fatura_no.value or "",
+                    'irsaliye_no': input_irsaliye.value or "",
+                    'tarih': input_tarih.value or "",
+                    'firma': input_firma.value or "",
+                    'malzeme': input_malzeme.value or "",
+                    'miktar': input_miktar.value or "",
+                    'toplam_tutar': float(input_tutar.value) if input_tutar.value else 0,
+                    'birim': input_para_birimi.value or "TL",
+                    'kdv_yuzdesi': float(input_kdv.value) if input_kdv.value else 20.0
+                }
+                
+                # Manuel kur girişi varsa ekle (opsiyonel)
+                if input_usd_kur.value and input_usd_kur.value.strip():
+                    try:
+                        invoice_data['manual_usd_rate'] = float(input_usd_kur.value.replace(',', '.'))
+                    except ValueError:
+                        pass
+                
+                if input_eur_kur.value and input_eur_kur.value.strip():
+                    try:
+                        invoice_data['manual_eur_rate'] = float(input_eur_kur.value.replace(',', '.'))
+                    except ValueError:
+                        pass
+                
+                # Fatura işle
+                processed_data = process_invoice(invoice_data)
+                
+                if processed_data:
+                    # Backend'e kaydet
+                    invoice_type = 'incoming' if state["invoice_type"] == "expense" else 'outgoing'
+                    
+                    result = backend_instance.handle_invoice_operation('add', invoice_type, processed_data)
+                    
+                    if result:
+                        # Başarılı - tabloyu güncelle
+                        update_invoice_table(state.get("invoice_sort_option", "newest"))
+                        clear_inputs()
+                        page.snack_bar = ft.SnackBar(content=ft.Text("✅ Fatura başarıyla eklendi!", color=col_white), bgcolor=col_success)
+                        page.snack_bar.open = True
+                        page.update()
+                    else:
+                        page.snack_bar = ft.SnackBar(content=ft.Text("❌ Fatura eklenemedi!", color=col_white), bgcolor=col_danger)
+                        page.snack_bar.open = True
+                        page.update()
+                else:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ Geçersiz fatura verisi! Tutar giriniz.", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ Hata: {str(ex)}", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+
+        def update_invoice(e):
+            """Seçili faturayi güncelle"""
+            try:
+                # Checkbox'lardan seçili olanları bul
+                selected_rows = []
+                for row in table_container.content.rows:
+                    if len(row.cells) > 0:
+                        first_cell = row.cells[0]
+                        if hasattr(first_cell, 'content') and isinstance(first_cell.content, ft.Checkbox):
+                            if first_cell.content.value:
+                                selected_rows.append(row)
+                
+                if not selected_rows:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("⚠️ Güncellemek için bir fatura seçin!", color=col_white), bgcolor=col_secondary)
+                    page.snack_bar.open = True
+                    page.update()
+                    return
+                
+                if len(selected_rows) > 1:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("⚠️ Sadece bir fatura seçin!", color=col_white), bgcolor=col_secondary)
+                    page.snack_bar.open = True
+                    page.update()
+                    return
+                
+                # Input verilerini topla
+                invoice_data = {
+                    'fatura_no': input_fatura_no.value or "",
+                    'irsaliye_no': input_irsaliye.value or "",
+                    'tarih': input_tarih.value or "",
+                    'firma': input_firma.value or "",
+                    'malzeme': input_malzeme.value or "",
+                    'miktar': input_miktar.value or "",
+                    'toplam_tutar': float(input_tutar.value) if input_tutar.value else 0,
+                    'birim': input_para_birimi.value or "TL",
+                    'kdv_yuzdesi': float(input_kdv.value) if input_kdv.value else 20.0
+                }
+                
+                # Manuel kur girişi varsa ekle (opsiyonel)
+                if input_usd_kur.value and input_usd_kur.value.strip():
+                    try:
+                        invoice_data['manual_usd_rate'] = float(input_usd_kur.value.replace(',', '.'))
+                    except ValueError:
+                        pass
+                
+                if input_eur_kur.value and input_eur_kur.value.strip():
+                    try:
+                        invoice_data['manual_eur_rate'] = float(input_eur_kur.value.replace(',', '.'))
+                    except ValueError:
+                        pass
+                
+                # Fatura işle
+                processed_data = process_invoice(invoice_data)
+                
+                if processed_data:
+                    # Backend'e güncelle
+                    invoice_data_from_row = selected_rows[0].data
+                    invoice_id = invoice_data_from_row.get('id') if isinstance(invoice_data_from_row, dict) else invoice_data_from_row
+                    invoice_type = 'incoming' if state["invoice_type"] == "expense" else 'outgoing'
+                    
+                    result = backend_instance.handle_invoice_operation('update', invoice_type, processed_data, record_id=invoice_id)
+                    
+                    if result:
+                        # Tabloyu yenile - invoice type'a göre
+                        table_container.content = create_invoice_table_content(
+                            state.get("invoice_sort_option", "newest"),
+                            state.get("invoice_type", "income"),
+                            on_select_changed=update_selected_count
+                        )
+                        table_container.update()
+                        clear_inputs()
+                        page.snack_bar = ft.SnackBar(content=ft.Text("✅ Fatura güncellendi!", color=col_white), bgcolor=col_success)
+                        page.snack_bar.open = True
+                        page.update()
+                    else:
+                        page.snack_bar = ft.SnackBar(content=ft.Text("❌ Güncelleme başarısız!", color=col_white), bgcolor=col_danger)
+                        page.snack_bar.open = True
+                        page.update()
+                else:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ Geçersiz fatura verisi!", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ Güncelleme hatası: {str(ex)}", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+
+        def delete_invoice(e):
+            """Seçili faturaları sil - Çoklu seçim destekli"""
+            # Checkbox'lardan seçili olanları bul
+            selected_rows = []
+            for row in table_container.content.rows:
+                if len(row.cells) > 0:
+                    first_cell = row.cells[0]
+                    if hasattr(first_cell, 'content') and isinstance(first_cell.content, ft.Checkbox):
+                        if first_cell.content.value:
+                            selected_rows.append(row)
+            
+            if not selected_rows:
+                page.snack_bar = ft.SnackBar(content=ft.Text("⚠️ Lütfen silmek için en az bir fatura seçin!", color=col_white), bgcolor=col_secondary)
+                page.snack_bar.open = True
+                page.update()
+                return
+            
+            selected_count = len(selected_rows)
+            
+            # Tüm faturaları direkt sil (tek veya çoklu, fark etmez)
+            try:
+                current_invoice_type = state.get("invoice_type", "income")
+                db_type = 'outgoing' if current_invoice_type == 'income' else 'incoming'
+                
+                # Callback'i geçici olarak devre dışı bırak (çoklu silmede her seferinde tetiklenmesin)
+                original_callback = backend_instance.on_data_updated
+                backend_instance.on_data_updated = None
+                
+                # Her seçili satırı sil
+                deleted_count = 0
+                failed_count = 0
+                for idx, row in enumerate(selected_rows):
+                    invoice_data = row.data
+                    
+                    if invoice_data and isinstance(invoice_data, dict) and 'id' in invoice_data:
+                        invoice_id = invoice_data['id']
+                        result = backend_instance.handle_invoice_operation(
+                            operation='delete',
+                            invoice_type=db_type,
+                            record_id=invoice_id
+                        )
+                        if result:
+                            deleted_count += 1
+                        else:
+                            failed_count += 1
+                    else:
+                        failed_count += 1
+                
+                # Callback'i geri yükle
+                backend_instance.on_data_updated = original_callback
+                
+                # Tabloyu yenile
+                table_container.content = create_invoice_table_content(
+                    state.get("invoice_sort_option", "newest"),
+                    state.get("invoice_type", "income"),
+                    on_select_changed=update_selected_count
+                )
+                clear_inputs()
+                
+                # Callback'i manuel olarak tetikle (tek seferde tüm güncellemeleri yap)
+                if original_callback:
+                    original_callback()
+                
+                # Bildirim göster
+                if deleted_count > 0:
+                    message = f"✅ {deleted_count} fatura silindi!"
+                    if failed_count > 0:
+                        message += f" ({failed_count} başarısız)"
+                    page.snack_bar = ft.SnackBar(
+                        content=ft.Text(message, color=col_white),
+                        bgcolor=col_success
+                    )
+                else:
+                    page.snack_bar = ft.SnackBar(
+                        content=ft.Text("❌ Hiçbir fatura silinemedi!", color=col_white),
+                        bgcolor=col_danger
+                    )
+                page.snack_bar.open = True
+                page.update()
+                
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"❌ Silme hatası: {str(ex)}", color=col_white),
+                    bgcolor=col_danger
+                )
+                page.snack_bar.open = True
+                page.update()
+
+        def export_to_excel(e):
+            """Faturalari Excel'e aktar"""
+            try:
+                current_invoice_type = state.get("invoice_type", "income")
+                db_type = 'outgoing' if current_invoice_type == 'income' else 'incoming'
+                
+                invoices = backend_instance.handle_invoice_operation(
+                    operation='get',
+                    invoice_type=db_type,
+                    limit=1000
+                )
+                
+                if not invoices:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ Dışa aktarılacak fatura bulunamadı!", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    return
+                
+                # Ayarlardan klasör yolunu al
+                export_folder = state.get("excel_export_path", os.path.join(os.getcwd(), "ExcelReports"))
+                os.makedirs(export_folder, exist_ok=True)
+                
+                # Dosya yolu oluştur
+                type_name = "GelirleFaturalari" if current_invoice_type == "income" else "GiderFaturalari"
+                timestamp = datetime.now().strftime("%d-%m-%Y")
+                file_path = os.path.join(export_folder, f"{type_name}_{timestamp}.xlsx")
+                
+                # Excel'e aktar
+                success = excel_exporter.export_invoices_to_excel(invoices, type_name, file_path)
+                
+                if success:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"✅ {len(invoices)} fatura Excel'e aktarıldı!\n{file_path}", color=col_white), bgcolor=col_success)
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ Excel aktarımı başarısız!", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ Excel hatası: {str(ex)}", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+
+        def export_to_pdf(e):
+            """Faturalari PDF'e aktar"""
+            try:
+                current_invoice_type = state.get("invoice_type", "income")
+                db_type = 'outgoing' if current_invoice_type == 'income' else 'incoming'
+                
+                invoices = backend_instance.handle_invoice_operation(
+                    operation='get',
+                    invoice_type=db_type,
+                    limit=1000
+                )
+                
+                if not invoices:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ Dışa aktarılacak fatura bulunamadı!", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    return
+                
+                # Ayarlardan klasör yolunu al
+                export_folder = state.get("pdf_export_path", os.path.join(os.getcwd(), "PDFExports"))
+                os.makedirs(export_folder, exist_ok=True)
+                
+                # Dosya yolu oluştur
+                type_name = "GelirleFaturalari" if current_invoice_type == "income" else "GiderFaturalari"
+                timestamp = datetime.now().strftime("%d-%m-%Y")
+                file_path = os.path.join(export_folder, f"{type_name}_{timestamp}.pdf")
+                
+                # PDF'e aktar
+                success = pdf_exporter.export_invoices_to_pdf(invoices, db_type, file_path)
+                
+                if success:
+                    page.snack_bar = ft.SnackBar(content=ft.Text(f"✅ {len(invoices)} fatura PDF'e aktarıldı!\n{file_path}", color=col_white), bgcolor=col_success)
+                    page.snack_bar.open = True
+                    page.update()
+                else:
+                    page.snack_bar = ft.SnackBar(content=ft.Text("❌ PDF aktarımı başarısız!", color=col_white), bgcolor=col_danger)
+                    page.snack_bar.open = True
+                    page.update()
+                    
+            except Exception as ex:
+                page.snack_bar = ft.SnackBar(content=ft.Text(f"❌ PDF hatası: {str(ex)}", color=col_white), bgcolor=col_danger)
+                page.snack_bar.open = True
+                page.update()
+
+        # Butonları oluştur
+        btn_clear = AestheticButton("Yeni / Temizle", "refresh", "#7F8C8D", width=145, on_click=clear_inputs)
+        btn_add = AestheticButton("Ekle", "add", col_success, width=110, on_click=add_invoice)
+        btn_update = AestheticButton("Güncelle", "update", col_blue_donut, width=125, on_click=update_invoice)
+        
+        # Sil butonu - seçili sayı ile
+        btn_delete_container = ft.Row([
+            AestheticButton("Sil", "delete", col_danger, width=110, on_click=delete_invoice),
+            selected_count_text
+        ], spacing=5, alignment=ft.MainAxisAlignment.START)
+        
+        operation_buttons = ft.Row([btn_clear, btn_add, btn_update, btn_delete_container], spacing=15)
+
+        # Sağ üst butonlar - Excel, PDF export
+        btn_excel = ScaleButton("table_view", "#217346", "Excel Olarak İndir", width=50, height=45)
+        btn_excel.on_click = export_to_excel
+        
+        btn_pdf = ScaleButton("picture_as_pdf", "#D32F2F", "PDF Olarak İndir", width=50, height=45)
+        btn_pdf.on_click = export_to_pdf
+        
+        right_buttons_row = ft.Row([ScaleButton("qr_code_scanner", "#3498DB", "Kamerayı Aç / QR Ekle", width=50, height=45), btn_excel, btn_pdf, ScaleButton("print", "#607D8B", "Yazdır", width=50, height=45)], spacing=10)
+        
+        right_buttons_container = ft.Container(content=right_buttons_row, padding=ft.padding.only(right=25))
+
+        sort_dropdown = ft.Container(padding=ft.padding.only(left=20), content=ft.Dropdown(options=[ft.dropdown.Option("newest", "Son Eklenen"), ft.dropdown.Option("date_desc", "Yeniden Eskiye"), ft.dropdown.Option("date_asc", "Eskiden Yeniye")], value="newest", on_change=on_sort_change, width=160, text_size=13, label="Sıralama", border_radius=10, content_padding=10, bgcolor=col_white, border_color=col_border))
+
+        controls_row = ft.Row([type_toggle_btn, sort_dropdown, ft.Container(expand=True), right_buttons_container], alignment=ft.MainAxisAlignment.START, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+        # Input satırları - TextField referanslarını kullan
+        input_line_1 = ft.Row([
+            ft.Column([ft.Text("Fatura No", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_fatura_no, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("İrsaliye", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_irsaliye, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("Tarih", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_tarih, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("Firma", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_firma, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=2)
+        ], spacing=15)
+        
+        input_line_2 = ft.Row([
+            ft.Column([ft.Text("Malzeme/Hizmet", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_malzeme, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=2),
+            ft.Column([ft.Text("Miktar", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_miktar, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("Tutar", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_tutar, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("Para Birimi", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_para_birimi, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("KDV Tutarı", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_kdv, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1)
+        ], spacing=15)
+        
+        # Manuel döviz kuru satırı (opsiyonel)
+        input_line_3 = ft.Row([
+            ft.Column([ft.Text("USD Kuru (1 USD = ? TL)", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_usd_kur, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Column([ft.Text("EUR Kuru (1 EUR = ? TL)", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_eur_kur, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
+            ft.Container(expand=3)  # Boş alan
+        ], spacing=15)
+
+        return ft.Container(alignment=ft.alignment.top_center, padding=30, content=ft.Column([
+            ft.Row([ft.Text("Fatura Yönetimi", size=28, weight="bold", color=col_text)], width=1200),
+            ft.Container(height=15), ft.Container(content=controls_row, width=1200), ft.Container(height=20),
+            ft.Container(content=ft.Column([input_line_1, ft.Container(height=5), input_line_2, ft.Container(height=5), input_line_3], spacing=10), width=1200),
+            ft.Container(height=10), ft.Container(content=operation_buttons, width=1200, alignment=ft.alignment.center_left, padding=ft.padding.only(left=15)),
+            ft.Container(height=20),
+            table_container, 
+            ft.Container(height=50), 
+            ft.Container(content=general_expenses_section, width=1200)
+        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, scroll=ft.ScrollMode.AUTO))
+
+    # Sayfa Yöneticisi
+    dashboard_content = ft.Container() 
+    faturalar_page = create_invoices_page()
+    donemsel_page = create_donemsel_page()
+    
+    # Ayarlar sayfası
+    def create_settings_page():
+        """Ayarlar sayfası - Export klasörleri seçimi"""
+        
+        # Mevcut ayarları yükle
+        def load_settings():
+            try:
+                cursor = backend_instance.db.settings_conn.cursor()
+                cursor.execute("SELECT key, value FROM settings WHERE key IN ('excel_export_path', 'pdf_export_path')")
+                settings = cursor.fetchall()
+                for key, value in settings:
+                    state[key] = value
+            except:
+                pass
+        
+        load_settings()
+        
+        excel_path_text = ft.Text(
+            state.get("excel_export_path", os.path.join(os.getcwd(), "ExcelReports")),
+            size=13,
+            color=col_text,
+            weight="w500"
+        )
+        
+        pdf_path_text = ft.Text(
+            state.get("pdf_export_path", os.path.join(os.getcwd(), "PDFExports")),
+            size=13,
+            color=col_text,
+            weight="w500"
+        )
+        
+        def save_setting(key, value):
+            """Ayarı database'e kaydet"""
+            try:
+                cursor = backend_instance.db.settings_conn.cursor()
+                cursor.execute("""
+                    INSERT OR REPLACE INTO settings (key, value) 
+                    VALUES (?, ?)
+                """, (key, value))
+                backend_instance.db.settings_conn.commit()
+                state[key] = value
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"✅ Ayar kaydedildi!", color=col_white),
+                    bgcolor=col_success
+                )
+                page.snack_bar.open = True
+                page.update()
+            except Exception as e:
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"❌ Kaydetme hatası: {str(e)}", color=col_white),
+                    bgcolor=col_danger
+                )
+                page.snack_bar.open = True
+                page.update()
+        
+        def pick_excel_folder(e):
+            def on_result(e: ft.FilePickerResultEvent):
+                if e.path:
+                    excel_path_text.value = e.path
+                    save_setting("excel_export_path", e.path)
+                    excel_path_text.update()
+            
+            file_picker = ft.FilePicker(on_result=on_result)
+            page.overlay.append(file_picker)
+            page.update()
+            file_picker.get_directory_path(dialog_title="Excel Klasörünü Seç")
+        
+        def pick_pdf_folder(e):
+            def on_result(e: ft.FilePickerResultEvent):
+                if e.path:
+                    pdf_path_text.value = e.path
+                    save_setting("pdf_export_path", e.path)
+                    pdf_path_text.update()
+            
+            file_picker = ft.FilePicker(on_result=on_result)
+            page.overlay.append(file_picker)
+            page.update()
+            file_picker.get_directory_path(dialog_title="PDF Klasörünü Seç")
+        
+        return ft.Container(
+            alignment=ft.alignment.top_center,
+            padding=30,
+            content=ft.Column([
+                ft.Text("Ayarlar", size=28, weight="bold", color=col_text),
+                ft.Container(height=30),
+                
+                # Excel Export Klasörü
+                ft.Container(
+                    width=800,
+                    bgcolor=col_white,
+                    border_radius=12,
+                    padding=20,
+                    shadow=ft.BoxShadow(blur_radius=10, color="#1A000000", offset=ft.Offset(0, 3)),
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon("table_view", color=col_primary, size=28),
+                            ft.Text("Excel Export Klasörü", size=18, weight="bold", color=col_text)
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        ft.Container(
+                            bgcolor=col_bg,
+                            border_radius=8,
+                            padding=15,
+                            content=excel_path_text
+                        ),
+                        ft.Container(height=10),
+                        ft.ElevatedButton(
+                            "Klasör Seç",
+                            icon=ft.Icons.FOLDER_OPEN,
+                            on_click=pick_excel_folder,
+                            bgcolor=col_primary,
+                            color=col_white,
+                            height=40
+                        )
+                    ], spacing=5)
+                ),
+                
+                ft.Container(height=20),
+                
+                # PDF Export Klasörü
+                ft.Container(
+                    width=800,
+                    bgcolor=col_white,
+                    border_radius=12,
+                    padding=20,
+                    shadow=ft.BoxShadow(blur_radius=10, color="#1A000000", offset=ft.Offset(0, 3)),
+                    content=ft.Column([
+                        ft.Row([
+                            ft.Icon("picture_as_pdf", color=col_danger, size=28),
+                            ft.Text("PDF Export Klasörü", size=18, weight="bold", color=col_text)
+                        ], spacing=10),
+                        ft.Container(height=10),
+                        ft.Container(
+                            bgcolor=col_bg,
+                            border_radius=8,
+                            padding=15,
+                            content=pdf_path_text
+                        ),
+                        ft.Container(height=10),
+                        ft.ElevatedButton(
+                            "Klasör Seç",
+                            icon=ft.Icons.FOLDER_OPEN,
+                            on_click=pick_pdf_folder,
+                            bgcolor=col_danger,
+                            color=col_white,
+                            height=40
+                        )
+                    ], spacing=5)
+                ),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        )
+    
+    settings_page = create_settings_page()
+
+    def change_view(e):
+        clicked_btn_data = e.control.data
+        
+        if state["current_page"] == "home" and clicked_btn_data != "home":
+             state["animation_completed"] = True 
+        
+        state["current_page"] = clicked_btn_data
+        
+        # Nested Column yapısında butonları güncelle
+        for col in sidebar_column.controls:
+            if isinstance(col, ft.Column):
+                for btn in col.controls:
+                    if isinstance(btn, SidebarButton):
+                        btn.is_selected = (btn.data == clicked_btn_data)
+                        btn.update_visuals()
+        
+        if clicked_btn_data == "home":
+            content_area.content = dashboard_content
+            threading.Thread(target=start_animations, daemon=True).start()
+            # Ana sayfa yüklendiğinde verileri güncelle
+            if state["update_callbacks"]["home_page"]:
+                state["update_callbacks"]["home_page"]()
+        elif clicked_btn_data == "faturalar":
+            state["current_page"] = "invoices"  # Fatura sayfası için doğru key
+            content_area.content = faturalar_page
+            # Fatura sayfası yüklendiğinde tabloyu güncelle
+            if state["update_callbacks"]["invoice_page"]:
+                state["update_callbacks"]["invoice_page"]()
+        elif clicked_btn_data == "raporlar":
+            state["current_page"] = "donemsel"  # Dönemsel sayfa için doğru key
+            content_area.content = donemsel_page
+            # Dönemsel sayfa yüklendiğinde tabloyu güncelle
+            if state["update_callbacks"]["donemsel_page"]:
+                state["update_callbacks"]["donemsel_page"]()
+        elif clicked_btn_data == "ayarlar":
+            content_area.content = settings_page
+        
+        content_area.update()
+
+    
+    logo_text = ft.Text("Excellent", size=24, weight="bold", color=col_text, visible=False)
+    menu_icon = ft.IconButton(icon="menu", icon_color=col_text, on_click=toggle_sidebar)
+    menu_row = ft.Row([menu_icon, logo_text], spacing=5, alignment=ft.MainAxisAlignment.CENTER)
+
+    btn_home = SidebarButton("home_rounded", "Giriş", "home", False)  # Başlangıçta False
+    btn_faturalar = SidebarButton("receipt_long_rounded", "Faturalar", "faturalar")
+    btn_raporlar = SidebarButton("bar_chart_rounded", "Raporlar", "raporlar")
+    btn_ayarlar = SidebarButton("settings", "Ayarlar", "ayarlar")
+    btn_home.on_click = change_view
+    btn_faturalar.on_click = change_view
+    btn_raporlar.on_click = change_view
+    btn_ayarlar.on_click = change_view
+    
+    # Ev butonunu başlangıçta seçili yap
+    btn_home.is_selected = True
+    btn_home.update_visuals(run_update=False)
+
+    # Sidebar'ı MainAxisAlignment.SPACE_BETWEEN ile düzenle - Ayarlar en altta
+    sidebar_column = ft.Column([
+        ft.Column([
+            ft.Container(height=20),
+            menu_row,
+            ft.Container(height=30),
+            btn_home,
+            btn_faturalar,
+            btn_raporlar
+        ], spacing=15),
+        ft.Column([
+            btn_ayarlar,
+            ft.Container(height=20)
+        ], spacing=15)
+    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True)
+
+    sidebar_container = ft.Container(width=90, height=900, bgcolor=col_white, padding=ft.padding.symmetric(horizontal=15, vertical=20), content=sidebar_column, animate=ft.Animation(300, "easeOut"), shadow=ft.BoxShadow(blur_radius=10, color="#05000000"))
+
+    # --- DASHBOARD İÇERİK ---
+    def change_currency(currency_code):
+        state["current_currency"] = currency_code
+        currency_selector_container.content = create_currency_selector()
+        currency_selector_container.update()
+
+    def create_currency_selector():
+        curr = state["current_currency"]
+        return ft.Container(bgcolor=col_bg, border_radius=12, padding=4, content=ft.Row([currency_button("₺ TRY", "TRY", curr, change_currency), currency_button("$ USD", "USD", curr, change_currency), currency_button("€ EUR", "EUR", curr, change_currency)], spacing=0, tight=True))
+    currency_selector_container = ft.Container(content=create_currency_selector())
+
+    # Kur bilgisi text'i dinamik olarak oluştur
+    exchange_rate_text = ft.Text(get_exchange_rate_display(), size=13, color=col_text_light, weight="w600")
+    
+    header = ft.Row([ft.Text("Genel Durum Paneli", size=26, weight="bold", color=col_text), ft.Row([ft.Container(bgcolor="#EAF2F8", padding=ft.padding.symmetric(horizontal=15, vertical=10), border_radius=8, content=ft.Row([ft.Icon("currency_exchange", size=16, color=col_blue_donut), exchange_rate_text], spacing=10)), currency_selector_container], spacing=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+
+    # Backend'den gerçek verileri çek
+    def get_dashboard_stats(year=None):
+        """Dashboard için istatistikleri hesapla - isteğe bağlı yıl filtresi"""
+        try:
+            # Giden faturalar (Gelir)
+            income_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='outgoing',
+                limit=1000,
+                offset=0
+            ) or []
+            
+            # Gelen faturalar (Gider)
+            expense_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='incoming',
+                limit=1000,
+                offset=0
+            ) or []
+            
+            # Eğer yıl filtresi varsa, sadece o yıla ait faturaları al
+            if year:
+                income_invoices = [inv for inv in income_invoices if inv.get('tarih', '').endswith(str(year))]
+                expense_invoices = [inv for inv in expense_invoices if inv.get('tarih', '').endswith(str(year))]
+            
+            # Toplam gelir (TL)
+            total_income = sum(float(inv.get('toplam_tutar_tl', 0)) for inv in income_invoices)
+            
+            # Toplam gider (TL)
+            total_expense = sum(float(inv.get('toplam_tutar_tl', 0)) for inv in expense_invoices)
+            
+            # Genel giderleri ekle
+            if year:
+                general_expenses = backend_instance.db.get_yearly_expenses(year)
+                if general_expenses:
+                    month_keys = ['ocak', 'subat', 'mart', 'nisan', 'mayis', 'haziran', 'temmuz', 'agustos', 'eylul', 'ekim', 'kasim', 'aralik']
+                    for month_key in month_keys:
+                        if month_key in general_expenses:
+                            total_expense += float(general_expenses[month_key] or 0)
+            
+            # Net kâr
+            net_profit = total_income - total_expense
+            
+            # Aylık ortalama (son 12 ay gelir ortalaması)
+            import datetime
+            current_year = datetime.datetime.now().year
+            current_month = datetime.datetime.now().month
+            
+            # Eğer seçili yıl geçmiş yılsa, 12 aya böl
+            if year and year < current_year:
+                monthly_avg = total_income / 12
+            else:
+                monthly_avg = total_income / max(current_month, 1)
+            
+            return {
+                'net_profit': net_profit,
+                'total_income': total_income,
+                'total_expense': total_expense,
+                'monthly_avg': monthly_avg,
+                'income_count': len(income_invoices),
+                'expense_count': len(expense_invoices)
+            }
+        except Exception as e:
+            return {
+                'net_profit': 0,
+                'total_income': 0,
+                'total_expense': 0,
+                'monthly_avg': 0,
+                'income_count': 0,
+                'expense_count': 0
+            }
+    
+    # İstatistikleri al
+    stats = get_dashboard_stats()
+    
+    # Trend hesapla (basit - önceki aya göre %15 artış varsayımı)
+    net_profit_trend = "+15%" if stats['net_profit'] > 0 else "0%"
+    income_trend = "+4%" if stats['total_income'] > 0 else "0%"
+    expense_trend = "-2%" if stats['total_expense'] > 0 else "0%"
+    avg_trend = "+1%" if stats['monthly_avg'] > 0 else "0%"
+    
+    # Her donut için kendi max değerini hesapla (değerin %120'si, min 10K)
+    profit_max = max(abs(stats['net_profit']) * 1.2, 10000)
+    income_max = max(stats['total_income'] * 1.2, 10000)
+    expense_max = max(stats['total_expense'] * 1.2, 10000)
+    avg_max = max(stats['monthly_avg'] * 1.2, 10000)
+    
+    stats_row = ft.Row([
+        DonutStatCard("Anlık Net Kâr", "attach_money", col_blue_donut, net_profit_trend, 
+                     abs(stats['net_profit']), profit_max, format_currency(stats['net_profit'], compact=True)),
+        DonutStatCard("Toplam Gelir", "arrow_upward", col_success, income_trend, 
+                     stats['total_income'], income_max, format_currency(stats['total_income'], compact=True)),
+        DonutStatCard("Toplam Gider", "arrow_downward", col_secondary, expense_trend, 
+                     stats['total_expense'], expense_max, format_currency(stats['total_expense'], compact=True)),
+        DonutStatCard("Aylık Ortalama", "pie_chart", "#FF5B5B", avg_trend, 
+                     stats['monthly_avg'], avg_max, format_currency(stats['monthly_avg'], compact=True))
+    ], spacing=20)
+    
+    # Son işlemleri backend'den çek
+    def get_recent_transactions():
+        """Son faturaları getir"""
+        try:
+            # Hem gelir hem gider faturalarını al
+            income_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='outgoing',
+                limit=10,
+                offset=0,
+                order_by='id DESC'
+            ) or []
+            
+            expense_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='incoming',
+                limit=10,
+                offset=0,
+                order_by='id DESC'
+            ) or []
+            
+            # Birleştir ve formatla - ortak fonksiyon kullan
+            transactions = []
+            transactions.extend(_process_invoices(income_invoices[:5], is_income=True))
+            transactions.extend(_process_invoices(expense_invoices[:5], is_income=False))
+            
+            # Tarihe göre sırala
+            transactions.sort(key=lambda x: x['date'], reverse=True)
+            return transactions[:8]
+            
+        except Exception as e:
+            return []
+    
+    def _process_invoices(invoices, is_income):
+        """Fatura listesini transaction formatına çevirir - tekrar eden kodu birleştirir"""
+        from datetime import datetime
+        transactions = []
+        
+        for inv in invoices:
+            # updated_at var mı kontrol et (güncellenmiş fatura)
+            is_updated = bool(inv.get('updated_at'))
+            
+            # İşlem tarihi (created_at) ve fatura tarihi (tarih) farklı olabilir
+            operation_date = inv.get('created_at', '')
+            invoice_date = inv.get('tarih', '')
+            
+            # created_at ISO format'ta ise sadece tarihi al
+            if operation_date and 'T' in operation_date:
+                try:
+                    dt = datetime.fromisoformat(operation_date)
+                    operation_date = dt.strftime('%d.%m.%Y')
+                except:
+                    operation_date = invoice_date  # Hata durumunda fatura tarihini kullan
+            
+            # Eğer işlem tarihi yoksa fatura tarihini kullan
+            if not operation_date:
+                operation_date = invoice_date
+            
+            transactions.append({
+                'title': inv.get('firma', 'Firma'),
+                'display_date': operation_date,
+                'invoice_date': invoice_date,
+                'amount': f"{float(inv.get('toplam_tutar_tl', 0)):,.2f}",
+                'income': is_income,
+                'date': operation_date,  # Sıralama için
+                'is_updated': is_updated
+            })
+        
+        return transactions
+    
+    transactions_column = ft.Column(spacing=5, scroll=ft.ScrollMode.AUTO)
+    current_filter_date = None  # Aktif tarih filtresini sakla
+
+    def update_transactions(filter_date=None):
+        """Geçmiş işlemleri günceller - filtre varsa veritabanından çeker"""
+        nonlocal current_filter_date
+        
+        # Eğer parametre verilmediyse, mevcut filtreyi kullan
+        if filter_date is None and current_filter_date is not None:
+            filter_date = current_filter_date
+        else:
+            current_filter_date = filter_date
+        
+        transactions_column.controls.clear()
+        filtered_data = []
+        
+        if filter_date:
+            # Tarih filtresi varsa veritabanından o tarihteki faturaları çek
+            str_date = filter_date.strftime("%d.%m.%Y")
+            
+            # Gelir faturalarını çek
+            income_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='outgoing'
+            ) or []
+            
+            # Gider faturalarını çek
+            expense_invoices = backend_instance.handle_invoice_operation(
+                operation='get',
+                invoice_type='incoming'
+            ) or []
+            
+            # Seçili tarihe göre filtrele - ortak fonksiyon kullan
+            filtered_income = [inv for inv in income_invoices if inv.get('tarih', '') == str_date]
+            filtered_expense = [inv for inv in expense_invoices if inv.get('tarih', '') == str_date]
+            
+            filtered_data.extend(_process_invoices(filtered_income, is_income=True))
+            filtered_data.extend(_process_invoices(filtered_expense, is_income=False))
+        else:
+            # Filtre yoksa son işlemleri yeniden çek (dinamik)
+            filtered_data = get_recent_transactions()
+
+        if not filtered_data:
+            transactions_column.controls.append(ft.Container(content=ft.Text("Bu tarihte işlem bulunamadı.", color=col_text_light), alignment=ft.alignment.center, padding=20))
+        else:
+            for t in filtered_data:
+                transactions_column.controls.append(
+                    TransactionRow(
+                        t["title"], 
+                        t["display_date"], 
+                        t["amount"], 
+                        t["income"],
+                        is_updated=t.get("is_updated", False),
+                        invoice_date=t.get("invoice_date")
+                    )
+                )
+        
+        try:
+            if transactions_column.page: 
+                transactions_column.update()
+        except:
+            pass
+
+    update_transactions()
+
+    def handle_date_change(e):
+        if e.control.value: update_transactions(e.control.value)
+
+    date_picker = ft.DatePicker(on_change=handle_date_change, cancel_text="İptal", confirm_text="Seç", help_text="İşlem Tarihini Seçin")
+    page.overlay.append(date_picker)
+
+    def reset_transactions(e): update_transactions(None)
+
+    transactions_list_content = ft.Column([ft.Row([ft.Text("Son İşlemler", size=18, weight="bold", color=col_text), ft.Row([ft.IconButton(icon="calendar_month", icon_color=col_text_light, tooltip="Tarihe Göre Git", on_click=lambda _: setattr(date_picker, 'open', True) or page.update()), ft.TextButton("En Son Girilenler", style=ft.ButtonStyle(color=col_primary), on_click=reset_transactions)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=15), transactions_column], spacing=5)
+
+    transactions_list = ft.Container(bgcolor=col_white, border_radius=20, padding=25, shadow=ft.BoxShadow(blur_radius=20, color="#08000000"), height=450, content=transactions_list_content)
+
+    # Yıl dropdown'ı için dinamik seçenekler oluştur - tüm veritabanı yıllarını çek
+    available_years = get_all_available_years()
+    year_dropdown_options = [ft.dropdown.Option(str(year)) for year in available_years]
+    default_year = str(available_years[0]) if available_years else str(datetime.now().year)
+    
+    # Dropdown'ı değişkene ata (refresh fonksiyonunda kullanmak için)
+    year_dropdown_ref = ft.Dropdown(width=100, options=year_dropdown_options, value=default_year, on_change=on_year_change, border_radius=10, text_size=13, content_padding=10)
+    
+    chart_container = ft.Container(bgcolor=col_white, border_radius=20, padding=ft.padding.only(left=30, right=30, top=30, bottom=10), expand=2, shadow=ft.BoxShadow(blur_radius=20, color="#08000000"), height=450, content=ft.Column([ft.Row([ft.Column([ft.Text("Performans Analizi", size=20, weight="bold", color=col_text), ft.Text("Yıllık gelir ve gider karşılaştırması", size=13, color=col_text_light)]), year_dropdown_ref], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=20), ft.Container(content=line_chart, expand=True), ft.Row([ft.Row([ft.Container(width=10, height=10, bgcolor=col_primary, border_radius=2), ft.Text("Gelir", size=12, color="grey")], spacing=5), ft.Row([ft.Container(width=10, height=10, bgcolor=col_secondary, border_radius=2), ft.Text("Gider", size=12, color="grey")], spacing=5)], alignment=ft.MainAxisAlignment.CENTER)]))
+
+    dashboard_layout = ft.Column([header, ft.Container(height=10), stats_row, ft.Container(height=10), ft.Row([chart_container, ft.Container(content=transactions_list, expand=1)], expand=True, spacing=20)], spacing=10)
+
+    dashboard_content.content = dashboard_layout
+    content_area = ft.Container(expand=True, padding=30, content=dashboard_content)
+
+    layout = ft.Row([sidebar_container, content_area], expand=True, spacing=0)
+    page.add(layout)
+    
+    def start_animations():
+        time.sleep(0.5) 
+        for donut in state["donuts"]: donut.start_animation()
+        # İlk yüklemede varsayılan yılı çiz
+        if available_years:
+            first_year = available_years[0]
+            draw_snake_chart(first_year)
+        
+        # Animasyonlar başladıktan sonra callback'leri kaydet
+        time.sleep(0.3)  # Animasyonların tamamlanmasını bekle
+        
+        # Ana sayfa için birleşik callback - hem grafikler hem işlem geçmişi
+        def home_page_full_update():
+            refresh_charts_and_data()
+            update_transactions()  # İşlem geçmişini de güncelle
+        
+        state["update_callbacks"]["home_page"] = home_page_full_update
+
+    threading.Thread(target=start_animations, daemon=True).start()
+
+ft.app(target=main)
 
 

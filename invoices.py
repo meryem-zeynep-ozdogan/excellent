@@ -177,9 +177,9 @@ class InvoiceProcessor:
                 matrah = toplam_tutar / kdv_katsayisi
                 kdv_tutari = toplam_tutar - matrah
                 
-                # 2 ondalık basamağa yuvarla (kuruş hassasiyeti)
-                matrah = matrah.quantize(Decimal('0.01'))
-                kdv_tutari = kdv_tutari.quantize(Decimal('0.01'))
+                # 5 ondalık basamağa yuvarla
+                matrah = matrah.quantize(Decimal('0.00001'))
+                kdv_tutari = kdv_tutari.quantize(Decimal('0.00001'))
                 
                 logging.info(f"   ✅ KDV DAHİL HESAPLAMA (DECIMAL):")
                 logging.info(f"     - KDV Dahil Tutar: {toplam_tutar} {birim}")
@@ -190,20 +190,69 @@ class InvoiceProcessor:
                 logging.error(f"   ❌ HATA: Toplam tutar girilmemiş!")
                 return None
             
-            # Para birimi dönüşümü (TL'ye çevir) - float olarak döner
-            matrah_tl = self.backend.convert_currency(float(matrah), birim, 'TRY')
-            kdv_tutari_tl = self.backend.convert_currency(float(kdv_tutari), birim, 'TRY')
+            # Manuel kur girişi kontrolü - önce kontrol et
+            manual_usd_rate = invoice_data.get('manual_usd_rate', None)
+            manual_eur_rate = invoice_data.get('manual_eur_rate', None)
+            
+            if manual_usd_rate and manual_usd_rate > 0:
+                # Manuel USD kuru girilmiş (1 USD = ? TL formatında)
+                usd_to_tl = manual_usd_rate
+                logging.info(f"   💱 Manuel USD kuru kullanılıyor: 1 USD = {usd_to_tl} TL")
+            else:
+                # TCMB kurunu kullan
+                current_rates = self.backend.exchange_rates
+                usd_rate = current_rates.get('USD', 0)
+                usd_to_tl = (1 / usd_rate) if usd_rate > 0 else 0
+                logging.info(f"   💱 TCMB USD kuru kullanılıyor: 1 USD = {usd_to_tl} TL")
+            
+            if manual_eur_rate and manual_eur_rate > 0:
+                # Manuel EUR kuru girilmiş (1 EUR = ? TL formatında)
+                eur_to_tl = manual_eur_rate
+                logging.info(f"   💱 Manuel EUR kuru kullanılıyor: 1 EUR = {eur_to_tl} TL")
+            else:
+                # TCMB kurunu kullan
+                current_rates = self.backend.exchange_rates
+                eur_rate = current_rates.get('EUR', 0)
+                eur_to_tl = (1 / eur_rate) if eur_rate > 0 else 0
+                logging.info(f"   💱 TCMB EUR kuru kullanılıyor: 1 EUR = {eur_to_tl} TL")
+
+            # Para birimi dönüşümü (TL'ye çevir) - manuel kurları kullan
+            if birim == 'USD' and manual_usd_rate and manual_usd_rate > 0:
+                # Manuel USD kuru ile dönüşüm
+                matrah_tl = float(matrah) * manual_usd_rate
+                kdv_tutari_tl = float(kdv_tutari) * manual_usd_rate
+            elif birim == 'EUR' and manual_eur_rate and manual_eur_rate > 0:
+                # Manuel EUR kuru ile dönüşüm
+                matrah_tl = float(matrah) * manual_eur_rate
+                kdv_tutari_tl = float(kdv_tutari) * manual_eur_rate
+            else:
+                # TCMB kurları ile dönüşüm
+                matrah_tl = self.backend.convert_currency(float(matrah), birim, 'TRY')
+                kdv_tutari_tl = self.backend.convert_currency(float(kdv_tutari), birim, 'TRY')
+            
             toplam_kdv_dahil_tl = matrah_tl + kdv_tutari_tl
 
             # Sonuç verilerini hazırla - toplam_tutar_tl artık KDV DAHİL tutar
-            processed['toplam_tutar_tl'] = float(Decimal(str(toplam_kdv_dahil_tl)).quantize(Decimal('0.01')))
-            processed['toplam_tutar_usd'] = self.backend.convert_currency(toplam_kdv_dahil_tl, 'TRY', 'USD')
-            processed['toplam_tutar_eur'] = self.backend.convert_currency(toplam_kdv_dahil_tl, 'TRY', 'EUR')
+            # Tüm tutarları 5 ondalık basamağa yuvarla
+            processed['toplam_tutar_tl'] = round(float(toplam_kdv_dahil_tl), 5)
+            
+            # USD ve EUR tutarlarını manuel kurlar ile hesapla
+            if usd_to_tl > 0:
+                processed['toplam_tutar_usd'] = round(toplam_kdv_dahil_tl / usd_to_tl, 5)
+            else:
+                processed['toplam_tutar_usd'] = 0
+                
+            if eur_to_tl > 0:
+                processed['toplam_tutar_eur'] = round(toplam_kdv_dahil_tl / eur_to_tl, 5)
+            else:
+                processed['toplam_tutar_eur'] = 0
             
             processed['birim'] = birim 
-            processed['kdv_yuzdesi'] = float(kdv_yuzdesi)
+            processed['kdv_yuzdesi'] = round(float(kdv_yuzdesi), 5)
             processed['kdv_dahil'] = 1  # Her zaman KDV dahil
-            processed['kdv_tutari'] = float(Decimal(str(kdv_tutari_tl)).quantize(Decimal('0.01')))
+            processed['kdv_tutari'] = round(float(kdv_tutari_tl), 5)
+            processed['usd_rate'] = round(float(usd_to_tl), 5)
+            processed['eur_rate'] = round(float(eur_to_tl), 5)
             
             logging.info(f"   📊 SONUÇ (TL CİNSİNDEN):")
             logging.info(f"     - Matrah: {matrah_tl:.2f} TL")
@@ -228,14 +277,13 @@ class InvoiceProcessor:
             logging.warning(f"Genel gider miktarı girilmemiş: {gider_data}")
             return None
         
-        # Eğer sayısal bir değer ise Decimal'e çevir, değilse string olarak bırak
+        # Eğer sayısal bir değer ise float'a çevir, değilse string olarak bırak
         try:
-            miktar_decimal = self._to_decimal(miktar_input)
-            # 2 ondalık basamağa yuvarla
-            miktar = float(miktar_decimal.quantize(Decimal('0.01')))
+            miktar_float = float(miktar_input)
+            # 5 ondalık basamağa yuvarla
+            miktar = round(miktar_float, 5)
         except:
             # Sayısal olmayan miktar değerlerini string olarak sakla
-            miktar = str(miktar_input).strip()
             miktar = str(miktar_input).strip()
         
         # Genel gider verilerini direkt format
@@ -299,7 +347,7 @@ class InvoiceManager:
                 return False
                 
             if result:
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -320,7 +368,7 @@ class InvoiceManager:
                 return False
                 
             if result:
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -340,7 +388,7 @@ class InvoiceManager:
                 return False
                 
             if result:
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -378,7 +426,7 @@ class InvoiceManager:
             processed_data = self.processor.process_genel_gider_data(data)
             if processed_data and self.backend.db.add_genel_gider(processed_data):
                 self._add_history_record('EKLEME', 'genel_gider', processed_data)
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -386,7 +434,7 @@ class InvoiceManager:
             processed_data = self.processor.process_genel_gider_data(data)
             if processed_data and self.backend.db.update_genel_gider(record_id, processed_data):
                 self._add_history_record('GÜNCELLEME', 'genel_gider', processed_data)
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -396,7 +444,7 @@ class InvoiceManager:
             if self.backend.db.delete_genel_gider(record_id):
                 if gider_data:
                     self._add_history_record('SİLME', 'genel_gider', gider_data)
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
                 return True
             return False
         
@@ -422,7 +470,7 @@ class InvoiceManager:
                 return 0
                 
             if deleted_count > 0:
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
             return deleted_count
         except Exception as e:
             logging.error(f"Çoklu {invoice_type} faturası silme hatası: {e}")
@@ -433,7 +481,7 @@ class InvoiceManager:
         try:
             deleted_count = self.backend.db.delete_multiple_genel_gider(gider_ids)
             if deleted_count > 0:
-                self.backend.data_updated.emit()
+                if self.backend.on_data_updated: self.backend.on_data_updated()
             return deleted_count
         except Exception as e:
             logging.error(f"Çoklu genel gider silme hatası: {e}")

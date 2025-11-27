@@ -303,7 +303,7 @@ class InvoicePDFExporter:
         main_table = Table(table_data, colWidths=col_widths, repeatRows=1)
         main_table.setStyle(TableStyle([
             # Header stili - uygulama benzeri
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a4a4a')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C5DD3')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
             ('FONTSIZE', (0, 0), (-1, 0), 8),
@@ -493,7 +493,7 @@ class InvoicePDFExporter:
         main_table = Table(table_data, colWidths=col_widths, repeatRows=1)
         main_table.setStyle(TableStyle([
             # Header stili - fatura benzeri
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a4a4a')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C5DD3')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
             ('FONTSIZE', (0, 0), (-1, 0), 8),
@@ -682,7 +682,7 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
         # Tabloyu oluştur
         table = Table(table_data, colWidths=[4*cm, 4*cm, 4*cm, 4*cm, 4*cm])
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4a4a4a')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C5DD3')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
             ('FONTSIZE', (0, 0), (-1, 0), 10),
@@ -766,6 +766,167 @@ def test_pdf_export():
     # Test
     result = export_outgoing_invoices_to_pdf(test_invoices, 'test_faturalar.pdf')
     print(f"Test PDF oluşturma sonucu: {'Başarılı' if result else 'Başarısız'}")
+
+def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=None):
+    """Genel giderleri aylık formatta PDF'e aktar - Yatay tablo (Aylar sütunlarda)"""
+    try:
+        from datetime import datetime
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import cm
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER
+        
+        if not year:
+            year = datetime.now().year
+        
+        if not file_path:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"genel_giderler_aylik_{year}_{timestamp}.pdf"
+            pdf_folder = "Markdowns"
+            if not os.path.exists(pdf_folder):
+                os.makedirs(pdf_folder)
+            file_path = os.path.join(pdf_folder, filename)
+        
+        # Yatay sayfa için landscape
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=landscape(A4),
+            rightMargin=1.5*cm,
+            leftMargin=1.5*cm,
+            topMargin=2*cm,
+            bottomMargin=1.5*cm
+        )
+        
+        story = []
+        
+        # Font kayıt
+        exporter = InvoicePDFExporter()
+        exporter._register_fonts()
+        
+        # Türkçe font seçimi
+        registered_fonts = pdfmetrics.getRegisteredFontNames()
+        if 'Calibri-Turkish' in registered_fonts:
+            turkish_font = 'Calibri-Turkish'
+            turkish_font_bold = 'Arial-Bold-Turkish' if 'Arial-Bold-Turkish' in registered_fonts else 'Calibri-Turkish'
+        elif 'Arial-Turkish' in registered_fonts:
+            turkish_font = 'Arial-Turkish'
+            turkish_font_bold = 'Arial-Bold-Turkish' if 'Arial-Bold-Turkish' in registered_fonts else 'Arial-Turkish'
+        else:
+            turkish_font = 'Helvetica'
+            turkish_font_bold = 'Helvetica-Bold'
+        
+        # Başlık
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            fontName=turkish_font_bold,
+            fontSize=16,
+            alignment=TA_CENTER,
+            spaceAfter=20,
+            textColor=colors.HexColor('#6C5DD3')
+        )
+        story.append(Paragraph(f'<b>{year} YILI GENEL GİDERLER (AYLIK)</b>', title_style))
+        story.append(Spacer(1, 0.5*cm))
+        
+        # Ayları parse et ve topla
+        months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
+                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+        monthly_totals = {i+1: 0.0 for i in range(12)}
+        
+        # Expense data'dan aylık toplamları hesapla
+        for expense in expense_data:
+            tarih = expense.get('tarih', '')
+            miktar = float(expense.get('miktar', 0) or 0)
+            
+            # Tarihi parse et
+            try:
+                if '.' in tarih:
+                    parts = tarih.split('.')
+                    month = int(parts[1])
+                elif '/' in tarih:
+                    parts = tarih.split('/')
+                    month = int(parts[1])
+                elif '-' in tarih:
+                    parts = tarih.split('-')
+                    month = int(parts[1])
+                else:
+                    continue
+                    
+                if 1 <= month <= 12:
+                    monthly_totals[month] += miktar
+            except:
+                continue
+        
+        # Tablo verisi - Yatay format (Aylar sütunlarda)
+        table_data = []
+        
+        # Başlık satırı (Aylar)
+        header_row = ['AY'] + months
+        table_data.append(header_row)
+        
+        # Tutar satırı
+        amount_row = ['TUTAR'] + [f"{monthly_totals[i+1]:,.2f} ₺" for i in range(12)]
+        table_data.append(amount_row)
+        
+        # Sütun genişlikleri
+        col_widths = [2*cm] + [2*cm] * 12
+        
+        # Tablo oluştur
+        table = Table(table_data, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            # Header stili
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C5DD3')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('TOPPADDING', (0, 0), (-1, 0), 8),
+            
+            # İlk sütun (AY, TUTAR)
+            ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#F4F5FA')),
+            ('FONTNAME', (0, 1), (0, -1), turkish_font_bold),
+            ('FONTSIZE', (0, 1), (0, -1), 9),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+            
+            # Veri hücreleri
+            ('FONTNAME', (1, 1), (-1, -1), turkish_font),
+            ('FONTSIZE', (1, 1), (-1, -1), 9),
+            ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (1, 1), (-1, -1), 6),
+            ('TOPPADDING', (1, 1), (-1, -1), 6),
+            
+            # Kenarlıklar
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#E0E0E0')),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.HexColor('#6C5DD3')),
+        ]))
+        
+        story.append(table)
+        
+        # Toplam hesapla
+        total = sum(monthly_totals.values())
+        story.append(Spacer(1, 1*cm))
+        
+        total_style = ParagraphStyle(
+            'Total',
+            fontName=turkish_font_bold,
+            fontSize=12,
+            alignment=TA_CENTER,
+            textColor=colors.HexColor('#1A1D1F')
+        )
+        story.append(Paragraph(f'<b>TOPLAM YILLIK GİDER: {total:,.2f} ₺</b>', total_style))
+        
+        # PDF oluştur
+        doc.build(story)
+        print(f"Aylık genel giderler '{os.path.basename(file_path)}' dosyasına aktarıldı.")
+        return True
+        
+    except Exception as e:
+        print(f"Aylık genel gider PDF aktarma hatası: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 if __name__ == "__main__":
     test_pdf_export()
