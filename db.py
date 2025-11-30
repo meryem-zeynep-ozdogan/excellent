@@ -256,11 +256,11 @@ class Database:
         """Gelir veritabanına fatura ekler."""
         from datetime import datetime
         query = """
-            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invoices (fatura_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
-            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
+            data.get('fatura_no'), data.get('tarih'), data.get('firma'),
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
@@ -274,12 +274,12 @@ class Database:
         from datetime import datetime
         query = """
             UPDATE invoices SET
-            irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
+            tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
             toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?, usd_rate = ?, eur_rate = ?, updated_at = ?
             WHERE id = ?
         """
         params = (
-            data.get('irsaliye_no'), data.get('tarih'), data.get('firma'), 
+            data.get('tarih'), data.get('firma'), 
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
@@ -346,11 +346,11 @@ class Database:
         """Gider veritabanına fatura ekler."""
         from datetime import datetime
         query = """
-            INSERT INTO invoices (fatura_no, irsaliye_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO invoices (fatura_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
-            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'),
+            data.get('fatura_no'), data.get('tarih'), data.get('firma'),
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),
@@ -364,12 +364,12 @@ class Database:
         from datetime import datetime
         query = """
             UPDATE invoices SET
-            fatura_no = ?, irsaliye_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
+            fatura_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
             toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?, usd_rate = ?, eur_rate = ?, updated_at = ?
             WHERE id = ?
         """
         params = (
-            data.get('fatura_no'), data.get('irsaliye_no'), data.get('tarih'), data.get('firma'), 
+            data.get('fatura_no'), data.get('tarih'), data.get('firma'), 
             data.get('malzeme'), data.get('miktar'), data.get('toplam_tutar_tl'),
             data.get('toplam_tutar_usd'), data.get('toplam_tutar_eur'), data.get('birim'),
             data.get('kdv_yuzdesi', 0), data.get('kdv_tutari', 0), data.get('kdv_dahil', 0),

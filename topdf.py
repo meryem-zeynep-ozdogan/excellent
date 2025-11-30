@@ -739,7 +739,6 @@ def test_pdf_export():
     test_invoices = [
         {
             'fatura_no': 'FAT-001',
-            'irsaliye_no': 'IRS-001',
             'tarih': '2025-11-24',
             'firma': 'Test Firma A',
             'malzeme': 'Hizmet Bedeli',
@@ -751,7 +750,6 @@ def test_pdf_export():
         },
         {
             'fatura_no': 'FAT-002',
-            'irsaliye_no': 'IRS-002',
             'tarih': '2025-11-23',
             'firma': 'Test Firma B',
             'malzeme': 'Ürün Satışı',
@@ -765,7 +763,7 @@ def test_pdf_export():
     
     # Test
     result = export_outgoing_invoices_to_pdf(test_invoices, 'test_faturalar.pdf')
-    print(f"Test PDF oluşturma sonucu: {'Başarılı' if result else 'Başarısız'}")
+    print(f"Test PDF olusturma sonucu: {'Basarili' if result else 'Basarisiz'}")
 
 def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=None):
     """Genel giderleri aylık formatta PDF'e aktar - Yatay tablo (Aylar sütunlarda)"""

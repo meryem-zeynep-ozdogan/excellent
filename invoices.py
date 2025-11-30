@@ -141,7 +141,6 @@ class InvoiceProcessor:
             
             # Boş alanları olduğu gibi bırak
             processed['fatura_no'] = processed.get('fatura_no', '').strip()
-            processed['irsaliye_no'] = processed.get('irsaliye_no', '').strip()
             processed['firma'] = processed.get('firma', '').strip()
             processed['malzeme'] = processed.get('malzeme', '').strip()
             

@@ -21,10 +21,39 @@ class OptimizedQRProcessor:
             'smart_dpi_450': 0,    # Orta kalite dosyalar  
             'smart_dpi_600': 0,    # Düşük kalite dosyalar
             'fallback_scan': 0,    # Son çare tam tarama
+            'stage1_fast': 0,      # Resim işleme - hızlı tarama
+            'stage2_medium': 0,    # Resim işleme - orta tarama
+            'stage3_deep': 0,      # Resim işleme - derin tarama
             'failed': 0
         }
         # Dosya kalite cache (aynı dosya tekrar işlenirse hızlı olsun)
         self.file_quality_cache = {}
+    
+    def _extract_fatura_no_from_filename(self, filename):
+        """
+        Dosya adından CR ile başlayan fatura numarasını çıkar.
+        Örnek: 'CRA2025000000081 ATLAS MADEN AŞ İŞCİLİK.pdf' -> 'CRA2025000000081'
+        """
+        import re
+        # Dosya adından uzantıyı çıkar
+        name_without_ext = os.path.splitext(filename)[0]
+        
+        # CR ile başlayan ve ardından harf+sayı kombinasyonu olan pattern
+        # CRA, CRB, CR1, vs. ve ardından sayılar
+        pattern = r'^(CR[A-Z0-9]?\d+)'
+        match = re.match(pattern, name_without_ext)
+        
+        if match:
+            return match.group(1)
+        
+        # Alternatif: dosya adı içinde CR pattern ara
+        pattern_anywhere = r'(CR[A-Z0-9]?\d+)'
+        match = re.search(pattern_anywhere, name_without_ext)
+        
+        if match:
+            return match.group(1)
+        
+        return None
     
     def _init_qr_tools(self):
         """QR araçlarını lazy loading ile yükle"""
@@ -1209,6 +1238,11 @@ class OptimizedQRProcessor:
             # Dosya adından uzantıyı çıkar (fatura_no için)
             file_name_without_ext = os.path.splitext(file_basename)[0]
             
+            # ⭐ FATURA NUMARASINI DOSYA ADINDAN CR PATTERNİ İLE ÇIKAR ⭐
+            fatura_no_extracted = self._extract_fatura_no_from_filename(file_basename)
+            # CR pattern bulunamazsa tüm dosya adını kullan
+            fatura_no_from_filename = fatura_no_extracted if fatura_no_extracted else file_name_without_ext
+            
             # Dosya tipine göre işleme
             if file_path.lower().endswith('.pdf'):
                 qr_data, pdf_text = self.process_pdf(file_path)
@@ -1226,7 +1260,7 @@ class OptimizedQRProcessor:
                     return {
                         'dosya_adi': file_basename,
                         'dosya_yolu': file_path,
-                        'fatura_no_from_filename': file_name_without_ext,
+                        'fatura_no_from_filename': fatura_no_from_filename,
                         'durum': 'BAŞARILI',
                         'json_data': json_data,
                         'extracted_info': extracted_info
@@ -1235,7 +1269,7 @@ class OptimizedQRProcessor:
                     return {
                         'dosya_adi': file_basename,
                         'dosya_yolu': file_path,
-                        'fatura_no_from_filename': file_name_without_ext,
+                        'fatura_no_from_filename': fatura_no_from_filename,
                         'durum': 'JSON HATASI',
                         'json_data': json_data,
                         'extracted_info': extracted_info
@@ -1249,9 +1283,8 @@ class OptimizedQRProcessor:
                 # Tarih
                 tarih = self._extract_date_from_text(pdf_text)
                 
-                # Fatura No (PDF'den veya dosya adından)
-                fatura_no_pdf = self._extract_invoice_number_from_text(pdf_text)
-                fatura_no = fatura_no_pdf if fatura_no_pdf else file_name_without_ext
+                # Fatura No - CR pattern'den alındıysa onu kullan
+                fatura_no = fatura_no_from_filename
                 
                 # Tutarlar (toplam, matrah, KDV)
                 amounts = self._extract_amount_from_text(pdf_text)
@@ -1289,7 +1322,7 @@ class OptimizedQRProcessor:
                     return {
                         'dosya_adi': file_basename,
                         'dosya_yolu': file_path,
-                        'fatura_no_from_filename': file_name_without_ext,
+                        'fatura_no_from_filename': fatura_no_from_filename,
                         'durum': 'BAŞARILI',
                         'json_data': fallback_json,
                         'extracted_info': extracted_info
@@ -1301,24 +1334,232 @@ class OptimizedQRProcessor:
             return {
                 'dosya_adi': file_basename,
                 'dosya_yolu': file_path,
-                'fatura_no_from_filename': file_name_without_ext,
+                'fatura_no_from_filename': fatura_no_from_filename,
                 'durum': 'QR BULUNAMADI',
                 'json_data': {},
                 'extracted_info': extracted_info
             }
             
         except Exception as e:
-            logging.error(f"❌ Dosya işleme hatası ({file_path}): {e}")
+            logging.error(f"[ERROR] Dosya isleme hatasi ({file_path}): {e}")
+            # Exception durumunda da CR pattern'i kullanmaya çalış
+            file_basename = os.path.basename(file_path)
+            fatura_no_extracted = self._extract_fatura_no_from_filename(file_basename)
+            fatura_no_from_filename = fatura_no_extracted if fatura_no_extracted else os.path.splitext(file_basename)[0]
             return {
-                'dosya_adi': os.path.basename(file_path),
+                'dosya_adi': file_basename,
                 'dosya_yolu': file_path,
-                'fatura_no_from_filename': os.path.splitext(os.path.basename(file_path))[0],
+                'fatura_no_from_filename': fatura_no_from_filename,
                 'durum': 'KRİTİK HATA',
                 'json_data': {},
                 'extracted_info': {'firma': None, 'malzeme': None, 'miktar': None},
                 'hata': str(e)
             }
     
+    def _extract_date_from_text(self, pdf_text):
+        """PDF metninden tarih çıkar - Gelişmiş"""
+        if not pdf_text:
+            return datetime.now().strftime("%d.%m.%Y")
+        
+        lines = pdf_text.split('\n')
+        
+        # Fatura tarihi anahtar kelimeleri
+        date_keywords = [
+            r'fatura\s*tarih[i]?',
+            r'tarih',
+            r'date',
+            r'düzenlenme\s*tarih[i]?',
+            r'belge\s*tarih[i]?'
+        ]
+        
+        # Tarih formatları
+        date_patterns = [
+            r'(\d{2})[./-](\d{2})[./-](\d{4})',
+            r'(\d{1,2})\s+(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})'
+        ]
+        
+        # Önce anahtar kelimelerin yakınında ara
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            if any(re.search(keyword, line_lower) for keyword in date_keywords):
+                # Bu satır ve sonraki 3 satırda tarih ara
+                for j in range(i, min(i+4, len(lines))):
+                    for pattern in date_patterns:
+                        match = re.search(pattern, lines[j])
+                        if match:
+                            if len(match.groups()) == 3 and match.group(1).isdigit():
+                                date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
+                                logging.debug(f"   Tarih bulundu: {date_str}")
+                                return date_str
+        
+        # Genel tarama
+        for pattern in date_patterns:
+            match = re.search(pattern, pdf_text)
+            if match:
+                if len(match.groups()) == 3 and match.group(1).isdigit():
+                    date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
+                    logging.debug(f"   Tarih bulundu (genel): {date_str}")
+                    return date_str
+        
+        # Bulunamadıysa bugünün tarihi
+        logging.warning(f"   PDF'de tarih bulunamadi, bugun kullanilacak")
+        return datetime.now().strftime("%d.%m.%Y")
+    
+    def _extract_invoice_number_from_text(self, pdf_text):
+        """PDF metninden fatura numarası çıkar"""
+        if not pdf_text:
+            return None
+        
+        lines = pdf_text.split('\n')
+        
+        # Fatura no anahtar kelimeleri
+        invoice_keywords = [
+            r'fatura\s*no',
+            r'fatura\s*numaras[ıi]',
+            r'invoice\s*number',
+            r'belge\s*no',
+            r'seri\s*no'
+        ]
+        
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            for keyword in invoice_keywords:
+                if re.search(keyword, line_lower):
+                    # Bu satırda veya sonraki 2 satırda fatura no ara
+                    for j in range(i, min(i+3, len(lines))):
+                        # Fatura no pattern: Harfler ve sayılar
+                        invoice_match = re.search(r'([A-Z]{3}\d{12,}|[A-Z0-9]{10,})', lines[j])
+                        if invoice_match:
+                            invoice_no = invoice_match.group(1)
+                            logging.debug(f"   Fatura No: {invoice_no}")
+                            return invoice_no
+        
+        return None
+    
+    def _extract_amount_from_text(self, pdf_text):
+        """PDF metninden tutar çıkar - Gelişmiş (Toplam, Matrah, KDV)"""
+        if not pdf_text:
+            return {'toplam': 0.0, 'matrah': 0.0, 'kdv': 0.0, 'kdv_yuzdesi': 0.0}
+        
+        lines = pdf_text.split('\n')
+        amounts = {
+            'toplam': 0.0,
+            'matrah': 0.0,
+            'kdv': 0.0,
+            'kdv_yuzdesi': 0.0
+        }
+        
+        # TOPLAM TUTAR (Ödenecek, Genel Toplam)
+        toplam_keywords = [
+            r'ödenecek\s*tutar',
+            r'genel\s*toplam',
+            r'toplam\s*tutar',
+            r'vergiler\s*dahil\s*toplam',
+            r'total\s*amount',
+            r'payable\s*amount'
+        ]
+        
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            for keyword in toplam_keywords:
+                if re.search(keyword, line_lower):
+                    for j in range(i, min(i+3, len(lines))):
+                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
+                        if amount_match:
+                            try:
+                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
+                                amount = float(amount_str)
+                                if amount > 10:
+                                    amounts['toplam'] = amount
+                                    logging.debug(f"   Toplam tutar: {amount}")
+                                    break
+                            except:
+                                continue
+                    if amounts['toplam'] > 0:
+                        break
+            if amounts['toplam'] > 0:
+                break
+        
+        # MATRAH (KDV Matrahı)
+        matrah_keywords = [
+            r'kdv\s*matrah[ıi]?',
+            r'matrah',
+            r'mal\s*hizmet\s*toplam',
+            r'vergiden\s*önceki\s*toplam',
+            r'net\s*tutar'
+        ]
+        
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            for keyword in matrah_keywords:
+                if re.search(keyword, line_lower):
+                    for j in range(i, min(i+3, len(lines))):
+                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
+                        if amount_match:
+                            try:
+                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
+                                amount = float(amount_str)
+                                if amount > 0:
+                                    amounts['matrah'] = amount
+                                    logging.debug(f"   Matrah: {amount}")
+                                    break
+                            except:
+                                continue
+                    if amounts['matrah'] > 0:
+                        break
+            if amounts['matrah'] > 0:
+                break
+        
+        # KDV TUTARI
+        kdv_keywords = [
+            r'hesaplanan\s*kdv',
+            r'kdv\s*tutar[ıi]?',
+            r'kdv\s*toplam[ıi]?',
+            r'vergi\s*tutar[ıi]?',
+            r'tax\s*amount'
+        ]
+        
+        for i, line in enumerate(lines):
+            line_lower = line.lower()
+            for keyword in kdv_keywords:
+                if re.search(keyword, line_lower):
+                    for j in range(i, min(i+3, len(lines))):
+                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
+                        if amount_match:
+                            try:
+                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
+                                amount = float(amount_str)
+                                if amount > 0:
+                                    amounts['kdv'] = amount
+                                    logging.debug(f"   KDV tutari: {amount}")
+                                    break
+                            except:
+                                continue
+                    if amounts['kdv'] > 0:
+                        break
+            if amounts['kdv'] > 0:
+                break
+        
+        # KDV YÜZDESİ
+        kdv_percent_match = re.search(r'%\s*(\d+)', pdf_text)
+        if kdv_percent_match:
+            amounts['kdv_yuzdesi'] = float(kdv_percent_match.group(1))
+            logging.debug(f"   KDV %: {amounts['kdv_yuzdesi']}")
+        elif amounts['matrah'] > 0 and amounts['kdv'] > 0:
+            amounts['kdv_yuzdesi'] = round((amounts['kdv'] / amounts['matrah']) * 100, 2)
+            logging.debug(f"   KDV % (hesaplanan): {amounts['kdv_yuzdesi']}")
+        
+        # Tutarları doğrula ve düzelt
+        if amounts['toplam'] == 0 and amounts['matrah'] > 0 and amounts['kdv'] > 0:
+            amounts['toplam'] = amounts['matrah'] + amounts['kdv']
+            logging.debug(f"   Toplam hesaplandi: {amounts['toplam']}")
+        
+        if amounts['matrah'] == 0 and amounts['toplam'] > 0 and amounts['kdv'] > 0:
+            amounts['matrah'] = amounts['toplam'] - amounts['kdv']
+            logging.debug(f"   Matrah hesaplandi: {amounts['matrah']}")
+        
+        return amounts
+
     def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None):
         """Klasördeki tüm dosyaları paralel işle"""
         if not self.tools_loaded:
@@ -1667,7 +1908,6 @@ class QRInvoiceIntegrator:
         # Anahtar eşleme sözlüğü
         key_map = {
             'fatura_no': ['faturaNo', 'invoiceNumber', 'faturanumarasi', 'belgeNo', 'documentNo', 'seriNo', 'faturaid', 'belge_no'],
-            'irsaliye_no': ['invoiceId', 'irsaliyeNo', 'uuid', 'id', 'no', 'ettn', 'ETTN'],
             'tarih': ['invoiceDate', 'faturaTarihi', 'tarih', 'date', 'issueDate', 'belge_tarihi', 'belgeTarihi'],
             'firma': ['sellerName', 'saticiUnvan', 'firma', 'supplier', 'company', 'companyName', 'buyerName', 'aliciUnvan', 'satici_unvan', 'alici_unvan'],
             'malzeme': ['tip', 'type', 'itemName', 'description', 'malzeme', 'hizmet', 'urun', 'product', 'senaryo', 'aciklama'],
@@ -1695,9 +1935,6 @@ class QRInvoiceIntegrator:
             parsed['fatura_no'] = str(qr_fatura_no)
         else:
             parsed['fatura_no'] = ''
-        
-        # İrsaliye No (zorunlu)
-        parsed['irsaliye_no'] = str(self._get_value_case_insensitive(qr_json, key_map['irsaliye_no']) or f"QR-{int(time.time())}")
         
         # Tarih
         qr_tarih = self._get_value_case_insensitive(qr_json, key_map['tarih'])
@@ -2086,25 +2323,25 @@ class QRInvoiceIntegrator:
 # ============================================================================
 
 if __name__ == "__main__":
-    print("🚀 OPTİMİZE EDİLMİŞ QR SİSTEMİ")
+    print("[*] OPTIMIZE EDILMIS QR SISTEMI")
     print("=" * 50)
     
     # Standalone test
     processor = OptimizedQRProcessor()
     
-    klasor = input("📁 Klasör yolu (boş=mevcut): ").strip() or "."
+    klasor = input("[?] Klasor yolu (bos=mevcut): ").strip() or "."
     
     results = processor.process_qr_files_in_folder(klasor, max_workers=6)
     
     if results:
         successful = len([r for r in results if r.get('durum') == 'BAŞARILI'])
-        print(f"\n🎉 İşlem tamamlandı!")
-        print(f"📊 Başarılı: {successful}/{len(results)}")
-        print(f"📈 Akıllı DPI İstatistikleri:")
-        print(f"   • Yüksek Kalite (300): {processor.stats['smart_dpi_300']}")
-        print(f"   • Orta Kalite (450): {processor.stats['smart_dpi_450']}")
-        print(f"   • Düşük Kalite (600): {processor.stats['smart_dpi_600']}")
-        print(f"   • Fallback: {processor.stats['fallback_scan']}")
-        print(f"   • Başarısız: {processor.stats['failed']}")
+        print(f"\n[OK] Islem tamamlandi!")
+        print(f"[STATS] Basarili: {successful}/{len(results)}")
+        print(f"[STATS] Akilli DPI Istatistikleri:")
+        print(f"   - Yuksek Kalite (300): {processor.stats['smart_dpi_300']}")
+        print(f"   - Orta Kalite (450): {processor.stats['smart_dpi_450']}")
+        print(f"   - Dusuk Kalite (600): {processor.stats['smart_dpi_600']}")
+        print(f"   - Fallback: {processor.stats['fallback_scan']}")
+        print(f"   - Basarisiz: {processor.stats['failed']}")
     else:
-        print("❌ İşlem başarısız")
+        print("[ERROR] Islem basarisiz")

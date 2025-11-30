@@ -32,17 +32,17 @@ pdf_exporter = InvoicePDFExporter()
 def on_backend_data_updated():
     """Backend'den veri güncellendiğinde tüm sayfalardaki bileşenleri günceller"""
     try:
-        print("🔔 Backend veri güncelleme callback çağrıldı")
+        print("[INFO] Backend veri guncelleme callback cagrildi")
         # Tüm kayıtlı callback'leri çağır
         for page_name, callback in state["update_callbacks"].items():
             if callback is not None:
                 try:
-                    print(f"  → {page_name} callback çalıştırılıyor...")
+                    print(f"  -> {page_name} callback calistiriliyor...")
                     callback()
                 except Exception as ex:
-                    print(f"  ✗ {page_name} callback hatası: {ex}")
+                    print(f"  [X] {page_name} callback hatasi: {ex}")
     except Exception as e:
-        print(f"❌ on_backend_data_updated hatası: {e}")
+        print(f"[ERROR] on_backend_data_updated hatasi: {e}")
 
 def on_backend_status_updated(message, duration):
     """Backend'den status mesajı geldiğinde çağrılır"""
@@ -304,7 +304,6 @@ def create_invoice_table_content(sort_option="newest", invoice_type="income", on
                     cells=[
                         checkbox_cell,  # İlk hücre checkbox
                         cell(inv.get('fatura_no', '')),
-                        cell(inv.get('irsaliye_no', '')),
                         cell(inv.get('tarih', '')),
                         cell(inv.get('firma', '')),
                         cell(inv.get('malzeme', '')),
@@ -323,10 +322,10 @@ def create_invoice_table_content(sort_option="newest", invoice_type="income", on
         pass
 
     return ft.DataTable(
-        columns=[header("SEÇ"), header("FATURA NO"), header("İRSALİYE NO"), header("TARİH"), header("FİRMA"), header("MALZEME"), header("MİKTAR"), ft.DataColumn(ft.Text("TUTAR (TL)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (USD)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (EUR)", weight="bold", color=col_white, size=12), numeric=True), header("KDV")],
-        rows=rows, heading_row_color=col_table_header_bg, heading_row_height=45, data_row_max_height=40,
+        columns=[header("SEÇ"), header("FATURA NO"), header("TARİH"), header("FİRMA"), header("MALZEME"), header("MİKTAR"), ft.DataColumn(ft.Text("TUTAR (TL)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (USD)", weight="bold", color=col_white, size=12), numeric=True), ft.DataColumn(ft.Text("TUTAR (EUR)", weight="bold", color=col_white, size=12), numeric=True), header("KDV")],
+        rows=rows, heading_row_color=col_table_header_bg, heading_row_height=48, data_row_max_height=45,
         vertical_lines=ft.border.BorderSide(0, "transparent"), horizontal_lines=ft.border.BorderSide(1, "#F0F0F0"),
-        column_spacing=15, width=float("inf")
+        column_spacing=25, width=float("inf")
     )
 
 def create_donemsel_table(year=None, tax_fields=None, on_tax_change=None):
@@ -1514,11 +1513,11 @@ def main(page: ft.Page):
                 success = export_monthly_income_to_excel(selected_year, monthly_results, quarterly_results, summary, file_path)
                 
                 if success:
-                    print(f"✅ Excel raporu oluşturuldu: {filename}")
+                    print(f"[OK] Excel raporu olusturuldu: {filename}")
                 else:
-                    print("❌ Excel raporu oluşturulamadı")
+                    print("[ERROR] Excel raporu olusturulamadi")
             except Exception as ex:
-                print(f"❌ Hata: {str(ex)}")
+                print(f"[ERROR] Hata: {str(ex)}")
         
         def export_to_pdf_donemsel(e):
             """Dönemsel gelir raporunu PDF'e aktar"""
@@ -1541,11 +1540,11 @@ def main(page: ft.Page):
                 success = export_monthly_income_to_pdf(selected_year, monthly_results, quarterly_results, summary, file_path)
                 
                 if success:
-                    print(f"✅ PDF raporu oluşturuldu: {filename}")
+                    print(f"[OK] PDF raporu olusturuldu: {filename}")
                 else:
-                    print("❌ PDF raporu oluşturulamadı")
+                    print("[ERROR] PDF raporu olusturulamadi")
             except Exception as ex:
-                print(f"❌ Hata: {str(ex)}")
+                print(f"[ERROR] Hata: {str(ex)}")
         
         def calculate_periodic_data(year):
             """Dönemsel veriler için hesaplama yap"""
@@ -1679,7 +1678,6 @@ def main(page: ft.Page):
         
         # Input alanları önce tanımlanmalı (update_selected_count bunları kullanacak)
         input_fatura_no = ft.TextField(hint_text="FAT-2025...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
-        input_irsaliye = ft.TextField(hint_text="IRS...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_tarih = ft.TextField(hint_text="25.11.2025", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_firma = ft.TextField(hint_text="Firma seçiniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_malzeme = ft.TextField(hint_text="Ürün giriniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
@@ -1716,7 +1714,6 @@ def main(page: ft.Page):
                         if selected_count == 1 and isinstance(selected_rows[0].data, dict):
                             invoice = selected_rows[0].data
                             input_fatura_no.value = str(invoice.get('fatura_no', ''))
-                            input_irsaliye.value = str(invoice.get('irsaliye_no', ''))
                             input_tarih.value = str(invoice.get('tarih', ''))
                             input_firma.value = str(invoice.get('firma', ''))
                             input_malzeme.value = str(invoice.get('malzeme', ''))
@@ -1825,7 +1822,6 @@ def main(page: ft.Page):
             """Input alanlarını temizle ve seçimleri kaldır"""
             try:
                 input_fatura_no.value = ""
-                input_irsaliye.value = ""
                 input_tarih.value = ""
                 input_firma.value = ""
                 input_malzeme.value = ""
@@ -1859,7 +1855,6 @@ def main(page: ft.Page):
                 # Input verilerini topla
                 invoice_data = {
                     'fatura_no': input_fatura_no.value or "",
-                    'irsaliye_no': input_irsaliye.value or "",
                     'tarih': input_tarih.value or "",
                     'firma': input_firma.value or "",
                     'malzeme': input_malzeme.value or "",
@@ -1939,7 +1934,6 @@ def main(page: ft.Page):
                 # Input verilerini topla
                 invoice_data = {
                     'fatura_no': input_fatura_no.value or "",
-                    'irsaliye_no': input_irsaliye.value or "",
                     'tarih': input_tarih.value or "",
                     'firma': input_firma.value or "",
                     'malzeme': input_malzeme.value or "",
@@ -2093,14 +2087,14 @@ def main(page: ft.Page):
                 # Klasör seçme dialogu
                 def on_folder_selected(e: ft.FilePickerResultEvent):
                     try:
-                        print(f"📁 Klasör seçildi: {e.path if e.path else 'İptal edildi'}")
+                        print(f"[FOLDER] Klasor secildi: {e.path if e.path else 'Iptal edildi'}")
                         
                         if not e.path:
-                            print("⚠️ Klasör seçimi iptal edildi")
+                            print("[WARN] Klasor secimi iptal edildi")
                             return
                         
                         folder_path = e.path
-                        print(f"✅ Klasör yolu: {folder_path}")
+                        print(f"[OK] Klasor yolu: {folder_path}")
                         
                         # Dialog referansı için
                         type_dialog = None
@@ -2108,7 +2102,7 @@ def main(page: ft.Page):
                         # QR işleme (thread'de) - Tip seçildikten sonra çalışacak
                         def process_in_thread(selected_type):
                             try:
-                                print(f"🔍 QR işleme başlatılıyor: {folder_path} (Tip: {selected_type})")
+                                print(f"[QR] QR isleme baslatiliyor: {folder_path} (Tip: {selected_type})")
                                 
                                 # İlerleme dialogu oluştur (burada oluşturuyoruz ki thread başlamadan görünsün)
                                 # Not: Flet'te UI güncellemeleri ana thread'de olmalı, bu yüzden dialogu 
@@ -2121,7 +2115,7 @@ def main(page: ft.Page):
                                     status_callback=status_callback
                                 )
                                 
-                                print(f"📊 QR okuma tamamlandı: {len(results) if results else 0} dosya")
+                                print(f"[QR] QR okuma tamamlandi: {len(results) if results else 0} dosya")
                                 
                                 if not results:
                                     progress_dialog.open = False
@@ -2134,13 +2128,13 @@ def main(page: ft.Page):
                                     return
                                 
                                 # Backend'e aktar - backend metodu kullan
-                                print(f"💾 Veritabanına kaydediliyor... (Tip: {selected_type})")
+                                print(f"[SAVE] Veritabanina kaydediliyor... (Tip: {selected_type})")
                                 summary = backend_instance.add_invoices_from_qr_data(
                                     results,
                                     selected_type
                                 )
                                 
-                                print(f"✅ Kayıt tamamlandı: {summary}")
+                                print(f"[OK] Kayit tamamlandi: {summary}")
                                 
                                 # Dialog kapat
                                 progress_dialog.open = False
@@ -2148,12 +2142,12 @@ def main(page: ft.Page):
                                 
                                 # Sonuç göster
                                 success_msg = (
-                                    f"✅ QR İşleme Tamamlandı!\n\n"
-                                    f"📊 Toplam: {summary['total']} dosya\n"
-                                    f"✅ Başarılı: {summary['added']}\n"
-                                    f"❌ Başarısız: {summary['failed']}\n"
-                                    f"⏭️ Duplicate: {summary['skipped_duplicates']}\n"
-                                    f"📁 Tip: {'GELİR' if selected_type == 'outgoing' else 'GİDER'}"
+                                    f"QR Isleme Tamamlandi!\n\n"
+                                    f"Toplam: {summary['total']} dosya\n"
+                                    f"Basarili: {summary['added']}\n"
+                                    f"Basarisiz: {summary['failed']}\n"
+                                    f"Duplicate: {summary['skipped_duplicates']}\n"
+                                    f"Tip: {'GELIR' if selected_type == 'outgoing' else 'GIDER'}"
                                 )
                                 
                                 page.snack_bar = ft.SnackBar(
@@ -2176,11 +2170,11 @@ def main(page: ft.Page):
                             except Exception as ex:
                                 import traceback
                                 error_detail = traceback.format_exc()
-                                print(f"❌ QR işleme hatası:\n{error_detail}")
+                                print(f"[ERROR] QR isleme hatasi:\n{error_detail}")
                                 
                                 progress_dialog.open = False
                                 page.snack_bar = ft.SnackBar(
-                                    content=ft.Text(f"❌ QR işleme hatası: {str(ex)}", color=col_white),
+                                    content=ft.Text(f"QR isleme hatasi: {str(ex)}", color=col_white),
                                     bgcolor=col_danger,
                                     duration=5000
                                 )
@@ -2213,7 +2207,7 @@ def main(page: ft.Page):
 
                         # Fatura tipi seçme dialogu callback'i
                         def on_type_selected(invoice_type):
-                            print(f"📋 Fatura tipi seçildi: {invoice_type}")
+                            print(f"[TYPE] Fatura tipi secildi: {invoice_type}")
                             
                             # BottomSheet'i kapat (eğer bs referansı varsa)
                             # Not: bs referansı aşağıda tanımlanıyor, lambda içinde closure olarak gelecek
@@ -2227,7 +2221,7 @@ def main(page: ft.Page):
                             threading.Thread(target=process_in_thread, args=(invoice_type,), daemon=True).start()
                     
                         # Kompakt BottomSheet ile tip seçme
-                        print("🔵 Tip seçme BottomSheet oluşturuluyor...")
+                        print("[*] Tip secme BottomSheet olusturuluyor...")
                         
                         def close_bs(bs):
                             bs.open = False
@@ -2273,37 +2267,37 @@ def main(page: ft.Page):
                             on_dismiss=lambda _: print("BottomSheet kapatıldı")
                         )
                         
-                        print("🟢 BottomSheet page'e ekleniyor...")
+                        print("[*] BottomSheet page'e ekleniyor...")
                         page.overlay.append(bs)
                         page.update()
-                        print("✅ BottomSheet gösterildi!")
+                        print("[OK] BottomSheet gosterildi!")
                         
                     except Exception as dialog_error:
                         import traceback
-                        print(f"❌ Dialog hatası: {traceback.format_exc()}")
+                        print(f"[ERROR] Dialog hatasi: {traceback.format_exc()}")
                         page.snack_bar = ft.SnackBar(
-                            content=ft.Text(f"❌ Dialog hatası: {str(dialog_error)}", color=col_white),
+                            content=ft.Text(f"Dialog hatasi: {str(dialog_error)}", color=col_white),
                             bgcolor=col_danger
                         )
                         page.snack_bar.open = True
                         page.update()
                 
                 # Klasör seçici
-                print("🔷 FilePicker oluşturuluyor...")
+                print("[*] FilePicker olusturuluyor...")
                 file_picker = ft.FilePicker(on_result=on_folder_selected)
                 page.overlay.append(file_picker)
                 page.update()
-                print("🔷 Klasör seçme dialogu açılıyor...")
+                print("[*] Klasor secme dialogu aciliyor...")
                 file_picker.get_directory_path(dialog_title="QR PDF/Resim Klasörünü Seç")
-                print("✅ FilePicker başlatıldı")
+                print("[OK] FilePicker baslatildi")
                 
             except Exception as ex:
                 import traceback
                 error_detail = traceback.format_exc()
-                print(f"❌ process_qr_folder hatası:\n{error_detail}")
+                print(f"[ERROR] process_qr_folder hatasi:\n{error_detail}")
                 
                 page.snack_bar = ft.SnackBar(
-                    content=ft.Text(f"❌ QR okuma hatası: {str(ex)}", color=col_white),
+                    content=ft.Text(f"QR okuma hatasi: {str(ex)}", color=col_white),
                     bgcolor=col_danger
                 )
                 page.snack_bar.open = True
@@ -2431,7 +2425,6 @@ def main(page: ft.Page):
         # Input satırları - TextField referanslarını kullan
         input_line_1 = ft.Row([
             ft.Column([ft.Text("Fatura No", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_fatura_no, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
-            ft.Column([ft.Text("İrsaliye", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_irsaliye, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
             ft.Column([ft.Text("Tarih", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_tarih, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=1),
             ft.Column([ft.Text("Firma", size=12, weight="w500", color=col_text_secondary), ft.Container(content=input_firma, bgcolor=col_card, border_radius=6, height=42, border=ft.border.all(1, "#E0E0E0"))], spacing=5, expand=2)
         ], spacing=15)

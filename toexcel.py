@@ -134,7 +134,6 @@ class InvoiceExcelExporter:
         for invoice in invoice_data:
             row = {
                 'FATURA NO': invoice.get('fatura_no', ''),
-                'İRSALİYE NO': invoice.get('irsaliye_no', ''),
                 'TARİH': self._format_date(invoice.get('tarih', '')),
                 'FİRMA': invoice.get('firma', ''),
                 'MALZEME': invoice.get('malzeme', ''),
