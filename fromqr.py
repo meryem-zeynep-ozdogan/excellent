@@ -1364,13 +1364,16 @@ class OptimizedQRProcessor:
                     results.append(result)
                     completed_count += 1
                     
-                    # İlerleme bildirimi
-                    if status_callback and completed_count % 3 == 0:
+                    # İlerleme bildirimi - Her dosyada güncelle
+                    if status_callback:
                         progress = int((completed_count / len(file_paths)) * 95)
                         elapsed = time.time() - start_time
                         rate = completed_count / elapsed if elapsed > 0 else 0
                         
-                        if not status_callback(f"İşleniyor: {completed_count}/{len(file_paths)} ({rate:.1f} dosya/s)", progress):
+                        # Yüzdelik gösterim ekle
+                        msg = f"İşleniyor: %{progress} ({completed_count}/{len(file_paths)})"
+                        
+                        if not status_callback(msg, progress):
                             # İptal edildi
                             logging.warning("⚠️ Kullanıcı işlemi iptal etti")
                             break

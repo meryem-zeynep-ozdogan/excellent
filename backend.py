@@ -10,6 +10,18 @@ from invoices import InvoiceProcessor, InvoiceManager, PeriodicIncomeCalculator
 class Backend:
     """Uygulamanın ana iş mantığını yöneten sınıf."""
 
+    class Event:
+        def __init__(self):
+            self.handlers = []
+        def connect(self, handler):
+            self.handlers.append(handler)
+        def emit(self, *args, **kwargs):
+            for handler in self.handlers:
+                try:
+                    handler(*args, **kwargs)
+                except Exception as e:
+                    print(f"Error in event handler: {e}")
+
     def __init__(self):
         """
         Backend başlatıcısı.
@@ -28,8 +40,7 @@ class Backend:
                 self.settings['kurumlar_vergisi_yuzdesi'] = 22.0
         else:
             self.settings['kurumlar_vergisi_yuzdesi'] = 22.0
-        self.exchange_rates = {}
-        
+
         # Fatura işleyici ve yönetici
         self.invoice_processor = InvoiceProcessor(self)
         self.invoice_manager = InvoiceManager(self)
@@ -39,6 +50,15 @@ class Backend:
         
         # QR Entegrasyon - Lazy loading (gerektiğinde yüklenecek)
         self._qr_integrator = None
+        
+        # Sinyaller
+        self.data_updated = self.Event() # Veri güncelleme sinyali
+        
+        # Döviz kurları
+        self.exchange_rates = {
+            'USD': 0.0,
+            'EUR': 0.0
+        }
         
         # Kurları başlangıçta bir kez çek
         self.update_exchange_rates()

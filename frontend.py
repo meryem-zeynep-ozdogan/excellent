@@ -271,6 +271,8 @@ def create_invoice_table_content(sort_option="newest", invoice_type="income", on
                 offset=0,
                 order_by=order_by
             )
+            
+            print(f"DEBUG: Fetched {len(invoices) if invoices else 0} invoices from backend.")
         
         # DataTable satırlarını oluştur
         if invoices:
@@ -282,16 +284,19 @@ def create_invoice_table_content(sort_option="newest", invoice_type="income", on
                 checkbox = ft.Checkbox(value=False, on_change=on_select_changed if on_select_changed else None)
                 checkbox_cell = ft.DataCell(checkbox)
                 
-                # Kur bilgisini al
-                usd_rate = inv.get('usd_rate', 0)
-                eur_rate = inv.get('eur_rate', 0)
+                # Kur bilgisini al (None kontrolü yap)
+                usd_rate = inv.get('usd_rate')
+                eur_rate = inv.get('eur_rate')
+                
+                usd_rate_val = float(usd_rate) if usd_rate is not None else 0.0
+                eur_rate_val = float(eur_rate) if eur_rate is not None else 0.0
                 
                 # Tutar görüntüleme - kur bilgisi ile
-                tutar_usd = float(inv.get('toplam_tutar_usd', 0))
-                tutar_eur = float(inv.get('toplam_tutar_eur', 0))
+                tutar_usd = float(inv.get('toplam_tutar_usd', 0) or 0)
+                tutar_eur = float(inv.get('toplam_tutar_eur', 0) or 0)
                 
-                usd_text = f"{tutar_usd:,.2f}" if usd_rate == 0 else f"{tutar_usd:,.2f} ({usd_rate:.2f} TL)"
-                eur_text = f"{tutar_eur:,.2f}" if eur_rate == 0 else f"{tutar_eur:,.2f} ({eur_rate:.2f} TL)"
+                usd_text = f"{tutar_usd:,.2f}" if usd_rate_val == 0 else f"{tutar_usd:,.2f} ({usd_rate_val:.2f} TL)"
+                eur_text = f"{tutar_eur:,.2f}" if eur_rate_val == 0 else f"{tutar_eur:,.2f} ({eur_rate_val:.2f} TL)"
                 
                 # Her satıra invoice verilerini data olarak ekle
                 row = ft.DataRow(
@@ -312,6 +317,9 @@ def create_invoice_table_content(sort_option="newest", invoice_type="income", on
                 )
                 rows.append(row)
     except Exception as e:
+        import traceback
+        print(f"ERROR in create_invoice_table_content: {e}")
+        print(traceback.format_exc())
         pass
 
     return ft.DataTable(
@@ -2079,6 +2087,228 @@ def main(page: ft.Page):
                 page.snack_bar.open = True
                 page.update()
 
+        def process_qr_folder(e):
+            """QR kodları okuyup faturalara aktar"""
+            try:
+                # Klasör seçme dialogu
+                def on_folder_selected(e: ft.FilePickerResultEvent):
+                    try:
+                        print(f"📁 Klasör seçildi: {e.path if e.path else 'İptal edildi'}")
+                        
+                        if not e.path:
+                            print("⚠️ Klasör seçimi iptal edildi")
+                            return
+                        
+                        folder_path = e.path
+                        print(f"✅ Klasör yolu: {folder_path}")
+                        
+                        # Dialog referansı için
+                        type_dialog = None
+                        
+                        # QR işleme (thread'de) - Tip seçildikten sonra çalışacak
+                        def process_in_thread(selected_type):
+                            try:
+                                print(f"🔍 QR işleme başlatılıyor: {folder_path} (Tip: {selected_type})")
+                                
+                                # İlerleme dialogu oluştur (burada oluşturuyoruz ki thread başlamadan görünsün)
+                                # Not: Flet'te UI güncellemeleri ana thread'de olmalı, bu yüzden dialogu 
+                                # on_type_selected içinde açacağız, burada sadece güncelleme yapacağız.
+                                
+                                # QR dosyalarını oku
+                                results = backend_instance.process_qr_files_in_folder(
+                                    folder_path,
+                                    max_workers=6,
+                                    status_callback=status_callback
+                                )
+                                
+                                print(f"📊 QR okuma tamamlandı: {len(results) if results else 0} dosya")
+                                
+                                if not results:
+                                    progress_dialog.open = False
+                                    page.snack_bar = ft.SnackBar(
+                                        content=ft.Text("❌ Klasörde işlenebilir dosya bulunamadı!", color=col_white),
+                                        bgcolor=col_danger
+                                    )
+                                    page.snack_bar.open = True
+                                    page.update()
+                                    return
+                                
+                                # Backend'e aktar - backend metodu kullan
+                                print(f"💾 Veritabanına kaydediliyor... (Tip: {selected_type})")
+                                summary = backend_instance.add_invoices_from_qr_data(
+                                    results,
+                                    selected_type
+                                )
+                                
+                                print(f"✅ Kayıt tamamlandı: {summary}")
+                                
+                                # Dialog kapat
+                                progress_dialog.open = False
+                                page.update()
+                                
+                                # Sonuç göster
+                                success_msg = (
+                                    f"✅ QR İşleme Tamamlandı!\n\n"
+                                    f"📊 Toplam: {summary['total']} dosya\n"
+                                    f"✅ Başarılı: {summary['added']}\n"
+                                    f"❌ Başarısız: {summary['failed']}\n"
+                                    f"⏭️ Duplicate: {summary['skipped_duplicates']}\n"
+                                    f"📁 Tip: {'GELİR' if selected_type == 'outgoing' else 'GİDER'}"
+                                )
+                                
+                                page.snack_bar = ft.SnackBar(
+                                    content=ft.Text(success_msg, color=col_white),
+                                    bgcolor=col_success,
+                                    duration=8000
+                                )
+                                page.snack_bar.open = True
+                                
+                                # Tabloyu güncelle
+                                # refresh_invoice_table fonksiyonu scope dışında olabilir, kontrol et
+                                if 'refresh_invoice_table' in locals():
+                                    refresh_invoice_table()
+                                else:
+                                    # Alternatif güncelleme
+                                    update_invoice_table(state.get("invoice_sort_option", "newest"))
+                                    
+                                page.update()
+                                
+                            except Exception as ex:
+                                import traceback
+                                error_detail = traceback.format_exc()
+                                print(f"❌ QR işleme hatası:\n{error_detail}")
+                                
+                                progress_dialog.open = False
+                                page.snack_bar = ft.SnackBar(
+                                    content=ft.Text(f"❌ QR işleme hatası: {str(ex)}", color=col_white),
+                                    bgcolor=col_danger,
+                                    duration=5000
+                                )
+                                page.snack_bar.open = True
+                                page.update()
+
+                        # İlerleme dialogu ve callback tanımları
+                        progress_bar = ft.ProgressBar(width=400, value=0)
+                        progress_text = ft.Text("QR kodları okunuyor...", size=14, color=col_text)
+                        
+                        progress_dialog = ft.AlertDialog(
+                            modal=True,
+                            title=ft.Text("QR Kod İşleme", weight="bold"),
+                            content=ft.Container(
+                                width=450,
+                                height=120,
+                                content=ft.Column([
+                                    progress_text,
+                                    ft.Container(height=10),
+                                    progress_bar
+                                ])
+                            )
+                        )
+                        
+                        def status_callback(message, progress):
+                            progress_text.value = message
+                            progress_bar.value = progress / 100
+                            page.update()
+                            return True
+
+                        # Fatura tipi seçme dialogu callback'i
+                        def on_type_selected(invoice_type):
+                            print(f"📋 Fatura tipi seçildi: {invoice_type}")
+                            
+                            # BottomSheet'i kapat (eğer bs referansı varsa)
+                            # Not: bs referansı aşağıda tanımlanıyor, lambda içinde closure olarak gelecek
+                            
+                            # Progress dialogu aç
+                            page.dialog = progress_dialog
+                            progress_dialog.open = True
+                            page.update()
+                            
+                            # Thread'i başlat
+                            threading.Thread(target=process_in_thread, args=(invoice_type,), daemon=True).start()
+                    
+                        # Kompakt BottomSheet ile tip seçme
+                        print("🔵 Tip seçme BottomSheet oluşturuluyor...")
+                        
+                        def close_bs(bs):
+                            bs.open = False
+                            page.update()
+                        
+                        # BottomSheet tanımla
+                        bs = ft.BottomSheet(
+                            content=ft.Container(
+                                padding=20,
+                                bgcolor="#1A1D1F", # col_dark yerine hardcoded, col_dark tanımlı olmayabilir
+                                content=ft.Column([
+                                    ft.Text("Fatura Tipi Seçin", size=20, weight="bold", color=col_white),
+                                    ft.Container(height=10),
+                                    ft.ElevatedButton(
+                                        content=ft.Row([
+                                            ft.Icon(ft.Icons.ARROW_DOWNWARD, color=col_white),
+                                            ft.Text("GELİR (Satış Faturası)", color=col_white, size=16)
+                                        ], tight=True),
+                                        on_click=lambda _: (close_bs(bs), on_type_selected('outgoing')),
+                                        bgcolor=col_success,
+                                        width=300,
+                                        height=60
+                                    ),
+                                    ft.Container(height=10),
+                                    ft.ElevatedButton(
+                                        content=ft.Row([
+                                            ft.Icon(ft.Icons.ARROW_UPWARD, color=col_white),
+                                            ft.Text("GİDER (Alış Faturası)", color=col_white, size=16)
+                                        ], tight=True),
+                                        on_click=lambda _: (close_bs(bs), on_type_selected('incoming')),
+                                        bgcolor=col_danger,
+                                        width=300,
+                                        height=60
+                                    ),
+                                    ft.Container(height=10),
+                                    ft.TextButton(
+                                        "İptal",
+                                        on_click=lambda _: close_bs(bs)
+                                    )
+                                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, tight=True, spacing=0)
+                            ),
+                            open=True,
+                            on_dismiss=lambda _: print("BottomSheet kapatıldı")
+                        )
+                        
+                        print("🟢 BottomSheet page'e ekleniyor...")
+                        page.overlay.append(bs)
+                        page.update()
+                        print("✅ BottomSheet gösterildi!")
+                        
+                    except Exception as dialog_error:
+                        import traceback
+                        print(f"❌ Dialog hatası: {traceback.format_exc()}")
+                        page.snack_bar = ft.SnackBar(
+                            content=ft.Text(f"❌ Dialog hatası: {str(dialog_error)}", color=col_white),
+                            bgcolor=col_danger
+                        )
+                        page.snack_bar.open = True
+                        page.update()
+                
+                # Klasör seçici
+                print("🔷 FilePicker oluşturuluyor...")
+                file_picker = ft.FilePicker(on_result=on_folder_selected)
+                page.overlay.append(file_picker)
+                page.update()
+                print("🔷 Klasör seçme dialogu açılıyor...")
+                file_picker.get_directory_path(dialog_title="QR PDF/Resim Klasörünü Seç")
+                print("✅ FilePicker başlatıldı")
+                
+            except Exception as ex:
+                import traceback
+                error_detail = traceback.format_exc()
+                print(f"❌ process_qr_folder hatası:\n{error_detail}")
+                
+                page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"❌ QR okuma hatası: {str(ex)}", color=col_white),
+                    bgcolor=col_danger
+                )
+                page.snack_bar.open = True
+                page.update()
+
         def export_to_excel(e):
             """Faturalari Excel'e aktar"""
             try:
@@ -2180,14 +2410,17 @@ def main(page: ft.Page):
         
         operation_buttons = ft.Row([btn_clear, btn_add, btn_update, btn_delete_container], spacing=15)
 
-        # Sağ üst butonlar - Excel, PDF export
+        # Sağ üst butonlar - QR, Excel, PDF export
+        btn_qr = ScaleButton("qr_code_scanner", "#3498DB", "QR Okuma / Klasör Ekle", width=50, height=45)
+        btn_qr.on_click = process_qr_folder
+        
         btn_excel = ScaleButton("table_view", "#217346", "Excel Olarak İndir", width=50, height=45)
         btn_excel.on_click = export_to_excel
         
         btn_pdf = ScaleButton("picture_as_pdf", "#D32F2F", "PDF Olarak İndir", width=50, height=45)
         btn_pdf.on_click = export_to_pdf
         
-        right_buttons_row = ft.Row([ScaleButton("qr_code_scanner", "#3498DB", "Kamerayı Aç / QR Ekle", width=50, height=45), btn_excel, btn_pdf, ScaleButton("print", "#607D8B", "Yazdır", width=50, height=45)], spacing=10)
+        right_buttons_row = ft.Row([btn_qr, btn_excel, btn_pdf, ScaleButton("print", "#607D8B", "Yazdır", width=50, height=45)], spacing=10)
         
         right_buttons_container = ft.Container(content=right_buttons_row, padding=ft.padding.only(right=25))
 
