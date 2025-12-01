@@ -34,7 +34,6 @@ class OptimizedQRProcessor:
         Dosya adından CR ile başlayan fatura numarasını çıkar.
         Örnek: 'CRA2025000000081 ATLAS MADEN AŞ İŞCİLİK.pdf' -> 'CRA2025000000081'
         """
-        import re
         # Dosya adından uzantıyı çıkar
         name_without_ext = os.path.splitext(filename)[0]
         
@@ -1632,6 +1631,37 @@ class OptimizedQRProcessor:
         total_time = time.time() - start_time
         success_count = len([r for r in results if r.get('durum') == 'BAŞARILI'])
         
+        # Başarısız dosyaları taşı
+        # Kullanıcı isteği: exe veya frontend.py'nin bulunduğu dizine taşı (CWD)
+        failed_dir = os.path.join(os.getcwd(), "BasarisizQRlar")
+        
+        for result in results:
+            if result.get('durum') != 'BAŞARILI':
+                try:
+                    if not os.path.exists(failed_dir):
+                        os.makedirs(failed_dir)
+                        
+                    source_path = result.get('dosya_yolu')
+                    file_name = result.get('dosya_adi')
+                    
+                    if source_path and os.path.exists(source_path):
+                        dest_path = os.path.join(failed_dir, file_name)
+                        
+                        # Eğer hedefte dosya varsa üzerine yazmamak için ismini değiştir
+                        if os.path.exists(dest_path):
+                            base, ext = os.path.splitext(file_name)
+                            timestamp = int(time.time())
+                            dest_path = os.path.join(failed_dir, f"{base}_{timestamp}{ext}")
+                            
+                        shutil.move(source_path, dest_path)
+                        logging.info(f"   📦 Başarısız dosya taşındı: {file_name} -> BasarisizQRlar")
+                        
+                        # Sonuçtaki yolu güncelle
+                        result['dosya_yolu'] = dest_path
+                        result['tasindi'] = True
+                except Exception as e:
+                    logging.error(f"   ❌ Dosya taşıma hatası ({result.get('dosya_adi')}): {e}")
+        
         # İstatistikler
         logging.info(f"🏁 QR işleme bitti!")
         logging.info(f"📊 Başarılı: {success_count}/{len(results)} (%{(success_count/len(results)*100):.0f})")
@@ -1939,6 +1969,17 @@ class QRInvoiceIntegrator:
         # Tarih
         qr_tarih = self._get_value_case_insensitive(qr_json, key_map['tarih'])
         parsed['tarih'] = self.backend.format_date(str(qr_tarih)) if qr_tarih else datetime.now().strftime("%d.%m.%Y")
+        
+        # ⭐ TARİHLİ KUR ÇEKME (YENİ ÖZELLİK) ⭐
+        # Fatura tarihine ait TCMB BanknoteSelling kurunu çek
+        try:
+            historical_rates = self.backend.fetch_historical_rates(parsed['tarih'])
+            if historical_rates:
+                parsed['manual_usd_rate'] = historical_rates.get('USD')
+                parsed['manual_eur_rate'] = historical_rates.get('EUR')
+                print(f"   💱 {parsed['tarih']} tarihli kurlar faturaya eklendi: USD={parsed['manual_usd_rate']}, EUR={parsed['manual_eur_rate']}")
+        except Exception as e:
+            print(f"   ⚠️ Tarihli kur ekleme hatası: {e}")
         
         # ⭐ Firma - OCR'DAN AL (QR'da yoksa) ⭐
         firma = self._get_value_case_insensitive(qr_json, key_map['firma'])

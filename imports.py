@@ -13,16 +13,47 @@ import sqlite3
 import json
 import logging
 import time
+
+# ============================================================================
+# LOGGİNG YAPILANDIRMASI
+# ============================================================================
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 import re
 import warnings
 import math
 import threading
+import subprocess
+import shutil
+import locale
+import calendar
+import platform
+import traceback
+import ctypes
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP
 
 # Decimal hassasiyetini ayarla (para hesaplamaları için)
 getcontext().prec = 22  # Yüksek hassasiyet
 getcontext().rounding = ROUND_HALF_UP  # Standart yuvarlama
+
+# ============================================================================
+# WINDOWS API (Sadece Windows için)
+# ============================================================================
+try:
+    import win32event
+    import win32api
+    import winerror
+    WIN32_AVAILABLE = True
+except ImportError:
+    logging.warning("UYARI: pywin32 kütüphanesi eksik. Windows API özellikleri çalışmayabilir.")
+    win32event = None
+    win32api = None
+    winerror = None
+    WIN32_AVAILABLE = False
 
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - VERİ İŞLEME
@@ -38,7 +69,7 @@ try:
     import flet as ft
     FLET_AVAILABLE = True
 except ImportError:
-    print("UYARI: flet kütüphanesi eksik. UI çalışmayacak.")
+    logging.warning("UYARI: flet kütüphanesi eksik. UI çalışmayacak.")
     ft = None
     FLET_AVAILABLE = False
 
@@ -49,7 +80,7 @@ try:
     import cv2
     CV2_AVAILABLE = True
 except ImportError:
-    print("UYARI: opencv-python kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
+    logging.warning("UYARI: opencv-python kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
     cv2 = None
     CV2_AVAILABLE = False
 
@@ -57,7 +88,7 @@ try:
     from pyzbar import pyzbar
     PYZBAR_AVAILABLE = True
 except ImportError:
-    print("UYARI: pyzbar kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
+    logging.warning("UYARI: pyzbar kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
     pyzbar = None
     PYZBAR_AVAILABLE = False
 
@@ -65,7 +96,7 @@ try:
     import fitz  # PyMuPDF
     FITZ_AVAILABLE = True
 except ImportError:
-    print("UYARI: PyMuPDF kütüphanesi eksik. PDF QR okuma işlevi devre dışı.")
+    logging.warning("UYARI: PyMuPDF kütüphanesi eksik. PDF QR okuma işlevi devre dışı.")
     fitz = None
     FITZ_AVAILABLE = False
 
@@ -73,7 +104,7 @@ try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
     CONCURRENT_AVAILABLE = True
 except ImportError:
-    print("UYARI: concurrent.futures modülü eksik.")
+    logging.warning("UYARI: concurrent.futures modülü eksik.")
     ThreadPoolExecutor = None
     as_completed = None
     CONCURRENT_AVAILABLE = False
@@ -102,7 +133,7 @@ try:
     from reportlab.pdfbase.ttfonts import TTFont
     REPORTLAB_AVAILABLE = True
 except ImportError:
-    print("UYARI: reportlab kütüphanesi eksik. PDF export işlevi devre dışı.")
+    logging.warning("UYARI: reportlab kütüphanesi eksik. PDF export işlevi devre dışı.")
     REPORTLAB_AVAILABLE = False
 
 # ============================================================================
@@ -112,7 +143,7 @@ try:
     import xlsxwriter
     XLSXWRITER_AVAILABLE = True
 except ImportError:
-    print("UYARI: xlsxwriter kütüphanesi eksik. Excel export işlevi devre dışı.")
+    logging.warning("UYARI: xlsxwriter kütüphanesi eksik. Excel export işlevi devre dışı.")
     XLSXWRITER_AVAILABLE = False
 
 # ============================================================================
@@ -175,20 +206,16 @@ def get_excel_module():
 # Backend modülü dinamik olarak import edilecek (circular import önlemek için)
 
 # ============================================================================
-# LOGGİNG YAPILANDIRMASI
-# ============================================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-
-# ============================================================================
 # EXPORT EDİLECEK TÜMÜ
 # ============================================================================
 __all__ = [
     # Standart kütüphaneler
     'sys', 'os', 'sqlite3', 'json', 'logging', 'time', 're', 'warnings', 
-    'math', 'datetime', 'timedelta', 'threading',
+    'math', 'datetime', 'timedelta', 'threading', 'subprocess', 'shutil',
+    'locale', 'calendar', 'platform', 'traceback', 'ctypes', 'ET',
+    
+    # Windows API
+    'win32event', 'win32api', 'winerror', 'WIN32_AVAILABLE',
     
     # Decimal (para hesaplamaları için)
     'Decimal', 'getcontext', 'ROUND_HALF_UP',

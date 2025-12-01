@@ -7,6 +7,9 @@ Fatura işleme ve hesaplama fonksiyonları
 from imports import *
 
 
+# ============================================================================
+# FATURA İŞLEME SINIFI (Invoice Processor Class)
+# ============================================================================
 class InvoiceProcessor:
     """Fatura verilerini işleyen ve hesaplayan sınıf."""
     
@@ -169,26 +172,6 @@ class InvoiceProcessor:
                 kdv_yuzdesi = self._to_decimal(self.backend.settings.get('kdv_yuzdesi', 20.0))
                 logging.info(f"   ⚙️ KDV yüzdesi girilmedi, varsayılan kullanılıyor: {kdv_yuzdesi}%")
             
-            # KDV DAHİL SİSTEM - Tüm girilen tutarlar KDV dahildir
-            if toplam_tutar > 0:
-                # KDV dahil tutardan matrahı ve KDV tutarını hesapla (Decimal ile)
-                kdv_katsayisi = Decimal('1') + (kdv_yuzdesi / Decimal('100'))
-                matrah = toplam_tutar / kdv_katsayisi
-                kdv_tutari = toplam_tutar - matrah
-                
-                # 5 ondalık basamağa yuvarla
-                matrah = matrah.quantize(Decimal('0.00001'))
-                kdv_tutari = kdv_tutari.quantize(Decimal('0.00001'))
-                
-                logging.info(f"   ✅ KDV DAHİL HESAPLAMA (DECIMAL):")
-                logging.info(f"     - KDV Dahil Tutar: {toplam_tutar} {birim}")
-                logging.info(f"     - KDV Katsayısı: {kdv_katsayisi}")
-                logging.info(f"     - Matrah (KDV Hariç): {matrah} {birim}")
-                logging.info(f"     - KDV Tutarı: {kdv_tutari} {birim}")
-            else:
-                logging.error(f"   ❌ HATA: Toplam tutar girilmemiş!")
-                return None
-            
             # Manuel kur girişi kontrolü - önce kontrol et
             manual_usd_rate = invoice_data.get('manual_usd_rate', None)
             manual_eur_rate = invoice_data.get('manual_eur_rate', None)
@@ -215,19 +198,59 @@ class InvoiceProcessor:
                 eur_to_tl = (1 / eur_rate) if eur_rate > 0 else 0
                 logging.info(f"   💱 TCMB EUR kuru kullanılıyor: 1 EUR = {eur_to_tl} TL")
 
-            # Para birimi dönüşümü (TL'ye çevir) - manuel kurları kullan
-            if birim == 'USD' and manual_usd_rate and manual_usd_rate > 0:
-                # Manuel USD kuru ile dönüşüm
-                matrah_tl = float(matrah) * manual_usd_rate
-                kdv_tutari_tl = float(kdv_tutari) * manual_usd_rate
-            elif birim == 'EUR' and manual_eur_rate and manual_eur_rate > 0:
-                # Manuel EUR kuru ile dönüşüm
-                matrah_tl = float(matrah) * manual_eur_rate
-                kdv_tutari_tl = float(kdv_tutari) * manual_eur_rate
+            # KDV DAHİL SİSTEM - Tüm girilen tutarlar KDV dahildir
+            # KDV hesaplaması her zaman TL üzerinden yapılır
+            if toplam_tutar > 0:
+                try:
+                    # Önce TL'ye çevir
+                    conversion_rate = Decimal('1.0')
+                    if birim == 'USD':
+                        # Float'tan Decimal'e çevirirken string kullanmak daha güvenli
+                        # Ancak float 'nan' veya 'inf' ise hata verebilir, kontrol et
+                        if math.isnan(usd_to_tl) or math.isinf(usd_to_tl):
+                            conversion_rate = Decimal('0')
+                        else:
+                            conversion_rate = Decimal(str(usd_to_tl))
+                    elif birim == 'EUR':
+                        if math.isnan(eur_to_tl) or math.isinf(eur_to_tl):
+                            conversion_rate = Decimal('0')
+                        else:
+                            conversion_rate = Decimal(str(eur_to_tl))
+                    
+                    toplam_tutar_tl_decimal = toplam_tutar * conversion_rate
+                    
+                    # KDV dahil TL tutardan matrahı ve KDV tutarını hesapla (Decimal ile)
+                    kdv_katsayisi = Decimal('1') + (kdv_yuzdesi / Decimal('100'))
+                    
+                    if kdv_katsayisi == 0:
+                        matrah_tl = toplam_tutar_tl_decimal
+                        kdv_tutari_tl = Decimal('0')
+                    else:
+                        matrah_tl = toplam_tutar_tl_decimal / kdv_katsayisi
+                        kdv_tutari_tl = toplam_tutar_tl_decimal - matrah_tl
+                    
+                    # 5 ondalık basamağa yuvarla
+                    matrah_tl = matrah_tl.quantize(Decimal('0.00001'))
+                    kdv_tutari_tl = kdv_tutari_tl.quantize(Decimal('0.00001'))
+                    
+                    logging.info(f"   ✅ KDV DAHİL HESAPLAMA (TL ÜZERİNDEN):")
+                    logging.info(f"     - Girilen Tutar: {toplam_tutar} {birim}")
+                    logging.info(f"     - Kur: {conversion_rate}")
+                    logging.info(f"     - TL Karşılığı: {toplam_tutar_tl_decimal} TL")
+                    logging.info(f"     - KDV Katsayısı: {kdv_katsayisi}")
+                    logging.info(f"     - Matrah (TL): {matrah_tl} TL")
+                    logging.info(f"     - KDV Tutarı (TL): {kdv_tutari_tl} TL")
+                    
+                except Exception as calc_err:
+                    logging.error(f"   ❌ Hesaplama hatası (Decimal): {calc_err}")
+                    # Hata durumunda varsayılan değerler
+                    matrah_tl = Decimal('0')
+                    kdv_tutari_tl = Decimal('0')
+                    toplam_tutar_tl_decimal = Decimal('0')
+                    
             else:
-                # TCMB kurları ile dönüşüm
-                matrah_tl = self.backend.convert_currency(float(matrah), birim, 'TRY')
-                kdv_tutari_tl = self.backend.convert_currency(float(kdv_tutari), birim, 'TRY')
+                logging.error(f"   ❌ HATA: Toplam tutar girilmemiş!")
+                return None
             
             toplam_kdv_dahil_tl = matrah_tl + kdv_tutari_tl
 
@@ -237,12 +260,12 @@ class InvoiceProcessor:
             
             # USD ve EUR tutarlarını manuel kurlar ile hesapla
             if usd_to_tl > 0:
-                processed['toplam_tutar_usd'] = round(toplam_kdv_dahil_tl / usd_to_tl, 5)
+                processed['toplam_tutar_usd'] = round(float(toplam_kdv_dahil_tl) / usd_to_tl, 5)
             else:
                 processed['toplam_tutar_usd'] = 0
                 
             if eur_to_tl > 0:
-                processed['toplam_tutar_eur'] = round(toplam_kdv_dahil_tl / eur_to_tl, 5)
+                processed['toplam_tutar_eur'] = round(float(toplam_kdv_dahil_tl) / eur_to_tl, 5)
             else:
                 processed['toplam_tutar_eur'] = 0
             
@@ -303,6 +326,9 @@ class InvoiceProcessor:
         return processed
 
 
+# ============================================================================
+# FATURA YÖNETİM SINIFI (Invoice Manager Class)
+# ============================================================================
 class InvoiceManager:
     """Fatura operasyonlarını yöneten sınıf."""
     
@@ -421,33 +447,7 @@ class InvoiceManager:
     def handle_genel_gider_operation(self, operation, data=None, record_id=None, limit=None, offset=None):
         """Genel gider işlemleri için özel metod - ayrı veritabanı ile."""
         
-        if operation == 'add':
-            processed_data = self.processor.process_genel_gider_data(data)
-            if processed_data and self.backend.db.add_genel_gider(processed_data):
-                self._add_history_record('EKLEME', 'genel_gider', processed_data)
-                if self.backend.on_data_updated: self.backend.on_data_updated()
-                return True
-            return False
-        
-        elif operation == 'update':
-            processed_data = self.processor.process_genel_gider_data(data)
-            if processed_data and self.backend.db.update_genel_gider(record_id, processed_data):
-                self._add_history_record('GÜNCELLEME', 'genel_gider', processed_data)
-                if self.backend.on_data_updated: self.backend.on_data_updated()
-                return True
-            return False
-        
-        elif operation == 'delete':
-            # Silmeden önce genel gider bilgilerini al
-            gider_data = self.backend.db.get_genel_gider_by_id(record_id)
-            if self.backend.db.delete_genel_gider(record_id):
-                if gider_data:
-                    self._add_history_record('SİLME', 'genel_gider', gider_data)
-                if self.backend.on_data_updated: self.backend.on_data_updated()
-                return True
-            return False
-        
-        elif operation == 'get':
+        if operation == 'get':
             return self.backend.db.get_all_genel_gider(limit=limit, offset=offset)
         
         elif operation == 'count':
@@ -473,17 +473,6 @@ class InvoiceManager:
             return deleted_count
         except Exception as e:
             logging.error(f"Çoklu {invoice_type} faturası silme hatası: {e}")
-            return 0
-
-    def delete_multiple_genel_gider(self, gider_ids):
-        """Çoklu genel gider silme işlemi."""
-        try:
-            deleted_count = self.backend.db.delete_multiple_genel_gider(gider_ids)
-            if deleted_count > 0:
-                if self.backend.on_data_updated: self.backend.on_data_updated()
-            return deleted_count
-        except Exception as e:
-            logging.error(f"Çoklu genel gider silme hatası: {e}")
             return 0
 
     def _add_history_record(self, operation_type, invoice_type, invoice_data=None, details=None):

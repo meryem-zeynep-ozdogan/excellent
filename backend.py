@@ -20,7 +20,7 @@ class Backend:
                 try:
                     handler(*args, **kwargs)
                 except Exception as e:
-                    print(f"Error in event handler: {e}")
+                    pass
 
     def __init__(self):
         """
@@ -88,7 +88,7 @@ class Backend:
         self.rate_update_timer = threading.Timer(300.0, schedule_rate_update)
         self.rate_update_timer.daemon = True
         self.rate_update_timer.start()
-        print("INFO: Kur güncelleme zamanlayıcısı başlatıldı (Threading.Timer).")
+        
 
     def update_exchange_rates(self):
         """Döviz kurlarını TCMB'den çeker, başarısız olursa önceki günün kurlarını kullanır."""
@@ -124,7 +124,6 @@ class Backend:
             response = requests.get(url, timeout=5)
             response.raise_for_status()
             
-            import xml.etree.ElementTree as ET
             tree = ET.fromstring(response.content)
             
             usd_sell = None
@@ -159,8 +158,6 @@ class Backend:
     def _fetch_tcmb_previous_day(self):
         """TCMB'den önceki iş gününün banknote selling kurlarını çeker."""
         try:
-            from datetime import datetime, timedelta
-            
             # Son 7 günü dene (hafta sonu ve tatilleri atlamak için)
             for days_back in range(1, 8):
                 prev_date = datetime.now() - timedelta(days=days_back)
@@ -170,7 +167,6 @@ class Backend:
                     response = requests.get(url, timeout=5)
                     response.raise_for_status()
                     
-                    import xml.etree.ElementTree as ET
                     tree = ET.fromstring(response.content)
                     
                     usd_sell = None
@@ -274,10 +270,6 @@ class Backend:
         """Çoklu fatura silme - InvoiceManager'a yönlendirir."""
         return self.invoice_manager.delete_multiple_invoices(invoice_type, invoice_ids)
 
-    def delete_multiple_genel_gider(self, gider_ids):
-        """Çoklu genel gider silme - InvoiceManager'a yönlendirir."""
-        return self.invoice_manager.delete_multiple_genel_gider(gider_ids)
-
     # ============================================================================
     # DÖNEMSEL GELİR HESAPLAMALARI (Periodic Income Calculations)
     # ============================================================================
@@ -331,6 +323,25 @@ class Backend:
         if self.on_data_updated:
             self.on_data_updated()
         return True
+
+    # ============================================================================
+    # GÜNCELLEME YÖNETİMİ (Update Management)
+    # ============================================================================
+    
+    def check_for_updates(self):
+        """
+        Uygulama güncellemelerini kontrol eder.
+        Şimdilik placeholder olarak False döndürür.
+        """
+        # İleride buraya GitHub API veya başka bir kaynak üzerinden versiyon kontrolü eklenebilir.
+        return {"update_available": False}
+
+    def download_and_install_update(self):
+        """
+        Güncellemeyi indirir ve kurar.
+        Şimdilik placeholder.
+        """
+        pass
 
     # ============================================================================
     # YARDIMCI FONKSİYONLAR (Helper Functions)
@@ -435,3 +446,74 @@ class Backend:
             }
         """
         return self.qr_integrator.add_invoices_from_qr_data(qr_results, invoice_type)
+
+    def fetch_historical_rates(self, date_str):
+        """
+        Belirtilen tarih için TCMB'den döviz kurlarını (BanknoteSelling) çeker.
+        Eğer o tarihte veri yoksa (hafta sonu/tatil), geriye doğru giderek ilk iş gününü bulur.
+        
+        Args:
+            date_str: 'DD.MM.YYYY' formatında tarih stringi
+            
+        Returns:
+            dict: {'USD': rate, 'EUR': rate} (TL karşılığı) veya None
+        """
+        try:
+            if not date_str:
+                return None
+                
+            # Tarihi parse et
+            try:
+                target_date = datetime.strptime(date_str, "%d.%m.%Y")
+            except ValueError:
+                logging.warning(f"Geçersiz tarih formatı: {date_str}")
+                return None
+            
+            # En fazla 10 gün geriye git (bayram tatilleri vs. için)
+            for i in range(10):
+                current_date = target_date - timedelta(days=i)
+                
+                # Bugünün tarihi ise today.xml kullan
+                if current_date.date() == datetime.now().date():
+                    url = "https://www.tcmb.gov.tr/kurlar/today.xml"
+                else:
+                    # YYYYMM/DDMMYYYY.xml formatı
+                    url = f"https://www.tcmb.gov.tr/kurlar/{current_date.year}{current_date.month:02d}/{current_date.day:02d}{current_date.month:02d}{current_date.year}.xml"
+                
+                try:
+                    
+                    response = requests.get(url, timeout=3)
+                    if response.status_code == 404:
+                        continue # Bu tarihte yok, bir gün geriye git
+                        
+                    response.raise_for_status()
+                    
+                    tree = ET.fromstring(response.content)
+                    
+                    usd_sell = None
+                    eur_sell = None
+                    
+                    for currency in tree.findall('./Currency'):
+                        currency_code = currency.get('Kod')
+                        if currency_code == 'USD':
+                            node = currency.find('BanknoteSelling')
+                            if node is not None and node.text:
+                                usd_sell = float(node.text.replace(',', '.'))
+                        elif currency_code == 'EUR':
+                            node = currency.find('BanknoteSelling')
+                            if node is not None and node.text:
+                                eur_sell = float(node.text.replace(',', '.'))
+                    
+                    if usd_sell and eur_sell:                        
+                        return {'USD': usd_sell, 'EUR': eur_sell}
+                        
+                except Exception as e:
+                    # logging.warning(f"Tarihli kur çekme hatası ({current_date.strftime('%d.%m.%Y')}): {e}")
+                    continue
+            
+            print(f"   ⚠️ {date_str} için uygun kur bulunamadı (10 gün geriye gidildi).")
+            return None
+            
+        except Exception as e:
+            print(f"❌ fetch_historical_rates genel hatası: {e}")
+            return None

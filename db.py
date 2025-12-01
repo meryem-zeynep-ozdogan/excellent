@@ -254,7 +254,6 @@ class Database:
     # GELİR İŞLEMLERİ
     def add_gelir_invoice(self, data):
         """Gelir veritabanına fatura ekler."""
-        from datetime import datetime
         query = """
             INSERT INTO invoices (fatura_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -271,7 +270,6 @@ class Database:
 
     def update_gelir_invoice(self, invoice_id, data):
         """Gelir veritabanındaki faturayı günceller."""
-        from datetime import datetime
         query = """
             UPDATE invoices SET
             tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
@@ -307,7 +305,7 @@ class Database:
     def get_all_gelir_invoices(self, limit=None, offset=0, order_by=None):
         """Gelir veritabanındaki tüm faturaları getirir."""
         if not order_by:
-            order_by = "tarih DESC"
+            order_by = "substr(tarih, 7, 4) || substr(tarih, 4, 2) || substr(tarih, 1, 2) DESC"
         
         # Limit ve offset güvenli değerler kullan
         if limit is not None:
@@ -344,7 +342,6 @@ class Database:
     # GİDER İŞLEMLERİ
     def add_gider_invoice(self, data):
         """Gider veritabanına fatura ekler."""
-        from datetime import datetime
         query = """
             INSERT INTO invoices (fatura_no, tarih, firma, malzeme, miktar, toplam_tutar_tl, toplam_tutar_usd, toplam_tutar_eur, birim, kdv_yuzdesi, kdv_tutari, kdv_dahil, usd_rate, eur_rate, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -361,7 +358,6 @@ class Database:
 
     def update_gider_invoice(self, invoice_id, data):
         """Gider veritabanındaki faturayı günceller."""
-        from datetime import datetime
         query = """
             UPDATE invoices SET
             fatura_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, 
@@ -397,7 +393,7 @@ class Database:
     def get_all_gider_invoices(self, limit=None, offset=0, order_by=None):
         """Gider veritabanındaki tüm faturaları getirir."""
         if not order_by:
-            order_by = "tarih DESC"
+            order_by = "substr(tarih, 7, 4) || substr(tarih, 4, 2) || substr(tarih, 1, 2) DESC"
         
         # Limit ve offset güvenli değerler kullan
         if limit is not None:
@@ -547,41 +543,8 @@ class Database:
                 return dict(zip(columns, row))
         return None
 
-    # ESKİ FORMAT UYUMLULUK
-    def add_genel_gider(self, data):
-        """Eski format genel gider ekleme - Uyumluluk için."""
-        pass
-
-    def update_genel_gider(self, gider_id, data):
-        """Genel gider veritabanındaki kaydı günceller."""
-        query = """
-            UPDATE general_expenses SET
-            tarih = ?, tur = ?, miktar = ?, aciklama = ?
-            WHERE id = ?
-        """
-        params = (
-            data.get('tarih'), data.get('tur'), 
-            data.get('miktar'), data.get('aciklama', ''), gider_id
-        )
-        cursor = self._execute_query('genel_gider', query, params)
-        return cursor is not None
-
-    def delete_genel_gider(self, gider_id):
-        """Genel gider veritabanından kayıt siler."""
-        query = "DELETE FROM general_expenses WHERE id = ?"
-        cursor = self._execute_query('genel_gider', query, (gider_id,))
-        return cursor.rowcount if cursor else 0
-
-    def delete_multiple_genel_gider(self, gider_ids):
-        """Genel gider veritabanından çoklu kayıt siler."""
-        if not gider_ids:
-            return 0
-        
-        placeholders = ','.join(['?' for _ in gider_ids])
-        query = f"DELETE FROM general_expenses WHERE id IN ({placeholders})"
-        cursor = self._execute_query('genel_gider', query, gider_ids)
-        return cursor.rowcount if cursor else 0
-
+    # KURUMLAR VERGİSİ FONKSİYONLARI
+    
     def get_all_genel_gider(self, limit=None, offset=0, order_by=None):
         """Eski format tüm genel giderleri getir - yeni formata çevrilmiş veri döndür."""
         # Yeni sistemden veri çek ve eski formata dönüştür (export için)

@@ -21,30 +21,28 @@ class InvoicePDFExporter:
         """Türkçe karakterler için font kayıtları"""
         try:
             # Windows varsayılan fontları
-            import os
             windows_fonts = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts')
             
             # Arial fontunu kaydet (Türkçe karakter desteği ile)
             arial_path = os.path.join(windows_fonts, 'arial.ttf')
             if os.path.exists(arial_path):
                 pdfmetrics.registerFont(TTFont('Arial-Turkish', arial_path))
-                print("Arial-Turkish font kaydedildi")
+                
             
             # Arial Bold
             arial_bold_path = os.path.join(windows_fonts, 'arialbd.ttf')
             if os.path.exists(arial_bold_path):
                 pdfmetrics.registerFont(TTFont('Arial-Bold-Turkish', arial_bold_path))
-                print("Arial-Bold-Turkish font kaydedildi")
+                
             
             # Calibri alternatifi (daha modern görünüm)
             calibri_path = os.path.join(windows_fonts, 'calibri.ttf')
             if os.path.exists(calibri_path):
                 pdfmetrics.registerFont(TTFont('Calibri-Turkish', calibri_path))
-                print("Calibri-Turkish font kaydedildi")
+                
                 
         except Exception as e:
-            print(f"Font kayıt hatası: {e}")
-            print("Varsayılan fontlar kullanılacak")
+            pass
     
     def _setup_custom_styles(self):
         """Özel PDF stilleri oluştur"""
@@ -60,9 +58,9 @@ class InvoicePDFExporter:
         else:
             turkish_font = 'Helvetica'
             turkish_font_bold = 'Helvetica-Bold'
-            print("UYARI: Türkçe font bulunamadı, Helvetica kullanılıyor")
+            
         
-        print(f"Kullanılan fontlar: {turkish_font}, {turkish_font_bold}")
+        
         
         # Ana başlık stili - daha büyük ve belirgin
         self.styles.add(ParagraphStyle(
@@ -173,7 +171,6 @@ class InvoicePDFExporter:
             return True
             
         except Exception as e:
-            print(f"PDF oluşturma hatası: {e}")
             return False
 
     def export_general_expenses_to_pdf(self, expense_data, file_path):
@@ -209,7 +206,6 @@ class InvoicePDFExporter:
             return True
             
         except Exception as e:
-            print(f"PDF oluşturma hatası: {e}")
             return False
 
     def _get_title_by_type(self, invoice_type):
@@ -222,9 +218,6 @@ class InvoicePDFExporter:
 
     def _create_invoice_document_layout(self, invoice_data, invoice_type):
         """Uygulama fatura tablosu ile tamamen aynı format - irsaliye no hariç"""
-        from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib import colors
-        from reportlab.lib.units import cm
         
         story = []
         
@@ -241,15 +234,24 @@ class InvoicePDFExporter:
             turkish_font = 'Helvetica'
             turkish_font_bold = 'Helvetica-Bold'
         
-        print(f"Kullanılan fontlar: {turkish_font}, {turkish_font_bold}")
+        
         
         # Uygulama benzeri tablo başlığı
         story.append(Paragraph('<b>FATURA LISTESI</b>', 
                              ParagraphStyle('TableTitle', fontName=turkish_font_bold, fontSize=12, 
                                           alignment=1, spaceAfter=15)))
         
+        # Hücre stili - Metin kaydırma için
+        cell_style = ParagraphStyle(
+            'CellStyle',
+            fontName=turkish_font,
+            fontSize=7,
+            leading=8,
+            alignment=0  # TA_LEFT
+        )
+        
         # Uygulama ile TAMAMEN AYNI sütun başlıkları (irsaliye no hariç)
-        headers = ["FATURA NO", "TARIH", "FIRMA", "MALZEME", "MIKTAR", "TUTAR (TL)", "TUTAR (USD)*", "TUTAR (EUR)*", "KDV TUTARI (%)"]
+        headers = ["FATURA NO", "TARIH", "FIRMA", "MALZEME", "MIKTAR", "TUTAR (TL)", "TUTAR (USD)", "TUTAR (EUR)", "KDV (Tutar/%)"]
         
         # Veri satırları hazırla
         table_data = [headers]
@@ -267,31 +269,42 @@ class InvoicePDFExporter:
                 tarih_formatted = tarih
             
             # KDV bilgileri
-            kdv_tutari = invoice.get('kdv_tutari', 0) or 0
-            kdv_yuzdesi = invoice.get('kdv_yuzdesi', 0) or 0
-            toplam_tutar_tl = invoice.get('toplam_tutar_tl', 0) or 0
+            kdv_tutari = float(invoice.get('kdv_tutari', 0) or 0)
+            kdv_yuzdesi = float(invoice.get('kdv_yuzdesi', 0) or 0)
+            toplam_tutar_tl = float(invoice.get('toplam_tutar_tl', 0) or 0)
             
-            # USD ve EUR hesaplamalı (historik kur yoksa anlık kurla hesapla)
-            usd_amount = invoice.get('toplam_tutar_usd', 0) or 0
-            eur_amount = invoice.get('toplam_tutar_eur', 0) or 0
+            # USD ve EUR tutarları
+            usd_amount = float(invoice.get('toplam_tutar_usd', 0) or 0)
+            eur_amount = float(invoice.get('toplam_tutar_eur', 0) or 0)
             
-            # Eğer historik kur yoksa basit hesaplama (42.44 USD, 48.93 EUR)
-            if usd_amount == 0 and toplam_tutar_tl > 0:
-                usd_amount = toplam_tutar_tl / 42.44  # Aproximate rate
-            if eur_amount == 0 and toplam_tutar_tl > 0:
-                eur_amount = toplam_tutar_tl / 48.93  # Aproximate rate
+            # Kur bilgileri
+            usd_rate = invoice.get('usd_rate')
+            eur_rate = invoice.get('eur_rate')
+            usd_rate_val = float(usd_rate) if usd_rate is not None else 0.0
+            eur_rate_val = float(eur_rate) if eur_rate is not None else 0.0
+            
+            # Formatlı metinler (Frontend ile uyumlu)
+            # PDF'de yer kazanmak için alt satıra geçebiliriz
+            usd_text = f"{usd_amount:,.2f}" if usd_rate_val == 0 else f"{usd_amount:,.2f}\n({usd_rate_val:.2f} TL)"
+            eur_text = f"{eur_amount:,.2f}" if eur_rate_val == 0 else f"{eur_amount:,.2f}\n({eur_rate_val:.2f} TL)"
+            kdv_text = f"{kdv_tutari:,.2f}\n(%{kdv_yuzdesi:.0f})"
+            
+            # Uzun metinleri Paragraph ile sarmala (Otomatik alt satıra geçmesi için)
+            fatura_no_para = Paragraph(str(invoice.get('fatura_no', '')), cell_style)
+            firma_para = Paragraph(str(invoice.get('firma', '')), cell_style)
+            malzeme_para = Paragraph(str(invoice.get('malzeme', '')), cell_style)
             
             # Uygulama ile TAMAMEN AYNI format
             row_data = [
-                invoice.get('fatura_no', ''),                      # FATURA NO
+                fatura_no_para,                                    # FATURA NO
                 tarih_formatted,                                   # TARIH
-                invoice.get('firma', ''),                          # FIRMA
-                invoice.get('malzeme', ''),                        # MALZEME
+                firma_para,                                        # FIRMA
+                malzeme_para,                                      # MALZEME
                 str(invoice.get('miktar', '')),                    # MIKTAR
                 f"{toplam_tutar_tl:,.2f}",                        # TUTAR (TL)
-                f"{usd_amount:,.2f}",                             # TUTAR (USD)*
-                f"{eur_amount:,.2f}",                             # TUTAR (EUR)*
-                f"{kdv_tutari:,.2f} ({kdv_yuzdesi:.0f}%)"        # KDV TUTARI (%)
+                usd_text,                                         # TUTAR (USD)
+                eur_text,                                         # TUTAR (EUR)
+                kdv_text                                          # KDV (Tutar/%)
             ]
             
             table_data.append(row_data)
@@ -447,12 +460,21 @@ class InvoicePDFExporter:
             turkish_font = 'Helvetica'
             turkish_font_bold = 'Helvetica-Bold'
         
-        print(f"Kullanılan fontlar: {turkish_font}, {turkish_font_bold}")
+        
         
         # Fatura benzeri tablo başlığı
         story.append(Paragraph('<b>GENEL GIDERLER LISTESI</b>', 
                              ParagraphStyle('TableTitle', fontName=turkish_font_bold, fontSize=12, 
                                           alignment=1, spaceAfter=15)))
+        
+        # Hücre stili - Metin kaydırma için
+        cell_style = ParagraphStyle(
+            'CellStyle',
+            fontName=turkish_font,
+            fontSize=7,
+            leading=8,
+            alignment=0  # TA_LEFT
+        )
         
         # Fatura benzeri sütun başlıkları
         headers = ["TARIH", "GIDER TURU", "MIKTAR", "BIRIM", "TUTAR"]
@@ -474,11 +496,13 @@ class InvoicePDFExporter:
             
             # Fatura benzeri veri formatı
             gider_turu = expense.get('tur', '')
+            gider_turu_para = Paragraph(str(gider_turu), cell_style)
+            
             miktar_value = float(expense.get('miktar', 0) or 0)
             
             row_data = [
                 tarih_formatted,                     # TARIH
-                gider_turu,                          # GIDER TURU
+                gider_turu_para,                     # GIDER TURU
                 "1",                                 # MIKTAR (default 1)
                 "Adet",                              # BIRIM
                 f"{miktar_value:,.2f} TL"            # TUTAR
@@ -649,14 +673,18 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
         # Tablo verilerini hazırla
         months = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
                  "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
-        table_data = [["AYLAR", "GELİR (Kesilen)", "GİDER (Gelen)", "KDV FARKI", "ÖDENECEK VERGİ"]]
-        quarter_indices_map = {2: 0, 5: 1, 8: 2, 11: 3}
+        table_data = [["AYLAR", "GELİR (Kesilen)", "GİDER (Gelen)", "KDV FARKI", "KURUMLAR VERGİSİ", "ÖDENECEK VERGİ"]]
+        
+        total_kurumlar = 0.0
         
         for i, month_name in enumerate(months):
             monthly_data = monthly_results[i]
+            kurumlar = monthly_data.get('kurumlar', 0)
+            total_kurumlar += kurumlar
+            
             odenecek_vergi = ""
-            if i in quarter_indices_map:
-                q_index = quarter_indices_map[i]
+            if i % 3 == 0: # Start of quarter
+                q_index = i // 3
                 if q_index < len(quarterly_results):
                     odenecek_vergi = f"{quarterly_results[q_index].get('odenecek_kv', 0):,.2f} TL"
             
@@ -665,6 +693,7 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
                 f"{monthly_data.get('kesilen', 0):,.2f} TL",
                 f"{monthly_data.get('gelen', 0):,.2f} TL",
                 f"{monthly_data.get('kdv', 0):,.2f} TL",
+                f"{kurumlar:,.2f} TL",
                 odenecek_vergi
             ])
         
@@ -676,12 +705,15 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
                          f"{summary.get('toplam_gelir', 0):,.2f} TL",
                          f"{summary.get('toplam_gider', 0):,.2f} TL",
                          f"{total_kdv:,.2f} TL",
+                         f"{total_kurumlar:,.2f} TL",
                          f"{total_vergi:,.2f} TL"])
-        table_data.append(["YILLIK NET KÂR", "", "", "", f"{summary.get('yillik_kar', 0):,.2f} TL"])
+        table_data.append(["YILLIK NET KÂR", "", "", "", "", f"{summary.get('yillik_kar', 0):,.2f} TL"])
         
         # Tabloyu oluştur
-        table = Table(table_data, colWidths=[4*cm, 4*cm, 4*cm, 4*cm, 4*cm])
-        table.setStyle(TableStyle([
+        table = Table(table_data, colWidths=[4*cm, 4*cm, 4*cm, 4*cm, 4*cm, 4.5*cm])
+        
+        # Temel stiller
+        table_styles = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6C5DD3')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), turkish_font_bold),
@@ -707,11 +739,28 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
             ('BACKGROUND', (0, -2), (-1, -2), colors.HexColor('#e8f5e8')),
             ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#fff2e8')),
             ('FONTNAME', (0, -2), (-1, -1), turkish_font_bold),
+            ('FONTNAME', (0, -1), (-1, -1), turkish_font_bold),
             
             # Grid
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d0d0d0')),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+            
+            # Net Kâr birleştirme
+            ('SPAN', (0, -1), (4, -1)),
+            ('ALIGN', (0, -1), (4, -1), 'RIGHT'),
+        ]
+        
+        # Çeyreklik birleştirmeler (Ödenecek Vergi sütunu)
+        for q in range(4):
+            start_row = q * 3 + 1
+            end_row = start_row + 2
+            table_styles.append(('SPAN', (5, start_row), (5, end_row)))
+            table_styles.append(('VALIGN', (5, start_row), (5, end_row), 'MIDDLE'))
+            table_styles.append(('ALIGN', (5, start_row), (5, end_row), 'CENTER'))
+            table_styles.append(('FONTSIZE', (5, start_row), (5, end_row), 11))
+            table_styles.append(('FONTNAME', (5, start_row), (5, end_row), turkish_font_bold))
+            
+        table.setStyle(TableStyle(table_styles))
         
         story.append(table)
         
@@ -729,41 +778,7 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
         return True
         
     except Exception as e:
-        print(f"Dönemsel gelir PDF oluşturma hatası: {e}")
         return False
-
-# Test fonksiyonu
-def test_pdf_export():
-    """PDF export fonksiyonunu test et"""
-    # Test verileri
-    test_invoices = [
-        {
-            'fatura_no': 'FAT-001',
-            'tarih': '2025-11-24',
-            'firma': 'Test Firma A',
-            'malzeme': 'Hizmet Bedeli',
-            'miktar': '1',
-            'toplam_tutar_tl': 1000,
-            'kdv_tutari': 180,
-            'kdv_yuzdesi': 18,
-            'birim': 'TL'
-        },
-        {
-            'fatura_no': 'FAT-002',
-            'tarih': '2025-11-23',
-            'firma': 'Test Firma B',
-            'malzeme': 'Ürün Satışı',
-            'miktar': '5',
-            'toplam_tutar_tl': 2500,
-            'kdv_tutari': 450,
-            'kdv_yuzdesi': 18,
-            'birim': 'TL'
-        }
-    ]
-    
-    # Test
-    result = export_outgoing_invoices_to_pdf(test_invoices, 'test_faturalar.pdf')
-    print(f"Test PDF olusturma sonucu: {'Basarili' if result else 'Basarisiz'}")
 
 def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=None):
     """Genel giderleri aylık formatta PDF'e aktar - Yatay tablo (Aylar sütunlarda)"""
@@ -917,14 +932,7 @@ def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=No
         
         # PDF oluştur
         doc.build(story)
-        print(f"Aylık genel giderler '{os.path.basename(file_path)}' dosyasına aktarıldı.")
         return True
         
     except Exception as e:
-        print(f"Aylık genel gider PDF aktarma hatası: {e}")
-        import traceback
-        traceback.print_exc()
         return False
-
-if __name__ == "__main__":
-    test_pdf_export()
