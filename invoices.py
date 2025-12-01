@@ -79,8 +79,16 @@ class InvoiceProcessor:
         
         date_str = date_str.strip()
         
-        # Yaygın tarih formatlarını dene
+        # Yaygın tarih formatlarını dene (4 basamaklı yıl)
         for fmt in ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d"):
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                return parsed_date.strftime("%d.%m.%Y")
+            except ValueError:
+                continue
+        
+        # 2 basamaklı yıl içeren ayırıcılı formatları dene (örn: 12.12.25 -> 12.12.2025)
+        for fmt in ("%d.%m.%y", "%d-%m-%y", "%d/%m/%y"):
             try:
                 parsed_date = datetime.strptime(date_str, fmt)
                 return parsed_date.strftime("%d.%m.%Y")

@@ -209,6 +209,71 @@ class AestheticButton(ft.Container):
             self.shadow.blur_radius = 8
         self.update()
 
+def format_date_input(date_str):
+    """
+    Esnek tarih girişini standart formata (gg.aa.yyyy) çevirir.
+    Desteklenen formatlar:
+    - 121225 -> 12.12.2025 (ggaayy)
+    - 12122025 -> 12.12.2025 (ggaayyyy)
+    - 12.12.2025, 12/12/2025, 12-12-2025 (ayırıcılı formatlar)
+    """
+    if not date_str or not isinstance(date_str, str):
+        return date_str
+    
+    date_str = date_str.strip()
+    
+    # Sadece rakamları al
+    cleaned = ''.join(c for c in date_str if c.isdigit())
+    
+    # 6 karakterlik format: ggaayy -> gg.aa.20yy
+    if len(cleaned) == 6:
+        gun = cleaned[:2]
+        ay = cleaned[2:4]
+        yil_short = cleaned[4:6]
+        yil = "20" + yil_short
+        try:
+            # Geçerli tarih mi kontrol et
+            datetime(int(yil), int(ay), int(gun))
+            return f"{gun}.{ay}.{yil}"
+        except ValueError:
+            return date_str
+    
+    # 8 karakterlik format: ggaayyyy -> gg.aa.yyyy
+    elif len(cleaned) == 8:
+        # İlk 4 karakter yıl gibi görünüyorsa (2000-2099 arası)
+        if cleaned[:4].startswith('20'):
+            # yyyyaagg formatı
+            yil = cleaned[:4]
+            ay = cleaned[4:6]
+            gun = cleaned[6:8]
+        else:
+            # ggaayyyy formatı
+            gun = cleaned[:2]
+            ay = cleaned[2:4]
+            yil = cleaned[4:8]
+        try:
+            datetime(int(yil), int(ay), int(gun))
+            return f"{gun}.{ay}.{yil}"
+        except ValueError:
+            return date_str
+    
+    # Zaten formatlanmış veya ayırıcı içeren tarihler
+    for sep in ['.', '/', '-']:
+        if sep in date_str:
+            parts = date_str.split(sep)
+            if len(parts) == 3:
+                try:
+                    gun, ay, yil = parts
+                    # 2 basamaklı yıl ise 20xx'e çevir
+                    if len(yil) == 2:
+                        yil = "20" + yil
+                    datetime(int(yil), int(ay), int(gun))
+                    return f"{gun.zfill(2)}.{ay.zfill(2)}.{yil}"
+                except (ValueError, TypeError):
+                    pass
+    
+    return date_str
+
 def create_vertical_input(label, hint, width=None, expand=True, is_dropdown=False, dropdown_options=None):
     if is_dropdown:
         input_control = ft.Dropdown(
@@ -1946,9 +2011,17 @@ def main(page: ft.Page):
         # Seçili fatura sayısını gösteren text
         selected_count_text = ft.Text("", size=12, color=col_danger, weight="bold", visible=False)
         
+        # Tarih alanı için on_blur handler - kullanıcı alanı terk ettiğinde tarihi formatla
+        def on_tarih_blur(e):
+            if e.control.value:
+                formatted = format_date_input(e.control.value)
+                if formatted != e.control.value:
+                    e.control.value = formatted
+                    e.control.update()
+        
         # Input alanları önce tanımlanmalı (update_selected_count bunları kullanacak)
         input_fatura_no = ft.TextField(hint_text="FAT-2025...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
-        input_tarih = ft.TextField(hint_text="Tarih giriniz (örn. 01012023,01.01.2023)", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        input_tarih = ft.TextField(hint_text="ggaayy veya gg.aa.yyyy (örn. 121225)", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12), on_blur=on_tarih_blur)
         input_firma = ft.TextField(hint_text="Firma seçiniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_malzeme = ft.TextField(hint_text="Ürün giriniz...", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_miktar = ft.TextField(hint_text="0", hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color=col_text, border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
@@ -3172,14 +3245,230 @@ def main(page: ft.Page):
     def handle_date_change(e):
         if e.control.value: update_transactions(e.control.value)
 
-
-
-    date_picker = ft.DatePicker(on_change=handle_date_change, cancel_text="İptal", confirm_text="Seç", help_text="İşlem Tarihini Seçin")
-    page.overlay.append(date_picker)
+    # Özel Türkçe tarih seçici dialog
+    date_input_field = ft.TextField(
+        hint_text="ggaayy veya gg.aa.yyyy (örn. 121225)",
+        hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+        text_size=14,
+        color=col_text,
+        border_color=col_border,
+        focused_border_color=col_primary,
+        border_radius=8,
+        content_padding=ft.padding.symmetric(horizontal=15, vertical=12),
+        width=280
+    )
+    
+    date_dialog_error = ft.Text("", color=col_danger, size=12, visible=False)
+    
+    def close_date_dialog(e):
+        date_dialog.open = False
+        date_input_field.value = ""
+        date_dialog_error.visible = False
+        page.update()
+    
+    def apply_date_filter(e):
+        """Girilen tarihi parse edip filtrele"""
+        input_val = date_input_field.value
+        if not input_val or not input_val.strip():
+            date_dialog_error.value = "Lütfen bir tarih girin"
+            date_dialog_error.visible = True
+            page.update()
+            return
+        
+        # Tarihi formatla
+        formatted = format_date_input(input_val.strip())
+        
+        # Geçerli tarih mi kontrol et
+        try:
+            parts = formatted.split('.')
+            if len(parts) == 3:
+                gun, ay, yil = int(parts[0]), int(parts[1]), int(parts[2])
+                selected_date = datetime(yil, ay, gun)
+                
+                # Dialog'u kapat ve filtrele
+                date_dialog.open = False
+                date_input_field.value = ""
+                date_dialog_error.visible = False
+                page.update()
+                
+                update_transactions(selected_date)
+            else:
+                raise ValueError("Geçersiz format")
+        except (ValueError, IndexError):
+            date_dialog_error.value = "Geçersiz tarih! Örn: 121225 veya 12.12.2025"
+            date_dialog_error.visible = True
+            page.update()
+    
+    # Türkçe ay isimleri ile takvim görünümü için basit bir seçici
+    TURKISH_MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", 
+                      "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+    
+    current_cal_year = datetime.now().year
+    current_cal_month = datetime.now().month
+    
+    def get_month_days(year, month):
+        """Ayın gün sayısını döndür"""
+        if month == 12:
+            next_month = datetime(year + 1, 1, 1)
+        else:
+            next_month = datetime(year, month + 1, 1)
+        return (next_month - datetime(year, month, 1)).days
+    
+    def select_day(day, year, month):
+        """Gün seçildiğinde"""
+        def handler(e):
+            selected_date = datetime(year, month, day)
+            date_dialog.open = False
+            date_input_field.value = ""
+            date_dialog_error.visible = False
+            page.update()
+            update_transactions(selected_date)
+        return handler
+    
+    calendar_grid = ft.Column(spacing=5)
+    month_year_text = ft.Text("", size=16, weight="bold", color=col_text)
+    
+    def build_calendar(year, month):
+        """Takvim grid'ini oluştur"""
+        nonlocal current_cal_year, current_cal_month
+        current_cal_year = year
+        current_cal_month = month
+        
+        month_year_text.value = f"{TURKISH_MONTHS[month-1]} {year}"
+        
+        calendar_grid.controls.clear()
+        
+        # Gün başlıkları
+        day_headers = ft.Row(
+            [ft.Container(
+                width=35, height=25,
+                content=ft.Text(d, size=11, weight="bold", color=col_text_light, text_align=ft.TextAlign.CENTER),
+                alignment=ft.alignment.center
+            ) for d in ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=2
+        )
+        calendar_grid.controls.append(day_headers)
+        
+        # Ayın ilk gününün haftanın hangi günü olduğunu bul (0=Pazartesi)
+        first_day = datetime(year, month, 1)
+        start_weekday = first_day.weekday()
+        
+        # Ayın toplam gün sayısı
+        total_days = get_month_days(year, month)
+        
+        # Takvim satırlarını oluştur
+        day_num = 1
+        for week in range(6):  # Max 6 hafta
+            if day_num > total_days:
+                break
+            
+            week_row = []
+            for weekday in range(7):
+                if week == 0 and weekday < start_weekday:
+                    # Boş hücre
+                    week_row.append(ft.Container(width=35, height=30))
+                elif day_num <= total_days:
+                    # Bugün mü kontrol et
+                    is_today = (year == datetime.now().year and 
+                               month == datetime.now().month and 
+                               day_num == datetime.now().day)
+                    
+                    day_btn = ft.Container(
+                        width=35, height=30,
+                        bgcolor=col_primary if is_today else None,
+                        border_radius=5,
+                        content=ft.Text(
+                            str(day_num), 
+                            size=12, 
+                            color=col_white if is_today else col_text,
+                            text_align=ft.TextAlign.CENTER
+                        ),
+                        alignment=ft.alignment.center,
+                        on_click=select_day(day_num, year, month),
+                        ink=True
+                    )
+                    week_row.append(day_btn)
+                    day_num += 1
+                else:
+                    week_row.append(ft.Container(width=35, height=30))
+            
+            calendar_grid.controls.append(
+                ft.Row(week_row, alignment=ft.MainAxisAlignment.CENTER, spacing=2)
+            )
+        
+        if calendar_grid.page:
+            calendar_grid.update()
+            month_year_text.update()
+    
+    def prev_month(e):
+        nonlocal current_cal_year, current_cal_month
+        if current_cal_month == 1:
+            current_cal_month = 12
+            current_cal_year -= 1
+        else:
+            current_cal_month -= 1
+        build_calendar(current_cal_year, current_cal_month)
+    
+    def next_month(e):
+        nonlocal current_cal_year, current_cal_month
+        if current_cal_month == 12:
+            current_cal_month = 1
+            current_cal_year += 1
+        else:
+            current_cal_month += 1
+        build_calendar(current_cal_year, current_cal_month)
+    
+    # İlk takvimi oluştur
+    build_calendar(current_cal_year, current_cal_month)
+    
+    date_dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Tarih Seçin", weight="bold", size=18),
+        content=ft.Container(
+            width=320,
+            content=ft.Column([
+                # Manuel tarih girişi
+                ft.Text("Tarih Girin:", size=13, color=col_text_secondary),
+                date_input_field,
+                date_dialog_error,
+                ft.Container(height=5),
+                ft.ElevatedButton(
+                    "Tarihe Git",
+                    icon="search",
+                    bgcolor=col_primary,
+                    color=col_white,
+                    on_click=apply_date_filter,
+                    width=280
+                ),
+                ft.Divider(height=20),
+                # Takvim görünümü
+                ft.Text("veya Takvimden Seçin:", size=13, color=col_text_secondary),
+                ft.Container(height=5),
+                ft.Row([
+                    ft.IconButton(icon="chevron_left", on_click=prev_month, icon_color=col_primary),
+                    month_year_text,
+                    ft.IconButton(icon="chevron_right", on_click=next_month, icon_color=col_primary)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                calendar_grid
+            ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+        ),
+        actions=[
+            ft.TextButton("İptal", on_click=close_date_dialog, style=ft.ButtonStyle(color=col_text_light))
+        ],
+        actions_alignment=ft.MainAxisAlignment.END
+    )
+    page.overlay.append(date_dialog)
+    
+    def open_date_dialog(e):
+        # Takvimi bugünün tarihine sıfırla
+        build_calendar(datetime.now().year, datetime.now().month)
+        date_dialog.open = True
+        page.update()
 
     def reset_transactions(e): update_transactions(None)
 
-    transactions_list_content = ft.Column([ft.Row([ft.Text("Son İşlemler", size=18, weight="bold", color=col_text), ft.Row([ft.IconButton(icon="calendar_month", icon_color=col_text_light, tooltip="Tarihe Göre Git", on_click=lambda _: setattr(date_picker, 'open', True) or page.update()), ft.TextButton("En Son Girilenler", style=ft.ButtonStyle(color=col_primary), on_click=reset_transactions)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=15), transactions_column], spacing=5)
+    transactions_list_content = ft.Column([ft.Row([ft.Text("Son İşlemler", size=18, weight="bold", color=col_text), ft.Row([ft.IconButton(icon="calendar_month", icon_color=col_text_light, tooltip="Tarihe Göre Git", on_click=open_date_dialog), ft.TextButton("En Son Girilenler", style=ft.ButtonStyle(color=col_primary), on_click=reset_transactions)])], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(height=15), transactions_column], spacing=5)
 
     transactions_list = ft.Container(bgcolor=col_white, border_radius=20, padding=25, shadow=ft.BoxShadow(blur_radius=20, color="#08000000"), height=450, content=transactions_list_content)
 
