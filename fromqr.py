@@ -64,7 +64,6 @@ class OptimizedQRProcessor:
             cv2.setUseOptimized(True)
             self.opencv_detector = cv2.QRCodeDetector()
             self.tools_loaded = True
-            logging.info("✅ QR araçları yüklendi")
         except Exception as e:
             logging.error(f"❌ QR araçları yüklenemedi: {e}")
             raise ImportError("QR kütüphaneleri eksik! pip install opencv-python-headless pyzbar PyMuPDF")
@@ -124,7 +123,6 @@ class OptimizedQRProcessor:
             # Cache'e kaydet
             self.file_quality_cache[pdf_path] = quality_info
             
-            logging.info(f"   📊 Dosya kalitesi: {quality_level}, DPI: {optimal_dpi}, Boyut: {file_size_mb:.1f}MB")
             return quality_info
             
         except Exception as e:
@@ -177,7 +175,6 @@ class OptimizedQRProcessor:
                     kv_pairs[key] = value
             
             if kv_pairs:
-                logging.info(f"✅ Manuel parse başarılı: {len(kv_pairs)} alan")
                 return kv_pairs
         except:
             pass
@@ -244,7 +241,6 @@ class OptimizedQRProcessor:
                     if codes:
                         data = self._extract_qr_data(codes[0])
                         if data:
-                            logging.debug(f"✅ {region_name} bölgede bulundu")
                             return data
                 except:
                     pass
@@ -287,14 +283,12 @@ class OptimizedQRProcessor:
                 if codes:
                     data = self._extract_qr_data(codes[0])
                     if data:
-                        logging.debug(f"✅ {method_name} ile bulundu")
                         return data
                 
                 # OpenCV dene
                 if self.opencv_detector:
                     qr_data, _, _ = self.opencv_detector.detectAndDecode(processed)
                     if qr_data and len(qr_data.strip()) > 10:
-                        logging.debug(f"✅ {method_name} + OpenCV ile bulundu")
                         return qr_data
             except:
                 continue
@@ -428,7 +422,6 @@ class OptimizedQRProcessor:
                 return self._stage3_deep(img)   # ESKİ YÜKSEK SEVİYE
             
         except Exception as e:
-            logging.debug(f"   PDF tarama hatası ({stage_name}): {e}")
             pass
         
         return None
@@ -445,7 +438,6 @@ class OptimizedQRProcessor:
                 if codes:
                     data = self._extract_qr_data(codes[0])
                     if data:
-                        logging.debug(f"   ✅ Sağ üst bölgede bulundu")
                         return data
         except:
             pass
@@ -456,7 +448,6 @@ class OptimizedQRProcessor:
             if codes:
                 data = self._extract_qr_data(codes[0])
                 if data:
-                    logging.debug(f"   ✅ Tam resim taramada bulundu")
                     return data
         except:
             pass
@@ -490,7 +481,6 @@ class OptimizedQRProcessor:
                     if codes:
                         data = self._extract_qr_data(codes[0])
                         if data:
-                            logging.debug(f"✅ {region_name} bölgede bulundu (fallback)")
                             return data
                 except:
                     pass
@@ -501,7 +491,6 @@ class OptimizedQRProcessor:
             if codes:
                 data = self._extract_qr_data(codes[0])
                 if data:
-                    logging.debug(f"✅ Fallback tam taramada bulundu")
                     return data
         except:
             pass
@@ -511,7 +500,6 @@ class OptimizedQRProcessor:
             try:
                 qr_data, _, _ = self.opencv_detector.detectAndDecode(enhanced)
                 if qr_data and len(qr_data.strip()) > 10:
-                    logging.debug(f"✅ Fallback OpenCV'de bulundu")
                     return qr_data
             except:
                 pass
@@ -585,7 +573,6 @@ class OptimizedQRProcessor:
         if pdf_path:
             table_info = self._extract_from_table_structure(pdf_path)
             if table_info.get('malzeme') or table_info.get('miktar'):
-                logging.info("   ✅ Sütun bazlı tablo analizinden veri alındı")
                 info.update(table_info)
                 # Eğer her iki bilgi de bulunduysa, firma kontrolü yap ve dön
                 if info['malzeme'] and info['miktar']:
@@ -619,7 +606,6 @@ class OptimizedQRProcessor:
             
             # "SAYIN" kelimesini içeren satırı bul
             if re.search(r'\bSAYIN\b', line_stripped, re.IGNORECASE):
-                logging.debug(f"   🔍 'SAYIN' kelimesi bulundu: {line_stripped}")
                 
                 # Hemen altındaki satırı firma adı olarak al
                 for j in range(i+1, min(i+4, len(lines))):
@@ -647,7 +633,6 @@ class OptimizedQRProcessor:
                     
                     # Geçerli firma adı bulundu
                     firma = candidate
-                    logging.debug(f"   🏢 Firma adı (SAYIN altında): {candidate}")
                     break
                 
                 if firma:
@@ -676,7 +661,6 @@ class OptimizedQRProcessor:
                                 continue
                             
                             firma = candidate
-                            logging.debug(f"   🏢 Firma adı (keyword): {candidate}")
                             break
                     if firma:
                         break
@@ -692,12 +676,6 @@ class OptimizedQRProcessor:
             if not words:
                 return info
             
-            logging.info(f"   🔍 {len(words)} kelime koordinatı alındı")
-            
-            # DEBUG: İlk 50 kelimeyi logla
-            logging.info("   📋 İLK 50 KELİME (koordinatlarla):")
-            for i, w in enumerate(words[:50]):
-                logging.info(f"      [{i}] '{w['text']}' -> x={w['x']:.0f}, y={w['y']:.0f}")
             
             # Y koordinatına göre satırlara grupla (tolerance: 5 piksel)
             rows = self._group_words_into_rows(words, y_tolerance=5)
@@ -707,13 +685,9 @@ class OptimizedQRProcessor:
             miktar_col_x = None
             header_y = None
             
-            logging.info("   🔎 BAŞLIK ARAMA:")
             
             for row_y, row_words in rows.items():
                 row_text = ' '.join([w['text'] for w in row_words]).lower()
-                
-                # DEBUG: Her satırı logla
-                logging.info(f"      Satır y={row_y:.0f}: {row_text[:100]}")
                 
                 # Malzeme/Mal Hizmet başlığı
                 for word in row_words:
@@ -721,7 +695,6 @@ class OptimizedQRProcessor:
                     if any(keyword in word_lower for keyword in ['mal', 'hizmet', 'açıklama', 'malzeme', 'ürün']):
                         malzeme_col_x = word['x']
                         header_y = row_y
-                        logging.info(f"      ✅ Malzeme sütunu başlığı: '{word['text']}' -> x={malzeme_col_x:.0f}, y={row_y:.0f}")
                         break
                 
                 # Miktar başlığı
@@ -731,7 +704,6 @@ class OptimizedQRProcessor:
                         miktar_col_x = word['x']
                         if not header_y:
                             header_y = row_y
-                        logging.info(f"      ✅ Miktar sütunu başlığı: '{word['text']}' -> x={miktar_col_x:.0f}, y={row_y:.0f}")
                         break
                 
                 if malzeme_col_x and miktar_col_x:
@@ -741,17 +713,14 @@ class OptimizedQRProcessor:
                 logging.warning("   ❌ Tablo başlıkları bulunamadı")
                 return info
             
-            logging.info(f"   📊 Başlık bulundu: Malzeme x={malzeme_col_x}, Miktar x={miktar_col_x}, y={header_y:.0f}")
             
             # Başlık satırından sonraki satırlarda veri ara
-            logging.info("   🔎 VERİ ARAMA:")
             for row_y in sorted(rows.keys()):
                 if row_y <= header_y + 10:  # Başlık satırını ve hemen altını atla
                     continue
                 
                 row_words = rows[row_y]
                 row_text = ' '.join([w['text'] for w in row_words])
-                logging.info(f"      Veri satırı y={row_y:.0f}: {row_text[:80]}")
                 
                 # Malzeme sütunundan veri al (x koordinatı yakın olanlar)
                 if malzeme_col_x and not info['malzeme']:
@@ -764,13 +733,11 @@ class OptimizedQRProcessor:
                     
                     if malzeme_candidates:
                         cand_info = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in malzeme_candidates[:3]])
-                        logging.info(f"         Malzeme adayları: {cand_info}")
                     
                     if malzeme_candidates:
                         # En yakın olanı al
                         malzeme_candidates.sort(key=lambda w: abs(w['x'] - malzeme_col_x))
                         info['malzeme'] = malzeme_candidates[0]['text']
-                        logging.info(f"         ✅ Malzeme SEÇİLDİ: '{info['malzeme']}' (x={malzeme_candidates[0]['x']:.0f})")
                 
                 # ⭐ MİKTAR SÜTUNU - GELİŞTİRİLMİŞ ARAMA ⭐
                 if miktar_col_x and not info['miktar']:
@@ -807,9 +774,6 @@ class OptimizedQRProcessor:
                     birim_list = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in birim_candidates])
                     karma_list = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in karma_candidates])
                     
-                    logging.info(f"         🔍 Sayı adayları: {sayi_list}")
-                    logging.info(f"         🔍 Birim adayları: {birim_list}")
-                    logging.info(f"         🔍 Karma adayları: {karma_list}")
                     
                     miktar_result = None
                     
@@ -829,7 +793,6 @@ class OptimizedQRProcessor:
                                 float_val = float(sayi_temiz)
                                 if 0 < float_val < 100000:  # Makul aralık
                                     miktar_result = f"{sayi_temiz} {birim_part}"
-                                    logging.info(f"         ✅ KARMA SEÇİLDİ: {miktar_result} (orijinal: '{selected['text']}')") 
                             except:
                                 pass
                     
@@ -866,7 +829,6 @@ class OptimizedQRProcessor:
                             try:
                                 float_val = float(sayi_temiz)
                                 miktar_result = f"{float_val:.0f} {birim_w['text'].upper().strip()}"
-                                logging.info(f"         ✅ SAYI+BİRİM SEÇİLDİ: {miktar_result} (sayı: '{sayi_w['text']}', birim: '{birim_w['text']}', skor: {score:.1f})")
                             except:
                                 pass
                     
@@ -880,7 +842,6 @@ class OptimizedQRProcessor:
                                 float_val = float(sayi_temiz)
                                 if 0 < float_val < 100000:  # Makul aralık
                                     miktar_result = sayi_temiz
-                                    logging.info(f"         ✅ SADECE SAYI SEÇİLDİ: {miktar_result} (orijinal: '{sayi_w['text']}')")
                                     break
                             except:
                                 continue
@@ -894,7 +855,6 @@ class OptimizedQRProcessor:
             
             # ⭐ ALTERNATİF: Eğer miktar hala bulunamadıysa, MALZEME SATIRI ÜZERİNDE ara ⭐
             if info['malzeme'] and not info['miktar']:
-                logging.info("   🔍 Miktar sütunda bulunamadı, malzeme satırı taranacak...")
                 
                 # Malzeme satırını bul
                 for row_y in sorted(rows.keys()):
@@ -915,7 +875,6 @@ class OptimizedQRProcessor:
                         
                         if numeric_values:
                             nums_info = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in numeric_values[:5]])
-                            logging.info(f"      Malzeme satırındaki sayılar: {nums_info}")
                             
                             # Malzemeden en uzak olanı al (genelde malzeme solda, miktar sağda)
                             malzeme_x = next((w['x'] for w in row_words if w['text'] == info['malzeme']), 0)
@@ -934,7 +893,6 @@ class OptimizedQRProcessor:
                                         else:
                                             info['miktar'] = cleaned
                                         
-                                        logging.info(f"      ✅ Miktar (malzeme satırından): {info['miktar']} (x={num_val['x']:.0f})")
                                         break
                                 except:
                                     continue
@@ -1047,7 +1005,6 @@ class OptimizedQRProcessor:
             return None
             
         except Exception as e:
-            logging.debug(f"   Birim bulma hatası: {e}")
             return None
     
     def _group_words_into_rows(self, words, y_tolerance=5):
@@ -1101,7 +1058,6 @@ class OptimizedQRProcessor:
             if any(re.search(pattern, line_lower) for pattern in malzeme_header_patterns):
                 table_start_idx = i
                 header_line = lines[i]
-                logging.debug(f"   📊 Tablo başlığı bulundu (satır {i}): {line_lower}")
                 break
         
         # Tablo bulunduysa, ALTINDA (sonraki satırlarda) malzeme ara
@@ -1155,7 +1111,6 @@ class OptimizedQRProcessor:
                 # Geçerli malzeme adı (en az 5 karakter, harf içermeli)
                 if len(candidate) >= 5 and re.search(r'[a-zA-ZğüşıöçĞÜŞİÖÇ]', candidate):
                     malzeme = candidate
-                    logging.debug(f"   📦 Malzeme adı (başlık altından): {candidate}")
                     break
         
         return malzeme
@@ -1181,7 +1136,6 @@ class OptimizedQRProcessor:
             if any(re.search(pattern, line_lower) for pattern in miktar_header_patterns):
                 miktar_column_idx = i
                 miktar_header_line = lines[i]
-                logging.debug(f"   📊 Miktar başlığı bulundu (satır {i}): {line_lower}")
                 break
         
         # Miktar başlığı bulunduysa, ALTINDA (sonraki satırlarda) miktar ara
@@ -1222,7 +1176,6 @@ class OptimizedQRProcessor:
                         float_value = float(cleaned_number)
                         if float_value > 0:
                             miktar = cleaned_number
-                            logging.debug(f"   🔢 Miktar (başlık altından): {cleaned_number} (orijinal: {line_stripped})")
                             break
                     except ValueError:
                         continue
@@ -1275,7 +1228,6 @@ class OptimizedQRProcessor:
                     }
             
             # ⭐ QR KOD BULUNAMADI - GELİŞMİŞ PDF METİN TARAMA DEVREDE ⭐
-            logging.info(f"   🔍 QR bulunamadı, PDF metin taraması devrede: {file_basename}")
             
             # PDF'den tüm bilgileri çıkar
             if pdf_text:
@@ -1295,6 +1247,11 @@ class OptimizedQRProcessor:
                 
                 # En az firma bilgisi olmalı
                 if firma or amounts['toplam'] > 0:
+                    # Para birimi dönüşümü
+                    currency_code = amounts.get('birim', 'TL')
+                    if currency_code == 'TL':
+                        currency_code = 'TRY'
+                    
                     # Gelişmiş JSON oluştur
                     fallback_json = {
                         'faturaNo': fatura_no,
@@ -1306,17 +1263,10 @@ class OptimizedQRProcessor:
                         'taxableAmount': amounts['matrah'],
                         'hesaplanankdv': amounts['kdv'],
                         'kdvOrani': amounts['kdv_yuzdesi'],
-                        'currency': 'TRY',
+                        'currency': currency_code,
                         '_source': 'PDF_TEXT_EXTRACTION'
                     }
                     
-                    logging.info(f"   ✅ PDF'den bilgi çıkarıldı:")
-                    logging.info(f"      - Firma: {firma or 'Yok'}")
-                    logging.info(f"      - Fatura No: {fatura_no}")
-                    logging.info(f"      - Tarih: {tarih}")
-                    logging.info(f"      - Toplam: {amounts['toplam']}")
-                    logging.info(f"      - Matrah: {amounts['matrah']}")
-                    logging.info(f"      - KDV: {amounts['kdv']} ({amounts['kdv_yuzdesi']}%)")
                     
                     return {
                         'dosya_adi': file_basename,
@@ -1388,7 +1338,6 @@ class OptimizedQRProcessor:
                         if match:
                             if len(match.groups()) == 3 and match.group(1).isdigit():
                                 date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
-                                logging.debug(f"   Tarih bulundu: {date_str}")
                                 return date_str
         
         # Genel tarama
@@ -1397,7 +1346,6 @@ class OptimizedQRProcessor:
             if match:
                 if len(match.groups()) == 3 and match.group(1).isdigit():
                     date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
-                    logging.debug(f"   Tarih bulundu (genel): {date_str}")
                     return date_str
         
         # Bulunamadıysa bugünün tarihi
@@ -1430,60 +1378,189 @@ class OptimizedQRProcessor:
                         invoice_match = re.search(r'([A-Z]{3}\d{12,}|[A-Z0-9]{10,})', lines[j])
                         if invoice_match:
                             invoice_no = invoice_match.group(1)
-                            logging.debug(f"   Fatura No: {invoice_no}")
                             return invoice_no
         
         return None
     
     def _extract_amount_from_text(self, pdf_text):
-        """PDF metninden tutar çıkar - Gelişmiş (Toplam, Matrah, KDV)"""
+        """PDF metninden tutar çıkar - Gelişmiş (Toplam, Matrah, KDV, Para Birimi)
+        
+        ÖNCELİK SIRASI:
+        1. Ödenecek Tutar (KDV dahil toplam)
+        2. Vergiler Dahil Toplam
+        3. Genel Toplam
+        4. Matrah + KDV hesaplaması
+        """
         if not pdf_text:
-            return {'toplam': 0.0, 'matrah': 0.0, 'kdv': 0.0, 'kdv_yuzdesi': 0.0}
+            return {'toplam': 0.0, 'matrah': 0.0, 'kdv': 0.0, 'kdv_yuzdesi': 0.0, 'birim': 'TL'}
         
         lines = pdf_text.split('\n')
         amounts = {
             'toplam': 0.0,
             'matrah': 0.0,
             'kdv': 0.0,
-            'kdv_yuzdesi': 0.0
+            'kdv_yuzdesi': 0.0,
+            'birim': 'TL'  # Varsayılan
         }
         
-        # TOPLAM TUTAR (Ödenecek, Genel Toplam)
-        toplam_keywords = [
+        # ⭐ PARA BİRİMİ TESPİTİ - GELİŞTİRİLMİŞ ⭐
+        # Strateji: Tutar satırlarındaki para birimini tespit et (daha güvenilir)
+        detected_currency = None
+        
+        # 1. YÖNTEM: "Ödenecek Tutar", "Toplam Tutar" gibi kritik satırlardaki para birimini bul
+        currency_detection_keywords = [
             r'ödenecek\s*tutar',
-            r'genel\s*toplam',
             r'toplam\s*tutar',
-            r'vergiler\s*dahil\s*toplam',
-            r'total\s*amount',
-            r'payable\s*amount'
+            r'genel\s*toplam',
+            r'vergiler\s*dahil',
+            r'mal\s*hizmet\s*toplam',
+        ]
+        
+        for line in lines:
+            line_lower = line.lower()
+            for keyword in currency_detection_keywords:
+                if re.search(keyword, line_lower):
+                    # Bu satırda para birimi ara
+                    if re.search(r'\bEUR\b', line, re.IGNORECASE):
+                        detected_currency = 'EUR'
+                        break
+                    elif re.search(r'\bUSD\b', line, re.IGNORECASE):
+                        detected_currency = 'USD'
+                        break
+                    elif re.search(r'\bGBP\b', line, re.IGNORECASE):
+                        detected_currency = 'GBP'
+                        break
+            if detected_currency:
+                break
+        
+        # 2. YÖNTEM: Eğer yukarıda bulunamadıysa, "Para Birimi" veya "Döviz" etiketine bak
+        if not detected_currency:
+            currency_label_patterns = [
+                r'para\s*birimi[:\s]*(\w+)',
+                r'döviz\s*cinsi[:\s]*(\w+)',
+                r'döviz[:\s]*(\w+)',
+                r'currency[:\s]*(\w+)',
+            ]
+            
+            for pattern in currency_label_patterns:
+                match = re.search(pattern, pdf_text, re.IGNORECASE)
+                if match:
+                    currency_value = match.group(1).upper()
+                    if 'EUR' in currency_value or 'EURO' in currency_value:
+                        detected_currency = 'EUR'
+                        break
+                    elif 'USD' in currency_value or 'DOLAR' in currency_value:
+                        detected_currency = 'USD'
+                        break
+                    elif 'GBP' in currency_value or 'STERLIN' in currency_value:
+                        detected_currency = 'GBP'
+                        break
+        
+        # 3. YÖNTEM: Tutar yanındaki para birimi sembollerini say (sadece tutar formatı yanındakiler)
+        # Format: 1.234,56 EUR veya 1234,56 USD gibi
+        if not detected_currency:
+            # Tutar + para birimi pattern'i
+            eur_with_amount = len(re.findall(r'[\d.,]+\s*EUR\b', pdf_text, re.IGNORECASE))
+            usd_with_amount = len(re.findall(r'[\d.,]+\s*USD\b', pdf_text, re.IGNORECASE))
+            tl_with_amount = len(re.findall(r'[\d.,]+\s*(?:TL|TRY)\b', pdf_text, re.IGNORECASE))
+            
+            
+            if eur_with_amount > tl_with_amount and eur_with_amount >= 2:
+                detected_currency = 'EUR'
+            elif usd_with_amount > tl_with_amount and usd_with_amount >= 2:
+                detected_currency = 'USD'
+        
+        # Varsayılan TL
+        if not detected_currency:
+            detected_currency = 'TL'
+        
+        amounts['birim'] = detected_currency
+        
+        # Yardımcı fonksiyon: Satırdan tutar çıkar
+        def extract_amount_from_line(line_text):
+            """Bir satırdan en büyük tutarı çıkar"""
+            # Para birimi işaretlerini ve boşlukları temizle
+            # Türkçe format: 1.234,56 veya 1234,56
+            matches = re.findall(r'([\d.]+,\d{2})', line_text)
+            if matches:
+                for m in reversed(matches):  # Son (sağdaki) değeri öncelikli al
+                    try:
+                        amount_str = m.replace('.', '').replace(',', '.')
+                        amount = float(amount_str)
+                        if amount > 1:  # Çok küçük değerleri atla
+                            return amount
+                    except:
+                        continue
+            return 0.0
+        
+        # ⭐ ÖDENECEK TUTAR - EN YÜKSEK ÖNCELİK ⭐
+        # Faturalarda genellikle "ÖDENECEK TUTAR" veya "Ödenecek Tutar" şeklinde geçer
+        odenecek_keywords = [
+            r'ödenecek\s*tutar',
+            r'odenecek\s*tutar',
+            r'ÖDENECEK\s*TUTAR',
+            r'ODENECEK\s*TUTAR',
+            r'Ödenecek\s*Tutar',
         ]
         
         for i, line in enumerate(lines):
-            line_lower = line.lower()
-            for keyword in toplam_keywords:
-                if re.search(keyword, line_lower):
-                    for j in range(i, min(i+3, len(lines))):
-                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
-                        if amount_match:
-                            try:
-                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
-                                amount = float(amount_str)
-                                if amount > 10:
-                                    amounts['toplam'] = amount
-                                    logging.debug(f"   Toplam tutar: {amount}")
-                                    break
-                            except:
-                                continue
+            line_check = line.strip()
+            for keyword in odenecek_keywords:
+                if re.search(keyword, line_check, re.IGNORECASE):
+                    # Aynı satırda tutar var mı?
+                    amount = extract_amount_from_line(line_check)
+                    if amount > 10:
+                        amounts['toplam'] = amount
+                        break
+                    # Sonraki 3 satıra bak
+                    for j in range(i+1, min(i+4, len(lines))):
+                        amount = extract_amount_from_line(lines[j])
+                        if amount > 10:
+                            amounts['toplam'] = amount
+                            break
                     if amounts['toplam'] > 0:
                         break
             if amounts['toplam'] > 0:
                 break
         
-        # MATRAH (KDV Matrahı)
+        # Eğer "ödenecek tutar" bulunamadıysa, diğer toplam anahtar kelimelerine bak
+        if amounts['toplam'] == 0:
+            toplam_keywords = [
+                r'vergiler\s*dahil\s*toplam',
+                r'genel\s*toplam',
+                r'toplam\s*tutar',
+                r'total\s*amount',
+                r'payable\s*amount',
+                r'grand\s*total'
+            ]
+            
+            for i, line in enumerate(lines):
+                line_lower = line.lower()
+                for keyword in toplam_keywords:
+                    if re.search(keyword, line_lower):
+                        amount = extract_amount_from_line(line)
+                        if amount > 10:
+                            amounts['toplam'] = amount
+                            break
+                        # Sonraki satırlara bak
+                        for j in range(i+1, min(i+4, len(lines))):
+                            amount = extract_amount_from_line(lines[j])
+                            if amount > 10:
+                                amounts['toplam'] = amount
+                                break
+                        if amounts['toplam'] > 0:
+                            break
+                if amounts['toplam'] > 0:
+                    break
+        
+        # MATRAH (KDV Matrahı) - "mal hizmet toplam" matrah olarak algılanmalı, toplam olarak DEĞİL
         matrah_keywords = [
             r'kdv\s*matrah[ıi]?',
+            r'matrah\s*toplam',
             r'matrah',
-            r'mal\s*hizmet\s*toplam',
+            r'mal\s*hizmet\s*toplam\s*tutar',
+            r'mal/hizmet\s*toplam',
+            r'malhizmet\s*toplam',
             r'vergiden\s*önceki\s*toplam',
             r'net\s*tutar'
         ]
@@ -1492,18 +1569,16 @@ class OptimizedQRProcessor:
             line_lower = line.lower()
             for keyword in matrah_keywords:
                 if re.search(keyword, line_lower):
-                    for j in range(i, min(i+3, len(lines))):
-                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
-                        if amount_match:
-                            try:
-                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
-                                amount = float(amount_str)
-                                if amount > 0:
-                                    amounts['matrah'] = amount
-                                    logging.debug(f"   Matrah: {amount}")
-                                    break
-                            except:
-                                continue
+                    amount = extract_amount_from_line(line)
+                    if amount > 0:
+                        amounts['matrah'] = amount
+                        break
+                    # Sonraki satırlara bak
+                    for j in range(i+1, min(i+4, len(lines))):
+                        amount = extract_amount_from_line(lines[j])
+                        if amount > 0:
+                            amounts['matrah'] = amount
+                            break
                     if amounts['matrah'] > 0:
                         break
             if amounts['matrah'] > 0:
@@ -1514,6 +1589,7 @@ class OptimizedQRProcessor:
             r'hesaplanan\s*kdv',
             r'kdv\s*tutar[ıi]?',
             r'kdv\s*toplam[ıi]?',
+            r'toplam\s*kdv',
             r'vergi\s*tutar[ıi]?',
             r'tax\s*amount'
         ]
@@ -1522,18 +1598,16 @@ class OptimizedQRProcessor:
             line_lower = line.lower()
             for keyword in kdv_keywords:
                 if re.search(keyword, line_lower):
-                    for j in range(i, min(i+3, len(lines))):
-                        amount_match = re.search(r'([\d.,]+)\s*(?:TL|₺|EUR|USD)?', lines[j])
-                        if amount_match:
-                            try:
-                                amount_str = amount_match.group(1).replace('.', '').replace(',', '.')
-                                amount = float(amount_str)
-                                if amount > 0:
-                                    amounts['kdv'] = amount
-                                    logging.debug(f"   KDV tutari: {amount}")
-                                    break
-                            except:
-                                continue
+                    amount = extract_amount_from_line(line)
+                    if amount > 0:
+                        amounts['kdv'] = amount
+                        break
+                    # Sonraki satırlara bak
+                    for j in range(i+1, min(i+4, len(lines))):
+                        amount = extract_amount_from_line(lines[j])
+                        if amount > 0:
+                            amounts['kdv'] = amount
+                            break
                     if amounts['kdv'] > 0:
                         break
             if amounts['kdv'] > 0:
@@ -1543,19 +1617,23 @@ class OptimizedQRProcessor:
         kdv_percent_match = re.search(r'%\s*(\d+)', pdf_text)
         if kdv_percent_match:
             amounts['kdv_yuzdesi'] = float(kdv_percent_match.group(1))
-            logging.debug(f"   KDV %: {amounts['kdv_yuzdesi']}")
         elif amounts['matrah'] > 0 and amounts['kdv'] > 0:
             amounts['kdv_yuzdesi'] = round((amounts['kdv'] / amounts['matrah']) * 100, 2)
-            logging.debug(f"   KDV % (hesaplanan): {amounts['kdv_yuzdesi']}")
         
         # Tutarları doğrula ve düzelt
         if amounts['toplam'] == 0 and amounts['matrah'] > 0 and amounts['kdv'] > 0:
             amounts['toplam'] = amounts['matrah'] + amounts['kdv']
-            logging.debug(f"   Toplam hesaplandi: {amounts['toplam']}")
         
         if amounts['matrah'] == 0 and amounts['toplam'] > 0 and amounts['kdv'] > 0:
             amounts['matrah'] = amounts['toplam'] - amounts['kdv']
-            logging.debug(f"   Matrah hesaplandi: {amounts['matrah']}")
+        
+        # ⭐ SON KONTROL: Eğer toplam hala 0 ise ve matrah varsa, KDV'yi varsayılan oranla hesapla
+        if amounts['toplam'] == 0 and amounts['matrah'] > 0:
+            if amounts['kdv_yuzdesi'] == 0:
+                amounts['kdv_yuzdesi'] = 20.0  # Varsayılan KDV
+            amounts['kdv'] = amounts['matrah'] * (amounts['kdv_yuzdesi'] / 100)
+            amounts['toplam'] = amounts['matrah'] + amounts['kdv']
+        
         
         return amounts
 
@@ -1564,7 +1642,6 @@ class OptimizedQRProcessor:
         if not self.tools_loaded:
             self._init_qr_tools()
         
-        logging.info(f"🚀 QR klasör işleme başlıyor: {folder_path}")
         
         if status_callback:
             status_callback("📁 Dosyalar taranıyor...", 5)
@@ -1588,7 +1665,6 @@ class OptimizedQRProcessor:
             logging.warning("⚠️ İşlenebilir dosya bulunamadı")
             return []
         
-        logging.info(f"📁 {len(file_paths)} dosya bulundu, {max_workers} thread kullanılacak")
         
         results = []
         completed_count = 0
@@ -1654,7 +1730,6 @@ class OptimizedQRProcessor:
                             dest_path = os.path.join(failed_dir, f"{base}_{timestamp}{ext}")
                             
                         shutil.move(source_path, dest_path)
-                        logging.info(f"   📦 Başarısız dosya taşındı: {file_name} -> BasarisizQRlar")
                         
                         # Sonuçtaki yolu güncelle
                         result['dosya_yolu'] = dest_path
@@ -1663,15 +1738,6 @@ class OptimizedQRProcessor:
                     logging.error(f"   ❌ Dosya taşıma hatası ({result.get('dosya_adi')}): {e}")
         
         # İstatistikler
-        logging.info(f"🏁 QR işleme bitti!")
-        logging.info(f"📊 Başarılı: {success_count}/{len(results)} (%{(success_count/len(results)*100):.0f})")
-        logging.info(f"⏱️  Süre: {total_time:.1f}s, Hız: {len(results)/total_time:.1f} dosya/s")
-        logging.info(f"📈 Akıllı DPI İstatistikleri:")
-        logging.info(f"   • Yüksek Kalite (300 DPI): {self.stats['smart_dpi_300']}")
-        logging.info(f"   • Orta Kalite (450 DPI): {self.stats['smart_dpi_450']}")
-        logging.info(f"   • Düşük Kalite (600 DPI): {self.stats['smart_dpi_600']}")
-        logging.info(f"   • Fallback Tarama: {self.stats['fallback_scan']}")
-        logging.info(f"   • Başarısız: {self.stats['failed']}")
         
         if status_callback:
             status_callback("✅ QR işleme tamamlandı!", 100)
@@ -1693,7 +1759,6 @@ class QRInvoiceIntegrator:
     def __init__(self, backend_instance):
         self.backend = backend_instance
         self.qr_processor = OptimizedQRProcessor()
-        logging.info("🔗 QRInvoiceIntegrator başlatıldı (optimize edilmiş)")
     
     def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None):
         """Klasördeki dosyaları işle"""
@@ -1743,7 +1808,6 @@ class QRInvoiceIntegrator:
         failed_files = []
         
         type_text = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
-        logging.info(f"🔄 {len(qr_results)} QR sonucu işlenecek (TİP: {type_text} + DUPLICATE KONTROL)")
         
         for i, result in enumerate(qr_results, 1):
             dosya_adi = result.get('dosya_adi', 'Bilinmeyen')
@@ -1766,13 +1830,33 @@ class QRInvoiceIntegrator:
                         'status': 'BAŞARISIZ',
                         'error': 'Firma bilgisi eksik'
                     })
+                    # Kaydet: eklenmeyen faturalar
+                    try:
+                        self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Firma bilgisi eksik', qr_json=qr_json, parsed_fields=parsed_fields)
+                    except Exception:
+                        pass
+                    continue
+
+                # Toplam tutar okunamadıysa kaydet ve atla
+                if not parsed_fields.get('toplam_tutar') or float(parsed_fields.get('toplam_tutar', 0)) <= 0:
+                    logging.warning(f"   ⚠️ {dosya_adi}: Toplam tutar okunamadı veya sıfır")
+                    failed_imports += 1
+                    failed_files.append(dosya_yolu)
+                    processing_details.append({
+                        'file': dosya_adi,
+                        'status': 'BAŞARISIZ',
+                        'error': 'Toplam tutar okunamadı'
+                    })
+                    try:
+                        self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Toplam tutar okunamadı', qr_json=qr_json, parsed_fields=parsed_fields)
+                    except Exception:
+                        pass
                     continue
                 
                 # ⭐ DUPLICATE KONTROL ⭐
                 fatura_no = parsed_fields.get('fatura_no', '')
                 if self._is_duplicate_invoice(fatura_no):
                     skipped_duplicates += 1
-                    logging.info(f"   ⏭️  {dosya_adi} -> ATLANDI (Duplicate: {fatura_no})")
                     processing_details.append({
                         'file': dosya_adi,
                         'status': 'ATLANDI (DUPLICATE)',
@@ -1783,7 +1867,6 @@ class QRInvoiceIntegrator:
                 
                 # Backend'e ekle (manuel seçilen tip ile)
                 try:
-                    logging.info(f"   📝 {dosya_adi} kaydediliyor -> Tip: {invoice_type}, Firma: {parsed_fields.get('firma', 'N/A')[:30]}")
                     
                     result = self.backend.handle_invoice_operation(
                         operation='add',
@@ -1793,7 +1876,6 @@ class QRInvoiceIntegrator:
                     
                     if result:
                         successful_imports += 1
-                        logging.info(f"   ✅ {dosya_adi} -> {invoice_type.upper()} olarak KAYDEDİLDİ (Firma: {parsed_fields.get('firma', 'N/A')[:30]})")
                     else:
                         failed_imports += 1
                         failed_files.append(dosya_yolu)
@@ -1803,6 +1885,10 @@ class QRInvoiceIntegrator:
                             'status': 'BAŞARISIZ',
                             'error': 'Backend False döndü'
                         })
+                        try:
+                            self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Backend False döndü', qr_json=qr_json, parsed_fields=parsed_fields)
+                        except Exception:
+                            pass
                         continue
                     processing_details.append({
                         'file': dosya_adi,
@@ -1821,6 +1907,10 @@ class QRInvoiceIntegrator:
                         'status': 'BAŞARISIZ',
                         'error': f'DB hatası: {e}'
                     })
+                    try:
+                        self._save_unadded_invoice(dosya_yolu, dosya_adi, f'DB hatası: {e}', qr_json=qr_json, parsed_fields=parsed_fields)
+                    except Exception:
+                        pass
             else:
                 failed_imports += 1
                 failed_files.append(dosya_yolu)
@@ -1829,12 +1919,11 @@ class QRInvoiceIntegrator:
                     'status': 'BAŞARISIZ',
                     'error': result.get('durum', 'Bilinmeyen hata')
                 })
+                try:
+                    self._save_unadded_invoice(dosya_yolu, dosya_adi, result.get('durum', 'Bilinmeyen hata'), qr_json=result.get('json_data'), parsed_fields=None)
+                except Exception:
+                    pass
         
-        logging.info(f"\n{'='*60}")
-        logging.info(f"✅ İşlem Tamamlandı!")
-        logging.info(f"📊 Başarılı: {successful_imports}, Başarısız: {failed_imports}, Duplicate: {skipped_duplicates}")
-        logging.info(f"📋 Tip: {invoice_type.upper()}")
-        logging.info(f"{'='*60}\n")
         
         # Backend sinyalini tetikle
         self.backend.data_updated.emit()
@@ -1874,6 +1963,32 @@ class QRInvoiceIntegrator:
         except Exception as e:
             logging.warning(f"⚠️ Duplicate kontrol hatası: {e}")
             return False
+
+    def _save_unadded_invoice(self, dosya_yolu, dosya_adi, reason, qr_json=None, parsed_fields=None):
+        """Okunamayan veya eklenemeyen faturaları `eklenmeyen_faturalar.json` dosyasına ekle."""
+        try:
+            base_dir = os.path.dirname(__file__)
+            save_path = os.path.join(base_dir, 'eklenmeyen_faturalar.json')
+            entry = {
+                'timestamp': datetime.now().isoformat(),
+                'file': dosya_adi,
+                'path': dosya_yolu,
+                'reason': reason,
+                'qr_json': qr_json,
+                'parsed_fields': parsed_fields
+            }
+            data = []
+            if os.path.exists(save_path):
+                try:
+                    with open(save_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except Exception:
+                    data = []
+            data.append(entry)
+            with open(save_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"   ❌ Eklenmeyen fatura kaydı başarısız: {e}")
     
     def _detect_invoice_type(self, qr_json, parsed_fields):
         """
@@ -1890,25 +2005,20 @@ class QRInvoiceIntegrator:
             
             # SATIS -> GELİR
             if any(keyword in tip_upper for keyword in ['SATIS', 'SATŞ', 'SALE', 'SELLING', 'TEMEL', 'TICARIFATURA']):
-                logging.info(f"      🔍 Tip tespiti: SATIS -> GELİR (tip='{tip_field}')")
                 return 'outgoing'
             
             # ALIS -> GİDER
             if any(keyword in tip_upper for keyword in ['ALIS', 'ALIŞ', 'PURCHASE', 'BUYING', 'ALIM']):
-                logging.info(f"      🔍 Tip tespiti: ALIS -> GİDER (tip='{tip_field}')")
                 return 'incoming'
         
         # Malzeme/Açıklama alanına bak
         malzeme = parsed_fields.get('malzeme', '').upper()
         if 'SATIS' in malzeme or 'SATŞ' in malzeme:
-            logging.info(f"      🔍 Malzeme tespiti: SATIS -> GELİR")
             return 'outgoing'
         if 'ALIS' in malzeme or 'ALIŞ' in malzeme:
-            logging.info(f"      🔍 Malzeme tespiti: ALIS -> GİDER")
             return 'incoming'
         
         # Varsayılan: E-faturalar genelde satış (gelir)
-        logging.info(f"      ⚠️ Tip tespit edilemedi, varsayılan: GELİR")
         return 'outgoing'
     
     def _parse_qr_to_invoice_fields(self, qr_json, extracted_info=None, fatura_no_from_filename=''):
@@ -1920,8 +2030,6 @@ class QRInvoiceIntegrator:
             extracted_info = {}
         
         # ⭐ DEBUG: QR JSON yapısını logla ⭐
-        logging.info(f"   🔍 QR JSON İÇERİĞİ:")
-        logging.info(f"      Tüm anahtarlar: {list(qr_json.keys())}")
         
         # Tutar ile ilgili tüm alanları bul
         tutar_related = {}
@@ -1930,9 +2038,7 @@ class QRInvoiceIntegrator:
             if any(word in key_lower for word in ['tutar', 'amount', 'total', 'pay', 'matrah', 'tax', 'kdv']):
                 tutar_related[key] = value
         
-        if tutar_related:
-            logging.info(f"      💰 Tutar ile ilgili alanlar: {tutar_related}")
-        else:
+        if not tutar_related:
             logging.warning(f"      ⚠️ Tutar ile ilgili hiçbir alan bulunamadı!")
         
         # Anahtar eşleme sözlüğü
@@ -1960,7 +2066,6 @@ class QRInvoiceIntegrator:
         qr_fatura_no = self._get_value_case_insensitive(qr_json, key_map['fatura_no'])
         if fatura_no_from_filename:
             parsed['fatura_no'] = str(fatura_no_from_filename)
-            logging.debug(f"   📄 Fatura No dosya adından alındı: {fatura_no_from_filename}")
         elif qr_fatura_no:
             parsed['fatura_no'] = str(qr_fatura_no)
         else:
@@ -1977,7 +2082,6 @@ class QRInvoiceIntegrator:
             if historical_rates:
                 parsed['manual_usd_rate'] = historical_rates.get('USD')
                 parsed['manual_eur_rate'] = historical_rates.get('EUR')
-                print(f"   💱 {parsed['tarih']} tarihli kurlar faturaya eklendi: USD={parsed['manual_usd_rate']}, EUR={parsed['manual_eur_rate']}")
         except Exception as e:
             print(f"   ⚠️ Tarihli kur ekleme hatası: {e}")
         
@@ -1987,7 +2091,6 @@ class QRInvoiceIntegrator:
             # QR'da yoksa OCR'dan al
             if extracted_info.get('firma'):
                 firma = extracted_info['firma']
-                logging.debug(f"   🔍 Firma OCR'dan alındı: {firma}")
             else:
                 # Alternatif alanlar
                 firma = self._get_value_case_insensitive(qr_json, ['satici', 'alici', 'vkn', 'unvan']) or 'Firma Bilgisi Yok'
@@ -1997,16 +2100,13 @@ class QRInvoiceIntegrator:
         malzeme = None
         if extracted_info.get('malzeme'):
             malzeme = extracted_info['malzeme']
-            logging.debug(f"   🔍 Malzeme OCR'dan alındı: {malzeme}")
         else:
             # OCR'da bulunamadıysa QR'dan deneme yap
             qr_malzeme = self._get_value_case_insensitive(qr_json, key_map['malzeme'])
             if qr_malzeme and qr_malzeme not in ['SATIS', 'ALIS', 'EARSIV', 'TICARIFATURA']:
                 malzeme = qr_malzeme
-                logging.debug(f"   🔍 Malzeme QR'dan alındı: {malzeme}")
             else:
                 malzeme = 'QR Kodlu E-Fatura'
-                logging.debug(f"   ⚠️ Malzeme bulunamadı, default kullanıldı")
         parsed['malzeme'] = str(malzeme)
         
         # ⭐ MİKTAR - OCR'DAN ÖNCE AL, SONRA QR'YA BAK ⭐
@@ -2015,16 +2115,12 @@ class QRInvoiceIntegrator:
         # 1. Öncelik: OCR'dan alınan miktar (tablo koordinatlarından)
         if extracted_info.get('miktar'):
             miktar = extracted_info['miktar']
-            logging.info(f"   🔍 Miktar OCR'dan alındı: {miktar}")
         else:
             # 2. OCR'da yoksa QR'dan dene
             qr_miktar = self._get_value_case_insensitive(qr_json, key_map['miktar'])
             if qr_miktar and qr_miktar != '0' and qr_miktar != 0:
                 miktar = qr_miktar
-                logging.info(f"   🔍 Miktar QR'dan alındı: {miktar}")
-            else:
-                # 3. Hiçbir yerde yoksa boş bırak
-                logging.info(f"   ⚠️ Miktar bulunamadı, boş bırakıldı")
+            # Eğer hiçbir yerde yoksa miktar None kalır
         
         parsed['miktar'] = str(miktar) if miktar else ''
         
@@ -2043,13 +2139,7 @@ class QRInvoiceIntegrator:
             # mal_hizmet_toplam_tutari hem toplam hem matrah için kullanılmış olabilir
             # Bu durumda toplam'ı kullan, matrah'ı sıfırla
             matrah = 0.0
-            logging.debug(f"      ⚠️ Toplam ve matrah aynı ({toplam}), matrah sıfırlandı")
         
-        logging.info(f"      📊 Parse edilen değerler:")
-        logging.info(f"         - Toplam: {toplam}")
-        logging.info(f"         - Matrah: {matrah}")
-        logging.info(f"         - KDV Tutarı: {kdv_tutari}")
-        logging.info(f"         - KDV %: {kdv_yuzdesi}")
         
         # KDV yüzdesi
         if kdv_yuzdesi > 0:
@@ -2060,28 +2150,34 @@ class QRInvoiceIntegrator:
             parsed['kdv_yuzdesi'] = self.backend.settings.get('kdv_yuzdesi', 20.0)
         
         # Tutar ve KDV hesaplama
+        # Eğer JSON içinde "odenecek"/"payable" gibi anahtarlar varsa, 'toplam' alanı KDV dahil (ödenecek) kabul edilir
+        payable_key_variants = {'odenecek', 'odenecektutar', 'odenecek_tutar', 'payableamount', 'payable', 'ödenecek'}
+        keys_in_qr = set(k.lower() for k in qr_json.keys())
+        payable_key_present = len(keys_in_qr.intersection(payable_key_variants)) > 0
+
         if matrah > 0 and toplam > 0:
-            # Hem matrah hem toplam var
-            parsed['toplam_tutar'] = matrah
-            parsed['kdv_dahil'] = False
-            parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(matrah * parsed['kdv_yuzdesi'] / 100, 2)
-            logging.info(f"      ✅ Durum 1: Hem matrah hem toplam var (matrah={matrah}, toplam={toplam})")
+            # Hem matrah hem toplam var -> toplam genelde KDV dahil (ödenecek)
+            parsed['matrah'] = matrah
+            parsed['toplam_tutar'] = toplam
+            # KDV tutarını varsa kullan, yoksa toplam - matrah olarak hesapla
+            parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(toplam - matrah, 2)
+            parsed['kdv_dahil'] = True
         elif toplam > 0:
             # Sadece toplam var
             parsed['toplam_tutar'] = toplam
-            if kdv_tutari > 0:
+            # Eğer JSON'da ödenecek tarzı bir anahtar bulunduysa veya kdv_tutari verildiyse KDV dahil kabul et
+            if kdv_tutari > 0 or payable_key_present:
                 parsed['kdv_dahil'] = True
-                parsed['kdv_tutari'] = kdv_tutari
+                parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(toplam - (toplam / (1 + parsed['kdv_yuzdesi']/100)), 2)
             else:
-                parsed['kdv_dahil'] = False
-                parsed['kdv_tutari'] = round(toplam * parsed['kdv_yuzdesi'] / 100, 2)
-            logging.info(f"      ✅ Durum 2: Sadece toplam var (toplam={toplam})")
+                # Eğer KDV bilgisi hiç yoksa varsayılan olarak KDV dahil say (kullanıcı isteği)
+                parsed['kdv_dahil'] = True
+                parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(toplam - (toplam / (1 + parsed['kdv_yuzdesi']/100)), 2)
         elif matrah > 0:
             # Sadece matrah var
             parsed['toplam_tutar'] = matrah
             parsed['kdv_dahil'] = False
             parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(matrah * parsed['kdv_yuzdesi'] / 100, 2)
-            logging.info(f"      ✅ Durum 3: Sadece matrah var (matrah={matrah})")
         else:
             # Hiçbiri yok - QR JSON'dan herhangi bir sayısal değer bul
             logging.warning(f"      ⚠️ Standart tutar alanları bulunamadı, alternatif arama yapılıyor...")
@@ -2107,7 +2203,6 @@ class QRInvoiceIntegrator:
                 # En büyük değeri al (genelde toplam tutar en büyük olur)
                 possible_amounts.sort(key=lambda x: x[1], reverse=True)
                 best_amount = possible_amounts[0][1]
-                logging.info(f"      ✅ Alternatif tutar bulundu: {best_amount} (alan: {possible_amounts[0][0]})")
                 parsed['toplam_tutar'] = best_amount
                 parsed['kdv_dahil'] = False
                 parsed['kdv_tutari'] = round(best_amount * parsed['kdv_yuzdesi'] / 100, 2)
@@ -2119,7 +2214,6 @@ class QRInvoiceIntegrator:
                 parsed['kdv_dahil'] = False
                 parsed['kdv_tutari'] = 0.0
         
-        logging.info(f"      💎 Final: Firma={parsed.get('firma', 'N/A')[:30]}, Tutar={parsed.get('toplam_tutar')}, Malzeme={parsed.get('malzeme', 'N/A')[:30]}")
         return parsed
     
     def _get_value_case_insensitive(self, data_dict, keys):
@@ -2185,7 +2279,6 @@ class QRInvoiceIntegrator:
                         if match:
                             if len(match.groups()) == 3 and match.group(1).isdigit():
                                 date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
-                                logging.debug(f"   📅 Tarih bulundu: {date_str}")
                                 return date_str
         
         # Genel tarama
@@ -2194,7 +2287,6 @@ class QRInvoiceIntegrator:
             if match:
                 if len(match.groups()) == 3 and match.group(1).isdigit():
                     date_str = f"{match.group(1).zfill(2)}.{match.group(2).zfill(2)}.{match.group(3)}"
-                    logging.debug(f"   📅 Tarih bulundu (genel): {date_str}")
                     return date_str
         
         # Bulunamadıysa bugünün tarihi
@@ -2227,7 +2319,6 @@ class QRInvoiceIntegrator:
                         invoice_match = re.search(r'([A-Z]{3}\d{12,}|[A-Z0-9]{10,})', lines[j])
                         if invoice_match:
                             invoice_no = invoice_match.group(1)
-                            logging.debug(f"   📄 Fatura No: {invoice_no}")
                             return invoice_no
         
         return None
@@ -2269,7 +2360,6 @@ class QRInvoiceIntegrator:
                                 amount = float(amount_str)
                                 if amount > 10:  # Mantıklı bir tutar
                                     amounts['toplam'] = amount
-                                    logging.debug(f"   💰 Toplam tutar: {amount}")
                                     break
                             except:
                                 continue
@@ -2299,7 +2389,6 @@ class QRInvoiceIntegrator:
                                 amount = float(amount_str)
                                 if amount > 0:
                                     amounts['matrah'] = amount
-                                    logging.debug(f"   📊 Matrah: {amount}")
                                     break
                             except:
                                 continue
@@ -2329,7 +2418,6 @@ class QRInvoiceIntegrator:
                                 amount = float(amount_str)
                                 if amount > 0:
                                     amounts['kdv'] = amount
-                                    logging.debug(f"   🧾 KDV tutarı: {amount}")
                                     break
                             except:
                                 continue
@@ -2342,19 +2430,15 @@ class QRInvoiceIntegrator:
         kdv_percent_match = re.search(r'%\s*(\d+)', pdf_text)
         if kdv_percent_match:
             amounts['kdv_yuzdesi'] = float(kdv_percent_match.group(1))
-            logging.debug(f"   📈 KDV %: {amounts['kdv_yuzdesi']}")
         elif amounts['matrah'] > 0 and amounts['kdv'] > 0:
             amounts['kdv_yuzdesi'] = round((amounts['kdv'] / amounts['matrah']) * 100, 2)
-            logging.debug(f"   📈 KDV % (hesaplanan): {amounts['kdv_yuzdesi']}")
         
         # Tutarları doğrula ve düzelt
         if amounts['toplam'] == 0 and amounts['matrah'] > 0 and amounts['kdv'] > 0:
             amounts['toplam'] = amounts['matrah'] + amounts['kdv']
-            logging.debug(f"   ✅ Toplam hesaplandı: {amounts['toplam']}")
         
         if amounts['matrah'] == 0 and amounts['toplam'] > 0 and amounts['kdv'] > 0:
             amounts['matrah'] = amounts['toplam'] - amounts['kdv']
-            logging.debug(f"   ✅ Matrah hesaplandı: {amounts['matrah']}")
         
         return amounts
 
