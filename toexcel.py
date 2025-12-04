@@ -12,8 +12,9 @@ class InvoiceExcelExporter:
     
     def __init__(self):
         self.excel_folder = "ExcelReports"
-        if not os.path.exists(self.excel_folder):
-            os.makedirs(self.excel_folder)
+        # Klasör oluşturma kaldırıldı
+        # if not os.path.exists(self.excel_folder):
+        #     os.makedirs(self.excel_folder)
     
     def _auto_adjust_column_widths(self, writer, sheet_name, df):
         """Sütun genişliklerini içeriğe göre otomatik ayarla"""

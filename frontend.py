@@ -5,6 +5,13 @@ from imports import (
     win32event, win32api, winerror, ctypes, traceback
 )
 
+# Windows görev çubuğu simgesi için AppUserModelID ayarla (en başta yapılmalı)
+try:
+    myappid = 'excellent.dashboard.app.1.0'
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+except Exception:
+    pass
+
 # Backend modüllerini import et
 from backend import Backend
 from invoices import InvoiceProcessor
@@ -90,6 +97,16 @@ state = {
 }
 
 # --- BACKEND YARDIMCI FONKSİYONLAR ---
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 def get_exchange_rates():
     """Backend'den güncel döviz kurlarını al"""
     return backend_instance.exchange_rates
@@ -1151,11 +1168,12 @@ def currency_button(text, currency_code, current_selection, on_click_handler):
 # ANA UYGULAMA (Main Application)
 # ============================================================================
 def main(page: ft.Page):
-    page.title = "Excellent MVP Dashboard"
+    page.title = "Excellent"
     page.padding = 0
     page.bgcolor = col_bg
-    page.window_width = 1400 
-    page.window_height = 900
+    page.window.width = 1400 
+    page.window.height = 900
+    page.window.icon = resource_path("favicon.ico")
     page.theme_mode = ft.ThemeMode.LIGHT
 
     # ------------------------------------------------------------------------
@@ -3567,4 +3585,12 @@ def main(page: ft.Page):
     if state["current_page"] == "home":
         check_for_updates()
 
-ft.app(target=main)
+# Assets dizinini belirle (PyInstaller için)
+def get_assets_dir():
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        return sys._MEIPASS
+    except Exception:
+        return os.path.abspath(".")
+
+ft.app(target=main, assets_dir=get_assets_dir())
