@@ -14,7 +14,16 @@ from imports import (
 )
 
 # Define project root
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# Veritabanı ve çıktı (Excel, PDF vb.) dosyalarının ana dizini
+if getattr(sys, 'frozen', False):
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+else:
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+# Uygulamanın çalışma dizinini PROJECT_ROOT olarak ayarla
+# Bu, PyInstaller ile derlendiğinde (.exe konumunda) veya temp olarak çalıştığında
+# Rust_DB ve diğer tüm bağlı göreceli yolların geçici MEIPASS yerine .exe klasörüne (.db vb.) kurulmasını sağlar.
+os.chdir(PROJECT_ROOT)
 
 # Windows görev çubuğu simgesi için AppUserModelID ayarla (en başta yapılmalı)
 try:

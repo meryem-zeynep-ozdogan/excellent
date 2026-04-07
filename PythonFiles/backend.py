@@ -4,11 +4,14 @@
 # Proje genelinde kullanılan kütüphaneler
 from imports import *
 
-# Define project root
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# Define project root (Veritabanı vb. kalıcı veriler için .exe klasörü)
+if getattr(sys, 'frozen', False):
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+else:
+    PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 # Rust tabanlı veritabanı modülü (Yüksek performanslı SQLite işlemleri için)
-import rust_db
+import rust_db  # type: ignore
 
 # İş mantığı modülleri
 from invoices import InvoiceProcessor, InvoiceManager, PeriodicIncomeCalculator
@@ -53,7 +56,7 @@ class Backend:
         self.on_status_updated = None
         
         # Rust veritabanı başlatma
-        self.db = rust_db.Database()
+        self.db = rust_db.Database()  # type: ignore
         self.db.init_connections()
         self.db.create_tables()
         
@@ -632,7 +635,6 @@ class Backend:
                         
                         db_path = os.path.join(PROJECT_ROOT, 'Database', 'settings.db')
                         t_conn = sqlite3.connect(db_path)
-                        t_conn = sqlite3.connect('Database/settings.db')
                         t_cursor = t_conn.cursor()
                         t_cursor.execute(
                             "INSERT OR REPLACE INTO exchange_rates (date, usd_rate, eur_rate) VALUES (?, ?, ?)",

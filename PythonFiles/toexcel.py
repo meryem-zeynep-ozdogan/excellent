@@ -20,7 +20,10 @@ class InvoiceExcelExporter:
     
     def __init__(self):
         # Define project root
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if getattr(sys, 'frozen', False):
+            project_root = os.path.dirname(sys.executable)
+        else:
+            project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         self.excel_folder = os.path.join(project_root, "ExcelReports")
         # Klasör oluşturma işlemi artık ana uygulamada yapılıyor
         # if not os.path.exists(self.excel_folder):

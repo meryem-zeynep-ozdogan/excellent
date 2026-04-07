@@ -1,11 +1,7 @@
-flet
-numpy
+flet==0.28.3
 pandas
 requests
-opencv-python
-pyzbar
 pymupdf
 reportlab
 XlsxWriter
 pywin32; sys_platform == 'win32'
-Pillow

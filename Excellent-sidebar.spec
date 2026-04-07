@@ -21,32 +21,6 @@ datas = [
 
 # --- WINDOWS DLL AYARLARI ---
 binaries = []
-if IS_WINDOWS:
-    # Windows'ta pyzbar DLL'lerini bulmaya çalış
-    base_paths = [
-        os.path.join(os.getcwd(), '.venv', 'Lib', 'site-packages', 'pyzbar'),
-        os.path.join(os.getcwd(), 'venv', 'Lib', 'site-packages', 'pyzbar'),
-    ]
-    try:
-        import pyzbar
-        base_paths.append(os.path.dirname(pyzbar.__file__))
-    except ImportError:
-        pass
-
-    dll_found = False
-    for p in base_paths:
-        if os.path.exists(p):
-            dll1 = os.path.join(p, 'libiconv.dll')
-            dll2 = os.path.join(p, 'libzbar-64.dll')
-            if os.path.exists(dll1) and os.path.exists(dll2):
-                binaries.append((dll1, 'pyzbar'))
-                binaries.append((dll2, 'pyzbar'))
-                dll_found = True
-                break
-    
-    # Yerelde bulamazsa (GitHub Actions gibi) uyarı verip devam et
-    if not dll_found:
-        print("UYARI: Windows pyzbar DLL'leri otomatik bulunamadi (Bu GitHub Actions'ta normaldir).")
 
 # --- ANALİZ ---
 a = Analysis(
@@ -59,11 +33,10 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=[
-        'rust_db', 'rust_qr_backend', 
+        'rust_db', 'rust_qr', 
         'topdf', 'toexcel', 'fromqr', 'invoices', 'imports',
         'backend', 'backup', 'locales',
-        'pyzbar', 'pyzbar.pyzbar', 'PIL', 'PIL.Image', 'flet', 
-        'xlsxwriter', 'reportlab', 'sqlite3', 'cv2', 'numpy', 
+        'flet', 'xlsxwriter', 'reportlab', 'sqlite3',
         'json', 'datetime', 'os', 'sys', 'shutil', 'logging', 
         'threading', 'concurrent.futures', 'fitz', 'requests', 
         'xml.etree.ElementTree'

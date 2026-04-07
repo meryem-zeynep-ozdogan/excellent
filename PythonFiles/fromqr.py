@@ -36,8 +36,6 @@ class OptimizedQRProcessor:
     """
     
     def __init__(self):
-        self.opencv_detector = None
-        self.tools_loaded = False
         # İstatistikler (Debugging ve optimizasyon takibi için)
         self.stats = {
             'smart_dpi_300': 0,
