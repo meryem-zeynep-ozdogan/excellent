@@ -2357,6 +2357,16 @@ def main(page: ft.Page):
                     e.control.update()
         
         # Input alanları önce tanımlanmalı (update_selected_count bunları kullanacak)
+        error_label_fatura_no = ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="red", size=18, visible=False, tooltip="")
+        error_label_tutar = ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color="red", size=18, visible=False, tooltip="")
+        
+        def reset_input_errors():
+            error_label_fatura_no.tooltip = ""
+            error_label_fatura_no.visible = False
+            error_label_tutar.tooltip = ""
+            error_label_tutar.visible = False
+            page.update()
+            
         input_fatura_no = ft.TextField(hint_text=tr("hint_invoice_no"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_tarih = ft.TextField(hint_text=tr("hint_date"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12), on_blur=on_tarih_blur)
         input_firma = ft.TextField(hint_text=tr("hint_company"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
@@ -2554,6 +2564,32 @@ def main(page: ft.Page):
         def add_invoice(e):
             """Fatura ekle"""
             try:
+                reset_input_errors()
+                has_error = False
+
+                if not input_fatura_no.value or not input_fatura_no.value.strip():
+                    error_label_fatura_no.tooltip = f"{tr('invoice_no')} {tr('cannot_be_empty')}"
+                    error_label_fatura_no.visible = True
+                    has_error = True
+
+                if not input_tutar.value or not input_tutar.value.strip():
+                    tutar_val = 0.0
+                else:
+                    try:
+                        tutar_val = float(input_tutar.value.replace(',', '.'))
+                        if tutar_val < 0:
+                            error_label_tutar.tooltip = f"{tr('total')} {tr('cannot_be_negative')}"
+                            error_label_tutar.visible = True
+                            has_error = True
+                    except ValueError:
+                        error_label_tutar.tooltip = f"{tr('total')} {tr('must_be_number')}"
+                        error_label_tutar.visible = True
+                        has_error = True
+
+                if has_error:
+                    page.update()
+                    return
+
                 # Input verilerini topla
                 invoice_data = {
                     'fatura_no': input_fatura_no.value or "",
@@ -2561,7 +2597,7 @@ def main(page: ft.Page):
                     'firma': input_firma.value or "",
                     'malzeme': input_malzeme.value or "",
                     'miktar': input_miktar.value or "",
-                    'toplam_tutar': float(input_tutar.value) if input_tutar.value else 0,
+                    'toplam_tutar': tutar_val,
                     'birim': input_para_birimi.value or "TL",
                     'kdv_yuzdesi': float(input_kdv.value) if input_kdv.value else 20.0
                 }
@@ -2642,6 +2678,32 @@ def main(page: ft.Page):
                     page.update()
                     return
                 
+                reset_input_errors()
+                has_error = False
+
+                if not input_fatura_no.value or not input_fatura_no.value.strip():
+                    error_label_fatura_no.tooltip = f"{tr('invoice_no')} {tr('cannot_be_empty')}"
+                    error_label_fatura_no.visible = True
+                    has_error = True
+
+                if not input_tutar.value or not input_tutar.value.strip():
+                    tutar_val = 0.0
+                else:
+                    try:
+                        tutar_val = float(input_tutar.value.replace(',', '.'))
+                        if tutar_val < 0:
+                            error_label_tutar.tooltip = f"{tr('total')} {tr('cannot_be_negative')}"
+                            error_label_tutar.visible = True
+                            has_error = True
+                    except ValueError:
+                        error_label_tutar.tooltip = f"{tr('total')} {tr('must_be_number')}"
+                        error_label_tutar.visible = True
+                        has_error = True
+
+                if has_error:
+                    page.update()
+                    return
+                
                 # Input verilerini topla
                 invoice_data = {
                     'fatura_no': input_fatura_no.value or "",
@@ -2649,7 +2711,7 @@ def main(page: ft.Page):
                     'firma': input_firma.value or "",
                     'malzeme': input_malzeme.value or "",
                     'miktar': input_miktar.value or "",
-                    'toplam_tutar': float(input_tutar.value) if input_tutar.value else 0,
+                    'toplam_tutar': tutar_val,
                     'birim': input_para_birimi.value or "TL",
                     'kdv_yuzdesi': float(input_kdv.value) if input_kdv.value else 20.0
                 }
@@ -3116,7 +3178,6 @@ def main(page: ft.Page):
 
         def export_to_excel(e):
             """Faturalari Excel'e aktar"""
-            print("DEBUG: export_to_excel (Invoices) clicked")
             try:
                 current_invoice_type = state.get("invoice_type", "income")
                 current_lang = state.get("current_language", "tr")
@@ -3124,16 +3185,12 @@ def main(page: ft.Page):
                 timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
                 filename = f"{type_name}_{timestamp}.xlsx"
                 
-                print("DEBUG: Calling save_file for Excel...")
                 if hasattr(page, 'invoice_excel_picker'):
-                    print("DEBUG: Found page.invoice_excel_picker")
                     page.invoice_excel_picker.save_file(dialog_title=tr("title_save_excel"), file_name=filename, allowed_extensions=["xlsx"])
                 else:
-                    print("DEBUG: page.invoice_excel_picker NOT FOUND, trying local scope")
                     invoice_excel_picker.save_file(dialog_title=tr("title_save_excel"), file_name=filename, allowed_extensions=["xlsx"])
                     
             except Exception as ex:
-                print(f"DEBUG: Excel export error: {ex}")
                 if "cancelled" not in str(ex).lower():
                     page.snack_bar = ft.SnackBar(content=ft.Text(tr("msg_excel_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger)
                     page.snack_bar.open = True
@@ -3141,7 +3198,6 @@ def main(page: ft.Page):
 
         def export_to_pdf(e):
             """Faturalari PDF'e aktar"""
-            print("DEBUG: export_to_pdf (Invoices) clicked")
             try:
                 current_invoice_type = state.get("invoice_type", "income")
                 current_lang = state.get("current_language", "tr")
@@ -3149,16 +3205,12 @@ def main(page: ft.Page):
                 timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
                 filename = f"{type_name}_{timestamp}.pdf"
                 
-                print("DEBUG: Calling save_file for PDF...")
                 if hasattr(page, 'invoice_pdf_picker'):
-                    print("DEBUG: Found page.invoice_pdf_picker")
                     page.invoice_pdf_picker.save_file(dialog_title=tr("title_save_pdf"), file_name=filename, allowed_extensions=["pdf"])
                 else:
-                    print("DEBUG: page.invoice_pdf_picker NOT FOUND, trying local scope")
                     invoice_pdf_picker.save_file(dialog_title=tr("title_save_pdf"), file_name=filename, allowed_extensions=["pdf"])
                     
             except Exception as ex:
-                print(f"DEBUG: PDF export error: {ex}")
                 if "cancelled" not in str(ex).lower():
                     page.snack_bar = ft.SnackBar(content=ft.Text(tr("msg_pdf_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger)
                     page.snack_bar.open = True
@@ -3197,23 +3249,23 @@ def main(page: ft.Page):
 
         # Input satırları - TextField referanslarını kullan
         input_line_1 = ft.Row([
-            ft.Column([ft.Text(tr("invoice_no"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_fatura_no, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("date"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tarih, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("company"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_firma, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("item_service"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_malzeme, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
+            ft.Column([ft.Row([ft.Text(tr("invoice_no"), size=12, weight="w500", color="onSurfaceVariant"), error_label_fatura_no], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(content=input_fatura_no, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("date"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tarih, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("company"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_firma, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("item_service"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_malzeme, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
         ], spacing=15)
         
         input_line_2 = ft.Row([
-            ft.Column([ft.Text(tr("amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_miktar, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("total"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tutar, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("currency"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_para_birimi, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("vat_amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_kdv, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
+            ft.Column([ft.Text(tr("amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_miktar, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Row([ft.Text(tr("total"), size=12, weight="w500", color="onSurfaceVariant"), error_label_tutar], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(content=input_tutar, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("currency"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_para_birimi, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("vat_amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_kdv, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
         ], spacing=15)
         
         # Manuel döviz kuru satırı (opsiyonel)
         input_line_3 = ft.Row([
-            ft.Column([ft.Text(tr("usd_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_usd_kur, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("eur_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_eur_kur, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("usd_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_usd_kur, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("eur_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_eur_kur, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
             ft.Container(expand=3)  # Boş alan
         ], spacing=15)
 
@@ -3967,7 +4019,7 @@ def main(page: ft.Page):
         
         # Warning icon logic
         show_warning = backend_instance.using_default_rates
-        rate_warning_icon = ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=col_danger, size=16, visible=show_warning, tooltip=tr("rate_warning_tooltip"))
+        rate_warning_icon = ft.Icon(ft.Icons.WARNING, color=col_danger, size=16, visible=show_warning, tooltip=tr("rate_warning_tooltip"))
 
         header = ft.Row([ft.Text(tr("dashboard_title"), size=26, weight="bold", color="onBackground"), ft.Row([ft.Container(bgcolor="secondaryContainer", padding=ft.padding.symmetric(horizontal=15, vertical=10), border_radius=8, content=ft.Row([ft.Icon("currency_exchange", size=16, color="primary"), exchange_rate_text, rate_warning_icon], spacing=10)), currency_selector_container], spacing=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 

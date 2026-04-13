@@ -27,6 +27,10 @@ TRANSLATIONS = {
         "nav_invoices": "Faturalar",
         "nav_reports": "Raporlar",
         
+        "cannot_be_empty": "boş bırakılamaz",
+        "cannot_be_negative": "negatif olamaz",
+        "must_be_number": "sayı olmalıdır",
+        
         # Panel (Dashboard)
         "dashboard_title": "Genel Durum Paneli",
         "net_profit": "Anlık Net Kâr",
@@ -73,6 +77,10 @@ TRANSLATIONS = {
         "sort_newest": "Son",
         "sort_date_desc": "Y-E",
         "sort_date_asc": "E-Y",
+        
+        "cannot_be_empty": "boş bırakılamaz",
+        "cannot_be_negative": "negatif olamaz",
+        "must_be_number": "sayı olmalıdır",
         
         "msg_invoice_added": "✅ Fatura başarıyla eklendi!",
         "msg_invoice_add_error": "❌ Fatura eklenemedi!",
@@ -316,6 +324,10 @@ TRANSLATIONS = {
         "nav_home": "Home",
         "nav_invoices": "Invoices",
         "nav_reports": "Reports",
+
+        "cannot_be_empty": "cannot be empty",
+        "cannot_be_negative": "cannot be negative",
+        "must_be_number": "must be a number",
         
         # Dashboard
         "dashboard_title": "Dashboard",

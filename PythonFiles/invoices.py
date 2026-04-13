@@ -167,13 +167,11 @@ class InvoiceProcessor:
         Decimal kullanarak yüksek hassasiyetle para hesaplamaları yapar.
         """
         # Toplam tutar için hem 'toplam_tutar' hem de 'toplam_tutar_tl' alanlarını kontrol et
-        toplam_tutar = self._to_decimal(
-            invoice_data.get('toplam_tutar') or 
-            invoice_data.get('toplam_tutar_tl') or 
-            0
-        )
-        if toplam_tutar <= 0:
-            logging.warning(f"Toplam tutar girilmemiş veya geçersiz: {invoice_data}")
+        toplam_tutar_raw = invoice_data.get('toplam_tutar') or invoice_data.get('toplam_tutar_tl')
+        
+        toplam_tutar = self._to_decimal(toplam_tutar_raw if toplam_tutar_raw is not None and str(toplam_tutar_raw).strip() != "" else 0)
+        
+        if toplam_tutar < 0:
             return None
         
         try:            
@@ -252,7 +250,7 @@ class InvoiceProcessor:
 
             # KDV HESAPLAMA - Girilen tutar tabloda aynı kalır, KDV ayrıca hesaplanır
             # KDV = Girilen Tutar × KDV% (100 TL için %20 = 20 TL KDV)
-            if toplam_tutar > 0:
+            if toplam_tutar >= 0:
                 try:
                     # Önce TL'ye çevir
                     conversion_rate = Decimal('1.0')

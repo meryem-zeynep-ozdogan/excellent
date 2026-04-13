@@ -2266,6 +2266,9 @@ def main(page: ft.Page):
         input_firma = ft.TextField(hint_text=tr("company_hint"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_malzeme = ft.TextField(hint_text=tr("item_hint"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_miktar = ft.TextField(hint_text=tr("amount_hint"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
+        error_label_fatura_no = ft.Icon(ft.Icons.WARNING, color="red", size=18, visible=False, tooltip="")
+        error_label_tutar = ft.Icon(ft.Icons.WARNING, color="red", size=18, visible=False, tooltip="")
+        
         input_tutar = ft.TextField(hint_text=tr("total_hint"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
         input_para_birimi = ft.Dropdown(options=[ft.dropdown.Option("TL"), ft.dropdown.Option("USD"), ft.dropdown.Option("EUR")], text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=5), hint_text=tr("hint_tl"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), value="TL")
         input_kdv = ft.TextField(hint_text=tr("default_vat"), hint_style=ft.TextStyle(color="#D0D0D0", size=12), text_size=13, color="onBackground", border_color="transparent", bgcolor="transparent", content_padding=ft.padding.only(left=10, bottom=12))
@@ -3085,23 +3088,23 @@ def main(page: ft.Page):
 
         # Input satırları - TextField referanslarını kullan
         input_line_1 = ft.Row([
-            ft.Column([ft.Text(tr("invoice_no"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_fatura_no, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("date"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tarih, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("company"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_firma, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("item_service"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_malzeme, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
+            ft.Column([ft.Row([ft.Text(tr("invoice_no"), size=12, weight="w500", color="onSurfaceVariant"), error_label_fatura_no], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(content=input_fatura_no, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("date"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tarih, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("company"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_firma, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("item_service"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_malzeme, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
         ], spacing=15)
         
         input_line_2 = ft.Row([
-            ft.Column([ft.Text(tr("amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_miktar, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("total"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_tutar, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("currency"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_para_birimi, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("vat_amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_kdv, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
+            ft.Column([ft.Text(tr("amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_miktar, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Row([ft.Text(tr("total"), size=12, weight="w500", color="onSurfaceVariant"), error_label_tutar], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), ft.Container(content=input_tutar, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("currency"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_para_birimi, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("vat_amount"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_kdv, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1)
         ], spacing=15)
         
         # Manuel döviz kuru satırı (opsiyonel)
         input_line_3 = ft.Row([
-            ft.Column([ft.Text(tr("usd_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_usd_kur, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
-            ft.Column([ft.Text(tr("eur_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_eur_kur, bgcolor="surface", border_radius=6, height=42, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("usd_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_usd_kur, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
+            ft.Column([ft.Text(tr("eur_rate_label"), size=12, weight="w500", color="onSurfaceVariant"), ft.Container(content=input_eur_kur, bgcolor="surface", border_radius=6, border=ft.border.all(1, "outline"))], spacing=5, expand=1),
             ft.Container(expand=3)  # Boş alan
         ], spacing=15)
 
@@ -3424,7 +3427,7 @@ def main(page: ft.Page):
         
         # Warning icon logic
         show_warning = backend_instance.using_default_rates
-        rate_warning_icon = ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=col_danger, size=16, visible=show_warning, tooltip=tr("rate_warning_tooltip"))
+        rate_warning_icon = ft.Icon(ft.Icons.WARNING, color=col_danger, size=16, visible=show_warning, tooltip=tr("rate_warning_tooltip"))
         
         header = ft.Row([ft.Text(tr("dashboard_title"), size=26, weight="bold", color="onBackground"), ft.Row([ft.Container(bgcolor="secondaryContainer", padding=ft.padding.symmetric(horizontal=15, vertical=10), border_radius=8, content=ft.Row([ft.Icon("currency_exchange", size=16, color="primary"), exchange_rate_text, rate_warning_icon], spacing=10)), currency_selector_container], spacing=20)], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
 

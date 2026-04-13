@@ -138,13 +138,13 @@ impl Database {
                     r#"
                     CREATE TABLE IF NOT EXISTS income_invoices (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        fatura_no TEXT,
+                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0),
                         irsaliye_no TEXT,
                         tarih TEXT,
                         firma TEXT,
                         malzeme TEXT,
                         miktar TEXT,
-                        matrah REAL DEFAULT 0.0,
+                        matrah REAL DEFAULT 0.0 CHECK(matrah >= 0 AND (typeof(matrah) = 'real' OR typeof(matrah) = 'integer' OR typeof(matrah) = 'null')),
                         toplam_tutar_tl REAL,
                         toplam_tutar_usd REAL,
                         toplam_tutar_eur REAL,
@@ -171,13 +171,13 @@ impl Database {
                     r#"
                     CREATE TABLE IF NOT EXISTS expense_invoices (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        fatura_no TEXT,
+                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0),
                         irsaliye_no TEXT,
                         tarih TEXT,
                         firma TEXT,
                         malzeme TEXT,
                         miktar TEXT,
-                        matrah REAL DEFAULT 0.0,
+                        matrah REAL DEFAULT 0.0 CHECK(matrah >= 0 AND (typeof(matrah) = 'real' OR typeof(matrah) = 'integer' OR typeof(matrah) = 'null')),
                         toplam_tutar_tl REAL,
                         toplam_tutar_usd REAL,
                         toplam_tutar_eur REAL,
@@ -307,23 +307,23 @@ impl Database {
         let invoices_pool = self.invoices_pool.clone();
         
         // Python sözlüğünden değerleri al
-        let fatura_no: Option<String> = data.get_item("fatura_no")?.and_then(|v| v.extract().ok());
-        let tarih_raw: Option<String> = data.get_item("tarih")?.and_then(|v| v.extract().ok());
+        let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
+        let tarih_raw: Option<String> = data.get_item("tarih")?.map(|v| v.extract()).transpose()?.flatten();
         let tarih = tarih_raw.map(|t| to_iso_date(&t)); // ISO formatına çevir
         
-        let firma: Option<String> = data.get_item("firma")?.and_then(|v| v.extract().ok());
-        let malzeme: Option<String> = data.get_item("malzeme")?.and_then(|v| v.extract().ok());
-        let miktar: Option<String> = data.get_item("miktar")?.and_then(|v| v.extract().ok());
-        let matrah: Option<f64> = data.get_item("matrah")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.and_then(|v| v.extract().ok());
-        let birim: Option<String> = data.get_item("birim")?.and_then(|v| v.extract().ok());
-        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.and_then(|v| v.extract().ok()).unwrap_or(0);
-        let usd_rate: Option<f64> = data.get_item("usd_rate")?.and_then(|v| v.extract().ok());
-        let eur_rate: Option<f64> = data.get_item("eur_rate")?.and_then(|v| v.extract().ok());
+        let firma: Option<String> = data.get_item("firma")?.map(|v| v.extract()).transpose()?.flatten();
+        let malzeme: Option<String> = data.get_item("malzeme")?.map(|v| v.extract()).transpose()?.flatten();
+        let miktar: Option<String> = data.get_item("miktar")?.map(|v| v.extract()).transpose()?.flatten();
+        let matrah: Option<f64> = match data.get_item("matrah")? { Some(v) => v.extract()?, None => None };
+        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.map(|v| v.extract()).transpose()?.flatten();
+        let birim: Option<String> = data.get_item("birim")?.map(|v| v.extract()).transpose()?.flatten();
+        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0);
+        let usd_rate: Option<f64> = data.get_item("usd_rate")?.map(|v| v.extract()).transpose()?.flatten();
+        let eur_rate: Option<f64> = data.get_item("eur_rate")?.map(|v| v.extract()).transpose()?.flatten();
 
         self.runtime.block_on(async move {
             if let Some(pool) = invoices_pool.read().await.as_ref() {
@@ -367,22 +367,23 @@ impl Database {
     fn update_gelir_invoice(&self, invoice_id: i64, data: &Bound<'_, PyDict>) -> PyResult<bool> {
         let invoices_pool = self.invoices_pool.clone();
         
-        let tarih_raw: Option<String> = data.get_item("tarih")?.and_then(|v| v.extract().ok());
+        let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
+        let tarih_raw: Option<String> = data.get_item("tarih")?.map(|v| v.extract()).transpose()?.flatten();
         let tarih = tarih_raw.map(|t| to_iso_date(&t)); // ISO formatına çevir
 
-        let firma: Option<String> = data.get_item("firma")?.and_then(|v| v.extract().ok());
-        let malzeme: Option<String> = data.get_item("malzeme")?.and_then(|v| v.extract().ok());
-        let miktar: Option<String> = data.get_item("miktar")?.and_then(|v| v.extract().ok());
-        let matrah: Option<f64> = data.get_item("matrah")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.and_then(|v| v.extract().ok());
-        let birim: Option<String> = data.get_item("birim")?.and_then(|v| v.extract().ok());
-        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.and_then(|v| v.extract().ok()).unwrap_or(0);
-        let usd_rate: Option<f64> = data.get_item("usd_rate")?.and_then(|v| v.extract().ok());
-        let eur_rate: Option<f64> = data.get_item("eur_rate")?.and_then(|v| v.extract().ok());
+        let firma: Option<String> = data.get_item("firma")?.map(|v| v.extract()).transpose()?.flatten();
+        let malzeme: Option<String> = data.get_item("malzeme")?.map(|v| v.extract()).transpose()?.flatten();
+        let miktar: Option<String> = data.get_item("miktar")?.map(|v| v.extract()).transpose()?.flatten();
+        let matrah: Option<f64> = match data.get_item("matrah")? { Some(v) => v.extract()?, None => None };
+        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.map(|v| v.extract()).transpose()?.flatten();
+        let birim: Option<String> = data.get_item("birim")?.map(|v| v.extract()).transpose()?.flatten();
+        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0);
+        let usd_rate: Option<f64> = data.get_item("usd_rate")?.map(|v| v.extract()).transpose()?.flatten();
+        let eur_rate: Option<f64> = data.get_item("eur_rate")?.map(|v| v.extract()).transpose()?.flatten();
 
         self.runtime.block_on(async move {
             if let Some(pool) = invoices_pool.read().await.as_ref() {
@@ -391,12 +392,13 @@ impl Database {
                 let result = sqlx::query(
                     r#"
                     UPDATE income_invoices SET
-                    tarih = ?, firma = ?, malzeme = ?, miktar = ?, matrah = ?,
+                    fatura_no = ?, tarih = ?, firma = ?, malzeme = ?, miktar = ?, matrah = ?,
                     toplam_tutar_tl = ?, toplam_tutar_usd = ?, toplam_tutar_eur = ?, birim = ?, 
                     kdv_yuzdesi = ?, kdv_tutari = ?, kdv_dahil = ?, usd_rate = ?, eur_rate = ?, updated_at = ?
                     WHERE id = ?
                     "#
                 )
+                .bind(fatura_no)
                 .bind(tarih)
                 .bind(firma)
                 .bind(malzeme)
@@ -595,23 +597,23 @@ impl Database {
     fn add_gider_invoice(&self, data: &Bound<'_, PyDict>) -> PyResult<i64> {
         let invoices_pool = self.invoices_pool.clone();
         
-        let fatura_no: Option<String> = data.get_item("fatura_no")?.and_then(|v| v.extract().ok());
-        let tarih_raw: Option<String> = data.get_item("tarih")?.and_then(|v| v.extract().ok());
+        let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
+        let tarih_raw: Option<String> = data.get_item("tarih")?.map(|v| v.extract()).transpose()?.flatten();
         let tarih = tarih_raw.map(|t| to_iso_date(&t));
 
-        let firma: Option<String> = data.get_item("firma")?.and_then(|v| v.extract().ok());
-        let malzeme: Option<String> = data.get_item("malzeme")?.and_then(|v| v.extract().ok());
-        let miktar: Option<String> = data.get_item("miktar")?.and_then(|v| v.extract().ok());
-        let matrah: Option<f64> = data.get_item("matrah")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.and_then(|v| v.extract().ok());
-        let birim: Option<String> = data.get_item("birim")?.and_then(|v| v.extract().ok());
-        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.and_then(|v| v.extract().ok()).unwrap_or(0);
-        let usd_rate: Option<f64> = data.get_item("usd_rate")?.and_then(|v| v.extract().ok());
-        let eur_rate: Option<f64> = data.get_item("eur_rate")?.and_then(|v| v.extract().ok());
+        let firma: Option<String> = data.get_item("firma")?.map(|v| v.extract()).transpose()?.flatten();
+        let malzeme: Option<String> = data.get_item("malzeme")?.map(|v| v.extract()).transpose()?.flatten();
+        let miktar: Option<String> = data.get_item("miktar")?.map(|v| v.extract()).transpose()?.flatten();
+        let matrah: Option<f64> = match data.get_item("matrah")? { Some(v) => v.extract()?, None => None };
+        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.map(|v| v.extract()).transpose()?.flatten();
+        let birim: Option<String> = data.get_item("birim")?.map(|v| v.extract()).transpose()?.flatten();
+        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0);
+        let usd_rate: Option<f64> = data.get_item("usd_rate")?.map(|v| v.extract()).transpose()?.flatten();
+        let eur_rate: Option<f64> = data.get_item("eur_rate")?.map(|v| v.extract()).transpose()?.flatten();
 
         self.runtime.block_on(async move {
             if let Some(pool) = invoices_pool.read().await.as_ref() {
@@ -655,23 +657,23 @@ impl Database {
     fn update_gider_invoice(&self, invoice_id: i64, data: &Bound<'_, PyDict>) -> PyResult<bool> {
         let invoices_pool = self.invoices_pool.clone();
         
-        let fatura_no: Option<String> = data.get_item("fatura_no")?.and_then(|v| v.extract().ok());
-        let tarih_raw: Option<String> = data.get_item("tarih")?.and_then(|v| v.extract().ok());
+        let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
+        let tarih_raw: Option<String> = data.get_item("tarih")?.map(|v| v.extract()).transpose()?.flatten();
         let tarih = tarih_raw.map(|t| to_iso_date(&t));
 
-        let firma: Option<String> = data.get_item("firma")?.and_then(|v| v.extract().ok());
-        let malzeme: Option<String> = data.get_item("malzeme")?.and_then(|v| v.extract().ok());
-        let miktar: Option<String> = data.get_item("miktar")?.and_then(|v| v.extract().ok());
-        let matrah: Option<f64> = data.get_item("matrah")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.and_then(|v| v.extract().ok());
-        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.and_then(|v| v.extract().ok());
-        let birim: Option<String> = data.get_item("birim")?.and_then(|v| v.extract().ok());
-        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.and_then(|v| v.extract().ok()).unwrap_or(0.0);
-        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.and_then(|v| v.extract().ok()).unwrap_or(0);
-        let usd_rate: Option<f64> = data.get_item("usd_rate")?.and_then(|v| v.extract().ok());
-        let eur_rate: Option<f64> = data.get_item("eur_rate")?.and_then(|v| v.extract().ok());
+        let firma: Option<String> = data.get_item("firma")?.map(|v| v.extract()).transpose()?.flatten();
+        let malzeme: Option<String> = data.get_item("malzeme")?.map(|v| v.extract()).transpose()?.flatten();
+        let miktar: Option<String> = data.get_item("miktar")?.map(|v| v.extract()).transpose()?.flatten();
+        let matrah: Option<f64> = match data.get_item("matrah")? { Some(v) => v.extract()?, None => None };
+        let toplam_tutar_tl: Option<f64> = data.get_item("toplam_tutar_tl")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_usd: Option<f64> = data.get_item("toplam_tutar_usd")?.map(|v| v.extract()).transpose()?.flatten();
+        let toplam_tutar_eur: Option<f64> = data.get_item("toplam_tutar_eur")?.map(|v| v.extract()).transpose()?.flatten();
+        let birim: Option<String> = data.get_item("birim")?.map(|v| v.extract()).transpose()?.flatten();
+        let kdv_yuzdesi: f64 = data.get_item("kdv_yuzdesi")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_tutari: f64 = data.get_item("kdv_tutari")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0.0);
+        let kdv_dahil: i64 = data.get_item("kdv_dahil")?.map(|v| v.extract()).transpose()?.flatten().unwrap_or(0);
+        let usd_rate: Option<f64> = data.get_item("usd_rate")?.map(|v| v.extract()).transpose()?.flatten();
+        let eur_rate: Option<f64> = data.get_item("eur_rate")?.map(|v| v.extract()).transpose()?.flatten();
 
         self.runtime.block_on(async move {
             if let Some(pool) = invoices_pool.read().await.as_ref() {
