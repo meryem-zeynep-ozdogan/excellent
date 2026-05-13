@@ -1,10 +1,9 @@
 /rust_qr/target
 Database/
 *.db
-/target
+*/target
 *.iss
-Tests/
-TestScripts/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
