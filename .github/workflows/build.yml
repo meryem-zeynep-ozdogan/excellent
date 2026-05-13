@@ -1,0 +1,119 @@
+name: Build Excellent Multi-Platform
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            TARGET: windows
+            EXT: .exe
+          - os: ubuntu-20.04  # AppImage uyumluluğu için eski sürüm
+            TARGET: linux
+            EXT: "" 
+          - os: macos-latest
+            TARGET: macos
+            EXT: .app
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12.10"
+        cache: 'pip'
+
+    # --- RUST & MATURIN KURULUMU ---
+    - name: Install Build Tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install maturin pyinstaller
+        
+    # --- RUST MODÜLLERİNİ DERLE (Platforma Uygun) ---
+    - name: Build Rust Extensions
+      shell: bash
+      run: |
+        maturin build --release --manifest-path rust_db/Cargo.toml
+        maturin build --release --manifest-path rust_qr/Cargo.toml
+        # Oluşan .whl dosyalarını sisteme kur
+        pip install rust_db/target/wheels/*.whl
+        pip install rust_qr/target/wheels/*.whl
+
+    # --- PYTHON BAĞIMLILIKLARI ---
+    - name: Install Requirements
+      shell: bash
+      run: |
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    # --- LINUX İÇİN GEREKLİ KÜTÜPHANELER ---
+    - name: Install Linux Dependencies
+      if: matrix.TARGET == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libzbar0 wget fuse file
+
+    # --- PYINSTALLER İLE DERLEME ---
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller Excellent-sidebar.spec --clean --noconfirm
+
+    # --- LINUX İÇİN APPIMAGE OLUŞTURMA ---
+    - name: Create AppImage (Linux Only)
+      if: matrix.TARGET == 'linux'
+      run: |
+        wget -O appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+        chmod +x appimagetool
+        
+        # AppDir hazırlığı
+        mkdir -p AppDir/usr/bin
+        cp -r dist/Excellent/* AppDir/usr/bin/
+        cp logo.png AppDir/excellent.png
+        
+        # Desktop dosyası
+        cat > AppDir/excellent.desktop <<EOF
+        [Desktop Entry]
+        Name=Excellent
+        Exec=Excellent
+        Icon=excellent
+        Type=Application
+        Categories=Utility;
+        EOF
+        
+        # AppRun (Başlatıcı)
+        cat > AppDir/AppRun <<EOF
+        #!/bin/sh
+        export PATH="\${APPDIR}/usr/bin:\${PATH}"
+        export LD_LIBRARY_PATH="\${APPDIR}/usr/lib:\${LD_LIBRARY_PATH}"
+        exec "\${APPDIR}/usr/bin/Excellent" "\$@"
+        EOF
+        chmod +x AppDir/AppRun
+        
+        # Paketleme
+        ARCH=x86_64 ./appimagetool AppDir Excellent-Linux-x86_64.AppImage
+
+    # --- MAC İÇİN APP'İ ZİPLEME ---
+    # Mac .app dosyası bir klasördür, indirmek için ziplemek gerekir.
+    - name: Zip Mac App
+      if: matrix.TARGET == 'macos'
+      run: |
+        cd dist
+        zip -r Excellent-Mac.zip Excellent.app
+
+    # --- SONUÇLARI YÜKLE (ARTIFACTS) ---
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Excellent-${{ matrix.TARGET }}
+        path: |
+          dist/*.exe
+          dist/*.zip
+          *.AppImage

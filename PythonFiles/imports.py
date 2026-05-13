@@ -58,7 +58,6 @@ except ImportError:
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - VERİ İŞLEME
 # ============================================================================
-import numpy as np
 import pandas as pd
 import requests
 
@@ -77,22 +76,6 @@ except ImportError:
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - QR KOD VE GÖRÜNTÜ İŞLEME
 # ============================================================================
 try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError:
-    logging.warning("UYARI: opencv-python kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
-    cv2 = None
-    CV2_AVAILABLE = False
-
-try:
-    from pyzbar import pyzbar
-    PYZBAR_AVAILABLE = True
-except ImportError:
-    logging.warning("UYARI: pyzbar kütüphanesi eksik. QR kod okuma işlevi devre dışı.")
-    pyzbar = None
-    PYZBAR_AVAILABLE = False
-
-try:
     import fitz  # PyMuPDF
     FITZ_AVAILABLE = True
 except ImportError:
@@ -108,15 +91,6 @@ except ImportError:
     ThreadPoolExecutor = None
     as_completed = None
     CONCURRENT_AVAILABLE = False
-
-# ============================================================================
-# ÜÇÜNCÜ PARTI KÜTÜPHANELER - PYQT6
-# ============================================================================
-
-# ============================================================================
-# ÜÇÜNCÜ PARTI KÜTÜPHANELER - GRAFIK
-# ============================================================================
-# pyqtgraph artık kullanılmıyor - Flet native charts kullanılıyor
 
 # ============================================================================
 # ÜÇÜNCÜ PARTI KÜTÜPHANELER - PDF İŞLEMLERİ
@@ -194,15 +168,8 @@ def get_excel_module():
     
     return _excel_module
 
-# ============================================================================
-# PROJE MODÜLLERI - DATABASE
-# ============================================================================
 # Database modülü db.py'de tanımlanmıştır
 # Backend modülü tarafından import edilir
-
-# ============================================================================
-# PROJE MODÜLLERI - BACKEND
-# ============================================================================
 # Backend modülü dinamik olarak import edilecek (circular import önlemek için)
 
 # ============================================================================
@@ -221,14 +188,14 @@ __all__ = [
     'Decimal', 'getcontext', 'ROUND_HALF_UP',
     
     # Veri işleme
-    'np', 'pd', 'requests',
+    'pd', 'requests',
     
     # Flet UI
     'ft', 'FLET_AVAILABLE',
     
     # QR kod ve görüntü işleme
-    'cv2', 'pyzbar', 'fitz', 'ThreadPoolExecutor', 'as_completed',
-    'CV2_AVAILABLE', 'PYZBAR_AVAILABLE', 'FITZ_AVAILABLE', 'CONCURRENT_AVAILABLE',
+    'fitz', 'ThreadPoolExecutor', 'as_completed',
+    'FITZ_AVAILABLE', 'CONCURRENT_AVAILABLE',
     
     # ReportLab
     'A4', 'letter', 'landscape', 'colors', 'getSampleStyleSheet', 'ParagraphStyle',

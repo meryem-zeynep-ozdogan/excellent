@@ -1,34 +1,84 @@
 # fromqr.py
 # -*- coding: utf-8 -*-
 """
-OPTIMIZE EDİLMİŞ QR İŞLEME SİSTEMİ
-- 3 Aşamalı Akıllı Tarama (Hızlı → Orta → Derin)
-- Otomatik Fatura Tipi Tespiti (SATIS/ALIS)
-- Performans ve Doğruluk Dengesi
+GELİŞMİŞ QR VE PDF İŞLEME MODÜLÜ
+
+Bu modül, fatura PDF'lerinden ve resimlerinden veri çıkarmak için tasarlanmıştır.
+Temel Özellikler:
+1. Hibrit Tarama: Hem Python (PyMuPDF) hem de Rust (rxing) kullanarak maksimum performans.
+2. Akıllı ROI (Region of Interest): QR kodların genellikle bulunduğu üst %35'lik alanı öncelikli tarar.
+3. Dinamik DPI: Vektör ve taranmış PDF'ler için farklı çözünürlük stratejileri uygular.
+4. Hata Toleransı: QR okunamadığında gelişmiş metin analizi (OCR benzeri) devreye girer.
 """
 
 from imports import *
+from locales import get_text as tr
+
+#----- RUST ENTEGRASYONU ------
+# Performans kritik işlemler için Rust modülü kullanılır.
+try:
+    import rust_qr
+    RUST_AVAILABLE = True
+except ImportError:
+    RUST_AVAILABLE = False
+    import warnings
+    warnings.warn("UYARI: 'rust_qr' modülü bulunamadı. Performans düşebilir.", ImportWarning)
+# -----------------------------
 
 
+# ============================================================================
+# OPTİMİZE EDİLMİŞ QR İŞLEMCİSİ
+# ============================================================================
 class OptimizedQRProcessor:
-    """PERFORMANS-DOĞRULUK DENGELİ QR İŞLEMCİSİ"""
+    """
+    Performans ve doğruluk odaklı QR işleme sınıfı.
+    Aşamalı tarama stratejisi kullanır: Hızlı -> Orta -> Detaylı
+    """
     
     def __init__(self):
-        self.opencv_detector = None
-        self.tools_loaded = False
+        # İstatistikler (Debugging ve optimizasyon takibi için)
         self.stats = {
-            'smart_dpi_300': 0,    # Yüksek kalite dosyalar
-            'smart_dpi_450': 0,    # Orta kalite dosyalar  
-            'smart_dpi_600': 0,    # Düşük kalite dosyalar
-            'fallback_scan': 0,    # Son çare tam tarama
-            'stage1_fast': 0,      # Resim işleme - hızlı tarama
-            'stage2_medium': 0,    # Resim işleme - orta tarama
-            'stage3_deep': 0,      # Resim işleme - derin tarama
+            'smart_dpi_300': 0,
+            'smart_dpi_450': 0,
+            'smart_dpi_600': 0,
+            'fallback_scan': 0,
+            'stage1_fast': 0,      # En hızlı başarılı taramalar
+            'stage2_medium': 0,    # Orta seviye taramalar
+            'stage3_deep': 0,      # Zorlu dosyalar
             'failed': 0
         }
-        # Dosya kalite cache (aynı dosya tekrar işlenirse hızlı olsun)
+        # Dosya analiz önbelleği
         self.file_quality_cache = {}
+        
+    # ------------------------------------------------------------------------
+    # RUST ENTEGRASYONU
+    # ------------------------------------------------------------------------
+    def _scan_raw_with_rust(self, raw_data, width, height):
+        """
+        Ham piksel verisini (Grayscale) doğrudan Rust backend'e gönderir.
+        Bu yöntem, Python tarafında görüntü işleme maliyetini ortadan kaldırır.
+        """
+        if not RUST_AVAILABLE:
+            return None
+        
+        try:
+            # Rust modülüne ham pikselleri gönder (GIL release edilmiş durumda çalışır)
+            raw_qr = rust_qr.scan_raw_luma(raw_data, width, height)
+            
+            if raw_qr:
+                cleaned = rust_qr.clean_json_string(raw_qr)
+                try:
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    return {"_raw_data": cleaned, "_parse_error": True}
+        except Exception as e:
+            logging.error(f"Rust RAW tarama hatası: {e}")
+        
+        return None
     
+    # ------------------------------------------------------------------------
+    # DOSYA ADI ANALİZİ
+    # ------------------------------------------------------------------------
     def _extract_fatura_no_from_filename(self, filename):
         """
         Dosya adından CR ile başlayan fatura numarasını çıkar.
@@ -54,21 +104,10 @@ class OptimizedQRProcessor:
         
         return None
     
-    def _init_qr_tools(self):
-        """QR araçlarını lazy loading ile yükle"""
-        if self.tools_loaded:
-            return
-        
-        try:
-            cv2.setNumThreads(6)
-            cv2.setUseOptimized(True)
-            self.opencv_detector = cv2.QRCodeDetector()
-            self.tools_loaded = True
-        except Exception as e:
-            logging.error(f"❌ QR araçları yüklenemedi: {e}")
-            raise ImportError("QR kütüphaneleri eksik! pip install opencv-python-headless pyzbar PyMuPDF")
-    
-    def analyze_pdf_quality(self, pdf_path):
+    # ------------------------------------------------------------------------
+    # PDF ANALİZİ
+    # ------------------------------------------------------------------------
+    def analyze_pdf_quality(self, pdf_path, page=None, existing_text_len=None):
         """PDF kalitesini analiz et ve optimal DPI'yi belirle"""
         # Cache kontrolü
         if pdf_path in self.file_quality_cache:
@@ -78,8 +117,11 @@ class OptimizedQRProcessor:
             file_size_mb = os.path.getsize(pdf_path) / (1024 * 1024)
             
             # Hızlı sayfa analizi (72 DPI ile)
-            doc = fitz.open(pdf_path)
-            page = doc.load_page(0)
+            should_close = False
+            if page is None:
+                doc = fitz.open(pdf_path)
+                page = doc.load_page(0)
+                should_close = True
             
             # Sayfa boyutları (point olarak)
             page_width = page.rect.width
@@ -87,10 +129,15 @@ class OptimizedQRProcessor:
             page_area = page_width * page_height
             
             # Metin yoğunluğu analizi
-            text_length = len(page.get_text())
+            if existing_text_len is not None:
+                text_length = existing_text_len
+            else:
+                text_length = len(page.get_text())
+                
             text_density = text_length / page_area if page_area > 0 else 0
             
-            doc.close()
+            if should_close:
+                page.parent.close()
             
             # ESKİ BAŞARILI DPI STRATEJİSİ (KONSERVATIF YAKLAŞIM)
             # Çoğu E-fatura için yüksek DPI gerekiyor, düşük risk alalım
@@ -135,168 +182,7 @@ class OptimizedQRProcessor:
                 'text_density': 0,
                 'fallback_dpi': 600
             }
-    
-    def clean_json(self, qr_text):
-        """Geliştirilmiş JSON temizleme"""
-        if not qr_text or len(qr_text.strip()) < 5:
-            return {}
-        
-        cleaned = qr_text.strip()
-        
-        # Kontrol karakterlerini temizle
-        cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned)
-        cleaned = re.sub(r'\\x[0-9a-fA-F]{2}', '', cleaned)
-        cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
-        
-        # JSON parse denemeleri
-        parse_attempts = [
-            cleaned,
-            cleaned.replace("'", '"'),
-            re.sub(r'[""‚›‛′‵]', '"', cleaned),
-        ]
-        
-        for attempt in parse_attempts:
-            try:
-                return json.loads(attempt)
-            except:
-                continue
-        
-        # Manuel key-value çıkarma
-        try:
-            kv_pairs = {}
-            pattern = r'["\']?([a-zA-Z_]\w*)["\']?\s*:\s*["\']?([^,"}\]\n]+)["\']?'
-            matches = re.findall(pattern, cleaned)
-            
-            for key, value in matches:
-                value = value.strip().strip('"').strip("'")
-                try:
-                    kv_pairs[key] = float(value) if '.' in value and value.replace('.', '').isdigit() else value
-                except:
-                    kv_pairs[key] = value
-            
-            if kv_pairs:
-                return kv_pairs
-        except:
-            pass
-        
-        logging.warning(f"⚠️ JSON parse başarısız: {qr_text[:100]}")
-        return {"_raw_data": qr_text, "_parse_error": True}
-    
-    # ================== AŞAMA 1: HIZLI TARAMA ==================
-    
-    def _stage1_fast(self, img):
-        """AŞAMA 1: Hızlı tarama - Sağ üst bölge + tam resim"""
-        h, w = img.shape[:2]
-        
-        # 1. Sağ üst bölge (E-faturaların %70'i burada)
-        try:
-            region = img[0:int(h*0.4), int(w*0.6):w]
-            if region.size > 0:
-                codes = pyzbar.decode(region)
-                if codes:
-                    data = self._extract_qr_data(codes[0])
-                    if data:
-                        return data
-        except:
-            pass
-        
-        # 2. Tam resim PyZBar
-        try:
-            codes = pyzbar.decode(img)
-            if codes:
-                data = self._extract_qr_data(codes[0])
-                if data:
-                    return data
-        except:
-            pass
-        
-        return None
-    
-    # ================== AŞAMA 2: ORTA SEVİYE ==================
-    
-    def _stage2_medium(self, img):
-        """AŞAMA 2: Orta seviye - 3 bölge + kontrast artırma"""
-        # Gri tonlama + kontrast
-        if len(img.shape) == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = img.copy()
-        
-        # CLAHE (Contrast Limited Adaptive Histogram Equalization)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(gray)
-        
-        h, w = enhanced.shape[:2]
-        
-        # Sadece kritik sağ bölgeleri tara (E-faturaların %95'i burada)
-        regions = [
-            ("Sağ Üst", enhanced[0:int(h*0.4), int(w*0.65):w]),
-            ("Sağ Orta", enhanced[int(h*0.25):int(h*0.75), int(w*0.70):w]),
-        ]
-        
-        for region_name, region in regions:
-            if region.size > 0:
-                try:
-                    codes = pyzbar.decode(region)
-                    if codes:
-                        data = self._extract_qr_data(codes[0])
-                        if data:
-                            return data
-                except:
-                    pass
-        
-        # Tam resim tarama
-        try:
-            codes = pyzbar.decode(enhanced)
-            if codes:
-                data = self._extract_qr_data(codes[0])
-                if data:
-                    return data
-        except:
-            pass
-        
-        return None
-    
-    # ================== AŞAMA 3: DERİN TARAMA ==================
-    
-    def _stage3_deep(self, img):
-        """AŞAMA 3: Derin tarama - Çoklu görüntü işleme"""
-        if len(img.shape) == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = img.copy()
-        
-        # Çoklu işleme teknikleri
-        processing_methods = [
-            ("Gaussian Blur", lambda g: cv2.GaussianBlur(g, (5, 5), 0)),
-            ("Adaptive Threshold", lambda g: cv2.adaptiveThreshold(g, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)),
-            ("Otsu Threshold", lambda g: cv2.threshold(g, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]),
-            ("CLAHE Enhanced", lambda g: cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8)).apply(g)),
-        ]
-        
-        for method_name, method_func in processing_methods:
-            try:
-                processed = method_func(gray)
-                
-                # PyZBar dene
-                codes = pyzbar.decode(processed)
-                if codes:
-                    data = self._extract_qr_data(codes[0])
-                    if data:
-                        return data
-                
-                # OpenCV dene
-                if self.opencv_detector:
-                    qr_data, _, _ = self.opencv_detector.detectAndDecode(processed)
-                    if qr_data and len(qr_data.strip()) > 10:
-                        return qr_data
-            except:
-                continue
-        
-        return None
-    
-    # ================== PDF İŞLEME - 3 DPI SEVİYESİ ==================
-    
+  
     def extract_text_from_pdf(self, pdf_path):
         """PDF'den metin çıkar - GELİŞTİRİLMİŞ TABLO ALGILAMA"""
         try:
@@ -347,48 +233,82 @@ class OptimizedQRProcessor:
             return []
     
     def process_pdf(self, pdf_path):
-        """PDF işleme - AKILLI DPI SEÇİMİ + metin çıkarma"""
-        if not self.tools_loaded:
-            self._init_qr_tools()
+        """
+        PDF İşleme Motoru
         
-        # PDF'den metin çıkar (Firma ve Mal-Hizmet bilgisi için)
-        pdf_text = self.extract_text_from_pdf(pdf_path)
+        Strateji:
+        1. Dosya Türü Tespiti: Vektör (dijital) mi yoksa Taranmış (resim) mı?
+        2. Bölgesel Tarama (ROI): QR kodlar genelde üst %35'lik alandadır.
+        3. Aşamalı Çözünürlük (DPI): Düşük DPI'dan başlayıp gerekirse artırır.
         
+        Bu yaklaşım, gereksiz piksel işlemeyi önleyerek hızı maksimize eder.
+        """
         try:
-            # AŞAMA 1: Dosya kalitesi analizi
-            quality_info = self.analyze_pdf_quality(pdf_path)
-            optimal_dpi = quality_info['dpi']
-            fallback_dpi = quality_info['fallback_dpi']
-            
+            # PDF'i tek seferde aç
             doc = fitz.open(pdf_path)
             page = doc.load_page(0)
             
-            # AŞAMA 2: Akıllı başlangıç DPI (ESKİ YÖNTEMİNİZLE)
-            result = self._try_pdf_with_dpi(page, optimal_dpi, "AKILLI")
-            if result:
-                doc.close()
-                if optimal_dpi <= 400:
-                    self.stats['smart_dpi_300'] += 1
-                elif optimal_dpi <= 500:
-                    self.stats['smart_dpi_450'] += 1
-                else:
-                    self.stats['smart_dpi_600'] += 1
-                return result, pdf_text
+            # 1. Metin Çıkarma (Hızlı analiz için)
+            pdf_text = page.get_text()
             
-            # AŞAMA 3: ESKİ BAŞARILI ORTA SEVİYE (600 DPI)
-            if optimal_dpi < 600:  # Zaten 600 DPI denemediyse
-                result = self._try_pdf_with_dpi(page, 600, "ORTA")
+            # Metin yoğunluğuna göre dosya türü tahmini
+            # >50 karakter varsa muhtemelen dijital (vektör) PDF'tir
+            is_likely_vector = len(pdf_text) > 50
+            
+            # ROI (Region of Interest) Tanımlama
+            # Sayfanın sadece üst %35'ini hedefle
+            page_rect = page.rect
+            roi_rect = fitz.Rect(0, 0, page_rect.width, page_rect.height * 0.35)
+            
+            if is_likely_vector:
+                # --- STRATEJİ A: VEKTÖR PDF (E-FATURA) ---
+                # Dijital faturalarda QR kodlar çok nettir, düşük DPI yeterlidir.
+                
+                # Adım 1: ROI Tarama (150 DPI) - EN HIZLI
+                result = self._try_pdf_with_dpi(page, 150, "VEKTÖR-ROI-150", clip=roi_rect)
                 if result:
                     doc.close()
-                    self.stats['smart_dpi_600'] += 1
+                    self.stats['stage1_fast'] += 1
+                    return result, pdf_text
+                
+                # Adım 2: Tam Sayfa (300 DPI) - Orta Hız
+                result = self._try_pdf_with_dpi(page, 300, "VEKTÖR-TAM-300")
+                if result:
+                    doc.close()
+                    self.stats['stage2_medium'] += 1
+                    return result, pdf_text
+                
+                # Adım 3: Yüksek Kalite (450 DPI) - Son Çare
+                result = self._try_pdf_with_dpi(page, 450, "VEKTÖR-YÜKSEK-450")
+                if result:
+                    doc.close()
+                    self.stats['stage3_deep'] += 1
                     return result, pdf_text
             
-            # AŞAMA 4: ESKİ BAŞARILI YÜKSEK SEVİYE (750 DPI)
-            result = self._try_pdf_with_dpi(page, 750, "YÜKSEK")
-            if result:
-                doc.close()
-                self.stats['fallback_scan'] += 1
-                return result, pdf_text
+            else:
+                # --- STRATEJİ B: TARANMIŞ PDF (RESİM) ---
+                # Taranmış belgeler daha bulanıktır, biraz daha yüksek DPI gerekir.
+                
+                # Adım 1: ROI Tarama (250 DPI)
+                result = self._try_pdf_with_dpi(page, 250, "TARAMA-ROI-250", clip=roi_rect)
+                if result:
+                    doc.close()
+                    self.stats['stage2_medium'] += 1
+                    return result, pdf_text
+                
+                # Adım 2: Tam Sayfa (350 DPI)
+                result = self._try_pdf_with_dpi(page, 350, "TARAMA-TAM-350")
+                if result:
+                    doc.close()
+                    self.stats['stage2_medium'] += 1
+                    return result, pdf_text
+                
+                # Adım 3: Ultra Yüksek Kalite (600 DPI)
+                result = self._try_pdf_with_dpi(page, 600, "TARAMA-ULTRA-600")
+                if result:
+                    doc.close()
+                    self.stats['stage3_deep'] += 1
+                    return result, pdf_text
             
             doc.close()
             self.stats['failed'] += 1
@@ -399,142 +319,87 @@ class OptimizedQRProcessor:
             self.stats['failed'] += 1
             return None, ""
     
-    def _try_pdf_with_dpi(self, page, dpi, stage_name):
-        """ESKİ BAŞARILI YÖNTEMİNİZ - Belirli DPI ile PDF'den QR okumayı dene"""
+    # OptimizedQRProcessor sınıfının içine, diğer metodların yanına:
+
+    def _try_pdf_with_dpi(self, page, dpi, stage_name, clip=None):
+        """
+        PDF sayfasını render eder ve HAM (RAW) veriyi Rust'a gönderir.
+        EN HIZLI YÖNTEM BUDUR.
+        """
+        if not RUST_AVAILABLE:
+            return None
+
         try:
+            # 1. Render ayarları
             zoom = dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat)
             
-            img_data = pix.tobytes("png")
-            nparr = np.frombuffer(img_data, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            # 2. ÖNEMLİ: colorspace=fitz.csGRAY ile render al (Siyah beyaz - 1 byte/pixel)
+            # alpha=False şeffaflığı kapatır.
+            # clip parametresi ile sadece belirli bölgeyi render et
+            pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY, alpha=False, clip=clip)
             
-            if img is None:
-                return None
+            # 3. ÖNEMLİ: .tobytes("png") YERİNE .samples KULLAN
+            # Bu işlem 0 saniye sürer çünkü sıkıştırma yapmaz, direkt hafızayı okur.
+            raw_data = pix.samples 
+            width = pix.width
+            height = pix.height
             
-            # Aşamaya göre işleme (ESKİ BAŞARILI YÖNTEMLERİNİZ)
-            if stage_name == "AKILLI":
-                return self._smart_region_scan(img)  # Hızlı başlangıç
-            elif stage_name == "ORTA":
-                return self._stage2_medium(img)  # ESKİ ORTA SEVİYE
-            elif stage_name == "YÜKSEK":
-                return self._stage3_deep(img)   # ESKİ YÜKSEK SEVİYE
+            # 4. Rust'taki YENİ fonksiyonu çağır
+            qr_string = rust_qr.scan_raw_luma(raw_data, width, height)
             
-        except Exception as e:
-            pass
-        
-        return None
-    
-    def _smart_region_scan(self, img):
-        """Sadece kritik bölgeleri tara - ESKİ BAŞARILI KOORDİNATLARLA"""
-        h, w = img.shape[:2]
-        
-        # 1. Sağ üst bölge (ESKİ BAŞARILI KOORDİNATLAR)
-        try:
-            region = img[0:int(h*0.4), int(w*0.6):w]  # Eski: 0.6, Yeni: 0.65 → GERİ DÖNDÜK
-            if region.size > 0:
-                codes = pyzbar.decode(region)
-                if codes:
-                    data = self._extract_qr_data(codes[0])
-                    if data:
-                        return data
-        except:
-            pass
-        
-        # 2. Tam resim PyZBar (ESKİ BAŞARILI YÖNTEMİNİZ)
-        try:
-            codes = pyzbar.decode(img)
-            if codes:
-                data = self._extract_qr_data(codes[0])
-                if data:
-                    return data
-        except:
-            pass
-        
-        return None
-    
-    def _fallback_full_scan(self, img):
-        """ESKİ BAŞARILI AŞAMA 2 YÖNTEMİNİZ - Kontrast artırma + bölge tarama"""
-        # Gri tonlama + kontrast
-        if len(img.shape) == 3:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = img.copy()
-        
-        # CLAHE (ESKİ BAŞARILI AYARLARINIZ)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))  # Eski: 2.0, Yeni: 3.0 → GERİ DÖNDÜK
-        enhanced = clahe.apply(gray)
-        
-        h, w = enhanced.shape[:2]
-        
-        # ESKİ BAŞARILI BÖLGE KOORDİNATLARINIZ
-        regions = [
-            ("Sağ Üst", enhanced[0:int(h*0.4), int(w*0.65):w]),
-            ("Sağ Orta", enhanced[int(h*0.25):int(h*0.75), int(w*0.70):w]),
-        ]
-        
-        for region_name, region in regions:
-            if region.size > 0:
+            if qr_string:
+                # JSON Temizliği
+                cleaned = rust_qr.clean_json_string(qr_string)
                 try:
-                    codes = pyzbar.decode(region)
-                    if codes:
-                        data = self._extract_qr_data(codes[0])
-                        if data:
-                            return data
+                    json_data = json.loads(cleaned)
+                    logging.debug(f"   ✅ Rust (RAW) ile bulundu ({stage_name} - {dpi} DPI)")
+                    if 'rust_scan_success' in self.stats:
+                        self.stats['rust_scan_success'] += 1
+                    return json_data
                 except:
-                    pass
-        
-        # Tam resim tarama (ESKİ YÖNTEMİNİZ)
-        try:
-            codes = pyzbar.decode(enhanced)
-            if codes:
-                data = self._extract_qr_data(codes[0])
-                if data:
-                    return data
-        except:
-            pass
-        
-        # OpenCV son deneme
-        if self.opencv_detector:
-            try:
-                qr_data, _, _ = self.opencv_detector.detectAndDecode(enhanced)
-                if qr_data and len(qr_data.strip()) > 10:
-                    return qr_data
-            except:
-                pass
+                    return {"_raw_data": cleaned, "_parse_error": True}
+
+        except Exception as e:
+            logging.debug(f"   Rust RAW tarama hatası ({stage_name}): {e}")
         
         return None
-    
     # ================== RESİM İŞLEME ==================
     
-    def process_image(self, image_path):
-        """Resim işleme - 3 aşamalı"""
-        if not self.tools_loaded:
-            self._init_qr_tools()
+    def _scan_with_rust(self, img_bytes):
+        """Rust backend ile QR tarama"""
+        if not RUST_AVAILABLE:
+            return None
         
         try:
-            img = cv2.imread(image_path)
-            if img is None:
-                return None, ""
+            qr_string = rust_qr.scan_image_bytes(img_bytes)
             
-            # AŞAMA 1
-            result = self._stage1_fast(img)
-            if result:
-                self.stats['stage1_fast'] += 1
-                return result, ""
+            if qr_string:
+                cleaned = rust_qr.clean_json_string(qr_string)
+                try:
+                    return json.loads(cleaned)
+                except json.JSONDecodeError:
+                    return {"_raw_data": cleaned, "_parse_error": True}
+        except Exception as e:
+            logging.error(f"Rust tarama hatası: {e}")
+        
+        return None
+    
+    def process_image(self, image_path):
+        """Resim işleme - RUST versiyonu"""
+        try:
+            # Dosyayı binary (rb) modunda oku
+            with open(image_path, "rb") as f:
+                img_bytes = f.read()
             
-            # AŞAMA 2
-            result = self._stage2_medium(img)
-            if result:
-                self.stats['stage2_medium'] += 1
-                return result, ""
+            # Rust'a gönder
+            json_result = self._scan_with_rust(img_bytes)
             
-            # AŞAMA 3
-            result = self._stage3_deep(img)
-            if result:
-                self.stats['stage3_deep'] += 1
-                return result, ""
+            if json_result:
+                # İstatistik güncelleme (varsa)
+                if 'rust_scan_success' in self.stats:
+                    self.stats['rust_scan_success'] += 1
+                return json_result, "" # Text kısmı resimde boş döner
             
             self.stats['failed'] += 1
             return None, ""
@@ -543,21 +408,27 @@ class OptimizedQRProcessor:
             logging.error(f"❌ Resim hatası ({os.path.basename(image_path)}): {e}")
             self.stats['failed'] += 1
             return None, ""
-    
     # ================== YARDIMCI FONKSİYONLAR ==================
     
-    def _extract_qr_data(self, code):
-        """PyZBar QR code objesinden veriyi çıkar"""
-        try:
-            data = code.data
-            if isinstance(data, bytes):
-                data = data.decode('utf-8', errors='ignore')
-            if data and len(data.strip()) > 10:
-                return data
-        except:
-            pass
+    def clean_json(self, qr_data):
+        """QR verilerini temizle ve JSON'a dönüştür"""
+        if isinstance(qr_data, dict):
+            return qr_data
+        
+        if isinstance(qr_data, str):
+            try:
+                # Rust'ın temizleme fonksiyonunu kullan
+                if RUST_AVAILABLE:
+                    cleaned = rust_qr.clean_json_string(qr_data)
+                else:
+                    cleaned = qr_data.replace("'", '"')
+                
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                return {"_raw_data": qr_data, "_parse_error": True}
+        
         return None
-    
+       
     def extract_info_from_text(self, pdf_text, file_name, pdf_path=None):
         """PDF metninden firma, mal-hizmet ve miktar bilgisi çıkar - GELİŞTİRİLMİŞ"""
         info = {
@@ -1259,10 +1130,11 @@ class OptimizedQRProcessor:
                         'firma': firma or 'Bilinmeyen Firma',
                         'tip': malzeme or 'Fatura',
                         'miktar': miktar or '',
-                        'payableAmount': amounts['toplam'],
+                        'payableAmount': amounts['matrah'],  # MATRAH (KDV hariç fiyat)
                         'taxableAmount': amounts['matrah'],
                         'hesaplanankdv': amounts['kdv'],
                         'kdvOrani': amounts['kdv_yuzdesi'],
+                        'toplamTutar': amounts['toplam'],  # KDV dahil toplam (referans için)
                         'currency': currency_code,
                         '_source': 'PDF_TEXT_EXTRACTION'
                     }
@@ -1637,20 +1509,21 @@ class OptimizedQRProcessor:
         
         return amounts
 
-    def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None):
-        """Klasördeki tüm dosyaları paralel işle"""
-        if not self.tools_loaded:
-            self._init_qr_tools()
-        
-        
+    def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None, lang="tr"):
+        """Klasördeki tüm dosyaları işle (Sıralı İşleme)"""
+
         if status_callback:
-            status_callback("📁 Dosyalar taranıyor...", 5)
+            status_callback(tr("scanning_files", lang), 5)
         
         # Dosyaları topla
         allowed_extensions = {'.pdf', '.jpg', '.jpeg', '.png', '.bmp'}
         file_paths = []
         
         try:
+            if not os.path.exists(folder_path):
+                logging.error(f"❌ Klasör bulunamadı: {folder_path}")
+                return []
+
             for file_name in os.listdir(folder_path):
                 file_path = os.path.join(folder_path, file_name)
                 if os.path.isfile(file_path):
@@ -1665,44 +1538,81 @@ class OptimizedQRProcessor:
             logging.warning("⚠️ İşlenebilir dosya bulunamadı")
             return []
         
+        # Hızlı başlangıç bildirimi
+        if status_callback:
+            status_callback(tr("preparing_files", lang).format(len(file_paths)), 1)
         
         results = []
         completed_count = 0
         start_time = time.time()
         
-        # Paralel işleme
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_path = {executor.submit(self.process_file, path): path for path in file_paths}
-            
-            for future in as_completed(future_to_path):
+        # Paralel İşleme (ThreadPoolExecutor)
+        # imports.py'den ThreadPoolExecutor ve as_completed geliyor
+        if CONCURRENT_AVAILABLE:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Future -> File Path mapping
+                future_to_file = {executor.submit(self.process_file, fp): fp for fp in file_paths}
+                
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                    except Exception as exc:
+                        logging.error(f"❌ Dosya işleme hatası ({os.path.basename(file_path)}): {exc}")
+                        results.append({
+                            'dosya_adi': os.path.basename(file_path),
+                            'durum': 'HATA',
+                            'json_data': {},
+                            'error': str(exc)
+                        })
+                    
+                    completed_count += 1
+                    
+                    # İlerleme bildirimi
+                    if status_callback:
+                        try:
+                            progress = int((completed_count / len(file_paths)) * 95)
+                            msg = tr("processing_progress", lang).format(progress, completed_count, len(file_paths))
+                            if not status_callback(msg, progress):
+                                executor.shutdown(wait=False, cancel_futures=True)
+                                break
+                        except Exception:
+                            pass
+        else:
+            # Fallback: Sıralı işleme
+            for file_path in file_paths:
                 try:
-                    result = future.result(timeout=30)
+                    # Dosyayı işle
+                    result = self.process_file(file_path)
                     results.append(result)
+                    
                     completed_count += 1
                     
                     # İlerleme bildirimi - Her dosyada güncelle
                     if status_callback:
-                        progress = int((completed_count / len(file_paths)) * 95)
-                        elapsed = time.time() - start_time
-                        rate = completed_count / elapsed if elapsed > 0 else 0
-                        
-                        # Yüzdelik gösterim ekle
-                        msg = f"İşleniyor: %{progress} ({completed_count}/{len(file_paths)})"
-                        
-                        if not status_callback(msg, progress):
-                            # İptal edildi
-                            logging.warning("⚠️ Kullanıcı işlemi iptal etti")
-                            break
-                    
+                        try:
+                            progress = int((completed_count / len(file_paths)) * 95)
+                            elapsed = time.time() - start_time
+                            
+                            # Yüzdelik gösterim ekle
+                            msg = tr("processing_progress", lang).format(progress, completed_count, len(file_paths))
+                            
+                            if not status_callback(msg, progress):
+                                # İptal edildi
+                                logging.warning("⚠️ Kullanıcı işlemi iptal etti")
+                                break
+                        except Exception:
+                            pass
+                            
                 except Exception as e:
-                    file_path = future_to_path[future]
-                    logging.error(f"❌ Timeout/Hata: {os.path.basename(file_path)}")
+                    logging.error(f"❌ Dosya işleme hatası ({os.path.basename(file_path)}): {e}")
                     results.append({
                         'dosya_adi': os.path.basename(file_path),
-                        'durum': 'TIMEOUT',
-                        'json_data': {}
+                        'durum': 'HATA',
+                        'json_data': {},
+                        'error': str(e)
                     })
-                    completed_count += 1
         
         total_time = time.time() - start_time
         success_count = len([r for r in results if r.get('durum') == 'BAŞARILI'])
@@ -1740,7 +1650,7 @@ class OptimizedQRProcessor:
         # İstatistikler
         
         if status_callback:
-            status_callback("✅ QR işleme tamamlandı!", 100)
+            status_callback(tr("qr_processing_complete", lang), 100)
         
         return results
 
@@ -1760,17 +1670,18 @@ class QRInvoiceIntegrator:
         self.backend = backend_instance
         self.qr_processor = OptimizedQRProcessor()
     
-    def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None):
+    def process_qr_files_in_folder(self, folder_path, max_workers=6, status_callback=None, lang="tr"):
         """Klasördeki dosyaları işle"""
         return self.qr_processor.process_qr_files_in_folder(
             folder_path, 
             max_workers=max_workers,
-            status_callback=status_callback
+            status_callback=status_callback,
+            lang=lang
         )
     
     def add_invoices_from_qr_data(self, qr_results, invoice_type):
         """
-        QR sonuçlarını veritabanına ekle - MANUEL TİP SEÇİMİ + DUPLICATE KONTROL
+        QR sonuçlarını veritabanına ekle - MANUEL TİP SEÇİMİ + DUPLICATE KONTROL + PARALEL KUR ÇEKİMİ
         
         Args:
             qr_results: QR işleme sonuçları
@@ -1788,6 +1699,9 @@ class QRInvoiceIntegrator:
                 'failed_files': list
             }
         """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+        
         if not qr_results:
             logging.warning("QR sonuçları boş!")
             return {
@@ -1801,6 +1715,8 @@ class QRInvoiceIntegrator:
                 'failed_files': []
             }
         
+        # Thread-safe sayaçlar
+        lock = threading.Lock()
         successful_imports = 0
         failed_imports = 0
         skipped_duplicates = 0
@@ -1808,6 +1724,11 @@ class QRInvoiceIntegrator:
         failed_files = []
         
         type_text = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
+        
+        # AŞAMA 1: Tüm faturaları parse et ve tarihleri topla
+        logging.info("📋 Faturalar hazırlanıyor...")
+        prepared_invoices = []
+        date_list = []
         
         for i, result in enumerate(qr_results, 1):
             dosya_adi = result.get('dosya_adi', 'Bilinmeyen')
@@ -1822,108 +1743,133 @@ class QRInvoiceIntegrator:
                 parsed_fields = self._parse_qr_to_invoice_fields(qr_json, extracted_info, fatura_no_from_filename)
                 
                 if not parsed_fields or not parsed_fields.get('firma'):
-                    logging.warning(f"   ⚠️ {dosya_adi}: Eksik fatura bilgisi")
-                    failed_imports += 1
-                    failed_files.append(dosya_yolu)
-                    processing_details.append({
-                        'file': dosya_adi,
-                        'status': 'BAŞARISIZ',
-                        'error': 'Firma bilgisi eksik'
-                    })
-                    # Kaydet: eklenmeyen faturalar
+                    with lock:
+                        failed_imports += 1
+                        failed_files.append(dosya_yolu)
+                        processing_details.append({
+                            'file': dosya_adi,
+                            'status': 'BAŞARISIZ',
+                            'error': 'Firma bilgisi eksik'
+                        })
                     try:
                         self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Firma bilgisi eksik', qr_json=qr_json, parsed_fields=parsed_fields)
                     except Exception:
                         pass
                     continue
 
-                # Toplam tutar okunamadıysa kaydet ve atla
                 if not parsed_fields.get('toplam_tutar') or float(parsed_fields.get('toplam_tutar', 0)) <= 0:
-                    logging.warning(f"   ⚠️ {dosya_adi}: Toplam tutar okunamadı veya sıfır")
-                    failed_imports += 1
-                    failed_files.append(dosya_yolu)
-                    processing_details.append({
-                        'file': dosya_adi,
-                        'status': 'BAŞARISIZ',
-                        'error': 'Toplam tutar okunamadı'
-                    })
+                    with lock:
+                        failed_imports += 1
+                        failed_files.append(dosya_yolu)
+                        processing_details.append({
+                            'file': dosya_adi,
+                            'status': 'BAŞARISIZ',
+                            'error': 'Toplam tutar okunamadı'
+                        })
                     try:
                         self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Toplam tutar okunamadı', qr_json=qr_json, parsed_fields=parsed_fields)
                     except Exception:
                         pass
                     continue
                 
-                # ⭐ DUPLICATE KONTROL ⭐
+                # DUPLICATE KONTROL
                 fatura_no = parsed_fields.get('fatura_no', '')
                 if self._is_duplicate_invoice(fatura_no):
-                    skipped_duplicates += 1
-                    processing_details.append({
-                        'file': dosya_adi,
-                        'status': 'ATLANDI (DUPLICATE)',
-                        'fatura_no': fatura_no,
-                        'error': None
-                    })
+                    with lock:
+                        skipped_duplicates += 1
+                        processing_details.append({
+                            'file': dosya_adi,
+                            'status': 'ATLANDI (DUPLICATE)',
+                            'fatura_no': fatura_no,
+                            'error': None
+                        })
                     continue
                 
-                # Backend'e ekle (manuel seçilen tip ile)
-                try:
-                    
-                    result = self.backend.handle_invoice_operation(
-                        operation='add',
-                        invoice_type=invoice_type,
-                        data=parsed_fields
-                    )
-                    
-                    if result:
+                # Faturayı listeye ekle ve tarihini kaydet
+                prepared_invoices.append({
+                    'dosya_adi': dosya_adi,
+                    'dosya_yolu': dosya_yolu,
+                    'parsed_fields': parsed_fields,
+                    'qr_json': qr_json,
+                    'fatura_no': fatura_no
+                })
+                
+                # Tarihi listeye ekle (kur çekme için)
+                if parsed_fields.get('tarih'):
+                    date_list.append(parsed_fields['tarih'])
+        
+        # AŞAMA 2: Tüm tarihlerin kurlarını toplu çek
+        logging.info(f"💱 {len(set(date_list))} farklı tarih için kurlar çekiliyor...")
+        rates_cache = self.backend.fetch_bulk_historical_rates(date_list)
+        logging.info(f"✅ {len(rates_cache)} tarih için kur bilgisi alındı")
+        
+        # AŞAMA 3: Faturaları paralel olarak veritabanına ekle
+        logging.info(f"💾 {len(prepared_invoices)} fatura veritabanına ekleniyor...")
+        
+        def process_invoice(invoice_data):
+            nonlocal successful_imports, failed_imports
+            
+            dosya_adi = invoice_data['dosya_adi']
+            dosya_yolu = invoice_data['dosya_yolu']
+            parsed_fields = invoice_data['parsed_fields']
+            qr_json = invoice_data['qr_json']
+            fatura_no = invoice_data['fatura_no']
+            
+            # Kur bilgisini cache'den al
+            invoice_date = parsed_fields.get('tarih')
+            if invoice_date and invoice_date in rates_cache:
+                parsed_fields['exchange_rates'] = rates_cache[invoice_date]
+            
+            try:
+                result = self.backend.handle_invoice_operation(
+                    operation='add',
+                    invoice_type=invoice_type,
+                    data=parsed_fields
+                )
+                
+                if result:
+                    with lock:
                         successful_imports += 1
-                    else:
+                        processing_details.append({
+                            'file': dosya_adi,
+                            'status': 'BAŞARILI',
+                            'type': invoice_type,
+                            'fatura_no': fatura_no,
+                            'error': None
+                        })
+                else:
+                    with lock:
                         failed_imports += 1
                         failed_files.append(dosya_yolu)
-                        logging.error(f"   ❌ {dosya_adi} -> Kaydedilemedi (Backend False döndü)")
                         processing_details.append({
                             'file': dosya_adi,
                             'status': 'BAŞARISIZ',
                             'error': 'Backend False döndü'
                         })
-                        try:
-                            self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Backend False döndü', qr_json=qr_json, parsed_fields=parsed_fields)
-                        except Exception:
-                            pass
-                        continue
-                    processing_details.append({
-                        'file': dosya_adi,
-                        'status': 'BAŞARILI',
-                        'type': invoice_type,
-                        'fatura_no': fatura_no,
-                        'error': None
-                    })
+                    try:
+                        self._save_unadded_invoice(dosya_yolu, dosya_adi, 'Backend False döndü', qr_json=qr_json, parsed_fields=parsed_fields)
+                    except Exception:
+                        pass
                     
-                except Exception as e:
-                    logging.error(f"   ❌ {dosya_adi}: Veritabanı hatası - {e}")
+            except Exception as e:
+                with lock:
                     failed_imports += 1
                     failed_files.append(dosya_yolu)
                     processing_details.append({
                         'file': dosya_adi,
                         'status': 'BAŞARISIZ',
-                        'error': f'DB hatası: {e}'
+                        'error': str(e)
                     })
-                    try:
-                        self._save_unadded_invoice(dosya_yolu, dosya_adi, f'DB hatası: {e}', qr_json=qr_json, parsed_fields=parsed_fields)
-                    except Exception:
-                        pass
-            else:
-                failed_imports += 1
-                failed_files.append(dosya_yolu)
-                processing_details.append({
-                    'file': dosya_adi,
-                    'status': 'BAŞARISIZ',
-                    'error': result.get('durum', 'Bilinmeyen hata')
-                })
-                try:
-                    self._save_unadded_invoice(dosya_yolu, dosya_adi, result.get('durum', 'Bilinmeyen hata'), qr_json=result.get('json_data'), parsed_fields=None)
-                except Exception:
-                    pass
+                logging.error(f"   ❌ {dosya_adi} -> Hata: {e}")
         
+        # Paralel işleme (8 thread ile)
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(process_invoice, inv) for inv in prepared_invoices]
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    logging.error(f"Paralel işlem hatası: {e}")
         
         # Backend sinyalini tetikle
         self.backend.data_updated.emit()
@@ -2075,15 +2021,10 @@ class QRInvoiceIntegrator:
         qr_tarih = self._get_value_case_insensitive(qr_json, key_map['tarih'])
         parsed['tarih'] = self.backend.format_date(str(qr_tarih)) if qr_tarih else datetime.now().strftime("%d.%m.%Y")
         
-        # ⭐ TARİHLİ KUR ÇEKME (YENİ ÖZELLİK) ⭐
-        # Fatura tarihine ait TCMB BanknoteSelling kurunu çek
-        try:
-            historical_rates = self.backend.fetch_historical_rates(parsed['tarih'])
-            if historical_rates:
-                parsed['manual_usd_rate'] = historical_rates.get('USD')
-                parsed['manual_eur_rate'] = historical_rates.get('EUR')
-        except Exception as e:
-            print(f"   ⚠️ Tarihli kur ekleme hatası: {e}")
+        # ⭐ TARİHLİ KUR ÇEKME (KALDIRILDI - ARTIK TOPLU YAPILIYOR) ⭐
+        # Fatura tarihine ait TCMB BanknoteSelling kurunu çekme işlemi
+        # performans için buradan kaldırıldı ve add_invoices_from_qr_data
+        # fonksiyonunda toplu (bulk) işlem olarak yapılacak.
         
         # ⭐ Firma - OCR'DAN AL (QR'da yoksa) ⭐
         firma = self._get_value_case_insensitive(qr_json, key_map['firma'])
@@ -2448,8 +2389,8 @@ class QRInvoiceIntegrator:
 # ============================================================================
 
 if __name__ == "__main__":
-    print("[*] OPTIMIZE EDILMIS QR SISTEMI")
-    print("=" * 50)
+    # print("[*] OPTIMIZE EDILMIS QR SISTEMI")
+    # print("=" * 50)
     
     # Standalone test
     processor = OptimizedQRProcessor()
@@ -2460,13 +2401,14 @@ if __name__ == "__main__":
     
     if results:
         successful = len([r for r in results if r.get('durum') == 'BAŞARILI'])
-        print(f"\n[OK] Islem tamamlandi!")
-        print(f"[STATS] Basarili: {successful}/{len(results)}")
-        print(f"[STATS] Akilli DPI Istatistikleri:")
-        print(f"   - Yuksek Kalite (300): {processor.stats['smart_dpi_300']}")
-        print(f"   - Orta Kalite (450): {processor.stats['smart_dpi_450']}")
-        print(f"   - Dusuk Kalite (600): {processor.stats['smart_dpi_600']}")
-        print(f"   - Fallback: {processor.stats['fallback_scan']}")
-        print(f"   - Basarisiz: {processor.stats['failed']}")
+        # print(f"\n[OK] Islem tamamlandi!")
+        # print(f"[STATS] Basarili: {successful}/{len(results)}")
+        # print(f"[STATS] Akilli DPI Istatistikleri:")
+        # print(f"   - Yuksek Kalite (300): {processor.stats['smart_dpi_300']}")
+        # print(f"   - Orta Kalite (450): {processor.stats['smart_dpi_450']}")
+        # print(f"   - Dusuk Kalite (600): {processor.stats['smart_dpi_600']}")
+        # print(f"   - Fallback: {processor.stats['fallback_scan']}")
+        # print(f"   - Basarisiz: {processor.stats['failed']}")
     else:
-        print("[ERROR] Islem basarisiz")
+        # print("[ERROR] Islem basarisiz")
+        pass

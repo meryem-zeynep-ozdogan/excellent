@@ -1,0 +1,7 @@
+flet==0.28.3
+pandas
+requests
+pymupdf
+reportlab
+XlsxWriter
+pywin32; sys_platform == 'win32'
