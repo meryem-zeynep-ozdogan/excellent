@@ -39,7 +39,7 @@ pipeline {
                 echo 'Kerem in PyTest veritabanı ve sınır değer testleri çalışıyor...'
                 bat '''
                 call %VENV%\\Scripts\\activate
-                pytest test_database.py test_partitions.py -v
+                pytest Tests/tests.py -v
                 '''
             }
         }
@@ -49,7 +49,7 @@ pipeline {
                 echo 'TL vs TRY gibi uyumsuzluklar için veri modeli doğrulanıyor...'
                 bat '''
                 call %VENV%\\Scripts\\activate
-                pytest test_schema.py -v
+                pytest Tests/test_schema.py -v
                 '''
             }
         }
@@ -59,7 +59,7 @@ pipeline {
                 echo 'Flet arayüz davranışları test ediliyor...'
                 bat '''
                 call %VENV%\\Scripts\\activate
-                pytest test_ui_workflows.py -v
+                pytest Tests/test_gui.py -v
                 '''
             }
         }
@@ -70,7 +70,7 @@ pipeline {
                 bat '''
                 call %VENV%\\Scripts\\activate
                 echo "Python Benchmark Testleri:"
-                pytest test_perf.py --benchmark-only --benchmark-fail-fast
+                pytest Tests/test_perf.py --benchmark-only --benchmark-fail-fast
                 echo "Rust QR Benchmark Testleri:"
                 cargo bench
                 '''
