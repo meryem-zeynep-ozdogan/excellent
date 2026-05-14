@@ -33,7 +33,7 @@ pipeline {
                 bat '''
                 call %VENV%\\Scripts\\activate
                 echo "Unit tests for financial calculations and DB integrity..."
-                pytest Tests/tests.py -v
+                pytest -m Tests/tests.py -v
                 '''
             }
         }
