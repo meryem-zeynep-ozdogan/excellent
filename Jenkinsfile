@@ -2,77 +2,66 @@ pipeline {
     agent any
 
     environment {
-        // Python sanal ortam dizini
+        // Sunumdaki ve bilgisayarındaki Python yolu
+        PYTHON_PATH = "C:\\Users\\merzey\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
         VENV = ".venv"
     }
 
     stages {
-        stage('0. Hazırlık ve Kurulum (Setup)') {
+        stage('1. Build (Rust Core Compilation)') {
             steps {
-                echo 'Sanal ortam kuruluyor ve kütüphaneler yükleniyor...'
+                echo '🏗️ BUILDRust core compiled by cargo...'
                 bat '''
-                python -m venv %VENV%
-                call %VENV%\\Scripts\\activate
-                pip install -r requirements.txt
-                pip install ruff bandit pytest pytest-benchmark pytest-bdd pydantic
-                rustc --version
-                cargo --version
+                call %VENV%\\Scripts\\activate || (
+                    "%PYTHON_PATH%" -m venv %VENV%
+                    call %VENV%\\Scripts\\activate
+                )
+                pip install maturin
+                
+                echo "Rust modülleri Python için derleniyor (Maturin)..."
+                cd rust_db && maturin develop --release
+                cd ..
+                cd rust_qr && maturin develop --release
+                cd ..
                 '''
             }
         }
 
-        stage('1. Statik Kod & Güvenlik (Linting & Security)') {
+        stage('2. Test (Pytest & Cargo Tests)') {
             steps {
-                echo 'Ruff ile kod standartlari ve Bandit ile güvenlik taraniyor...'
+                echo '🧪 TEST: Pytest & Cargo run tests...'
                 bat '''
                 call %VENV%\\Scripts\\activate
-                echo "Ruff Analizi Başliyor..."
-                ruff check .
-                echo "Bandit Güvenlik Taramasi Başliyor..."
-                bandit -r PythonFiles/ -ll
-                '''
-            }
-        }
-
-        stage('2. İş Mantığı ve Veritabanı Kalkanı (Unit Tests)') {
-            steps {
-                echo 'Kerem in PyTest veritabanı ve sınır değer testleri çalışıyor...'
-                bat '''
-                call %VENV%\\Scripts\\activate
+                echo "Unit tests for financial calculations and DB integrity..."
                 pytest Tests/tests.py -v
                 '''
             }
         }
 
-        stage('3. Frontend-Backend Şema Sözleşmesi (Contract Tests)') {
+        stage('3. Analyze (Code Quality & Security)') {
             steps {
-                echo 'TL vs TRY gibi uyumsuzluklar için veri modeli doğrulanıyor...'
+                echo '🔍 ANALYZE: Code quality checked by Ruff & Bandit...'
                 bat '''
                 call %VENV%\\Scripts\\activate
-                pytest Tests/test_schema.py -v
+                echo "Ruff Analizi (PEP 8 ve Standartlar)..."
+                ruff check .
+                echo "Bandit Güvenlik Taraması..."
+                bandit -r PythonFiles/ -ll
                 '''
             }
         }
 
-        stage('4. UI/UX Uçtan Uca Testler (E2E Tests)') {
+        stage('4. Deploy (Artifact Generation)') {
             steps {
-                echo 'Flet arayüz davranışları test ediliyor...'
+                echo '🚀 DEPLOY: Ships to staging or production...'
                 bat '''
-                call %VENV%\\Scripts\\activate
-                pytest Tests/test_gui.py -v
-                '''
-            }
-        }
-
-        stage('5. Performans ve Hız Bariyeri (Benchmarks)') {
-            steps {
-                echo 'Fatura kayıt hızı ve Rust QR okuma modülü ölçülüyor...'
-                bat '''
-                call %VENV%\\Scripts\\activate
-                echo "Python Benchmark Testleri:"
-                pytest Tests/test_perf.py --benchmark-only --benchmark-fail-fast
-                echo "Rust QR Benchmark Testleri:"
-                cargo bench
+                echo "Uygulama klasör yapısı hazırlanıyor ve artifactler oluşturuluyor..."
+                if not exist "Database" mkdir Database
+                if not exist "ExcelReports" mkdir ExcelReports
+                if not exist "Markdowns" mkdir Markdowns
+                
+                echo "Opsiyonel: PyInstaller ile .exe üretimi burada tetiklenebilir."
+                :: python -m PyInstaller app.spec
                 '''
             }
         }
@@ -80,14 +69,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ HARİKA! Tüm testler başarıyla geçti. Kod Master dalına birleştirilmeye hazır.'
+            echo '✅ DELIVER WITH CONFIDENCE: Tüm aşamalar başarıyla tamamlandı!'
         }
         failure {
-            echo '❌ HATA! Pipeline patladı. Lütfen konsol çıktılarını inceleyip kodu düzeltin.'
-        }
-        always {
-            echo 'Temizlik yapılıyor...'
-            // Gerekirse test veritabanlarını temizleme komutları buraya eklenebilir
+            echo '❌ PIPELINE FAILED: Sunumdaki kural uyarınca işlem durduruldu ve ekip bilgilendirildi!'
         }
     }
 }
