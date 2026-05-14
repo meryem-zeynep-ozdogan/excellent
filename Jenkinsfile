@@ -27,13 +27,12 @@ pipeline {
             }
         }
 
-        stage('2. Test (Pytest & Cargo Tests)') {
+       stage('2. Test (Pytest & Cargo Tests)') {
             steps {
                 echo '🧪 TEST: Pytest & Cargo run tests...'
                 bat '''
-                call %VENV%\\Scripts\\activate
                 echo "Unit tests for financial calculations and DB integrity..."
-                pytest  Tests/tests.py -v
+                %VENV%\\Scripts\\python.exe -m pytest Tests/tests.py -v
                 '''
             }
         }
