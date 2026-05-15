@@ -47,9 +47,9 @@ pipeline {
                 bat '''
                 call %VENV%\\Scripts\\activate
                 echo "Ruff Analizi (PEP 8 ve Standartlar)..."
-                ruff check . || exit /b %ERRORLEVEL%
+                ruff check . || exit /b 1
                 echo "Bandit Güvenlik Taraması..."
-                bandit -r PythonFiles/ -ll || exit /b %ERRORLEVEL%
+                bandit -r PythonFiles/ -ll || exit /b 1
                 '''
             }
         }
