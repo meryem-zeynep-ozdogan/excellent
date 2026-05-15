@@ -49,7 +49,7 @@ pipeline {
                 echo "Ruff Analizi (PEP 8 ve Standartlar)..."
                 ruff check . || exit /b %ERRORLEVEL%
                 echo "Bandit Güvenlik Taraması..."
-                bandit -r PythonFiles/ -ll
+                bandit -r PythonFiles/ -ll || exit /b %ERRORLEVEL%
                 '''
             }
         }
