@@ -711,4 +711,3 @@ class Backend:
 
         return rates_cache
 print(tanimsiz_degisken)
-print(tanimsiz_fonksiyon())
