@@ -6,8 +6,17 @@ ReportLab kütüphanesini kullanarak profesyonel görünümlü raporlar oluştur
 """
 
 # Merkezi import dosyasından gerekli modülleri al
-from imports import *
-from locales import tr
+import os
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from locales import get_text as tr
 
 # ============================================================================
 # FATURA PDF DIŞA AKTARICI
@@ -55,7 +64,7 @@ class InvoicePDFExporter:
                 pdfmetrics.registerFont(TTFont('Calibri-Turkish', calibri_path))
                 
                 
-        except Exception as e:
+        except Exception:
             # Font yüklenemezse varsayılan fontlar kullanılır
             pass
     
@@ -191,7 +200,7 @@ class InvoicePDFExporter:
             doc.build(story)
             return True
             
-        except Exception as e:
+        except Exception:
             return False
 
     def export_general_expenses_to_pdf(self, expense_data, file_path, lang='tr'):
@@ -227,7 +236,7 @@ class InvoicePDFExporter:
             doc.build(story)
             return True
             
-        except Exception as e:
+        except Exception:
             return False
 
     def _get_title_by_type(self, invoice_type, lang='tr'):
@@ -302,7 +311,7 @@ class InvoicePDFExporter:
                 try:
                     year, month, day = tarih.split('-')
                     tarih_formatted = f"{day}.{month}.{year}"
-                except:
+                except Exception:
                     tarih_formatted = tarih
             else:
                 tarih_formatted = tarih
@@ -531,7 +540,7 @@ class InvoicePDFExporter:
                 try:
                     year, month, day = tarih.split('-')
                     tarih_formatted = f"{day}.{month}.{year}"
-                except:
+                except Exception:
                     tarih_formatted = tarih
             else:
                 tarih_formatted = tarih
@@ -681,13 +690,12 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import cm
         
         # PDF dokümanı oluştur (yatay sayfa)
         doc = SimpleDocTemplate(file_path, pagesize=landscape(A4))
         story = []
-        styles = getSampleStyleSheet()
+       
         
         # Türkçe font desteği
         exporter = InvoicePDFExporter()
@@ -824,7 +832,7 @@ def export_monthly_income_to_pdf(year, monthly_results, quarterly_results, summa
         doc.build(story)
         return True
         
-    except Exception as e:
+    except Exception:
         return False
 
 def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=None, lang='tr'):
@@ -835,7 +843,7 @@ def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=No
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.units import cm
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib.enums import TA_CENTER
         
         if not year:
@@ -914,7 +922,7 @@ def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=No
                     
                 if 1 <= month <= 12:
                     monthly_totals[month] += miktar
-            except:
+            except Exception:
                 continue
         
         # Tablo verisi - Yatay format (Aylar sütunlarda)
@@ -980,5 +988,5 @@ def export_monthly_general_expenses_to_pdf(expense_data, year=None, file_path=No
         doc.build(story)
         return True
         
-    except Exception as e:
+    except Exception:
         return False

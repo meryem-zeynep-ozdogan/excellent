@@ -21,16 +21,13 @@ TRANSLATIONS = {
         "cancel": "İptal",
         "save": "Kaydet",
         "ok": "Tamam",
-        
         # Navigasyon
         "nav_home": "Giriş",
         "nav_invoices": "Faturalar",
         "nav_reports": "Raporlar",
-        
         "cannot_be_empty": "boş bırakılamaz",
         "cannot_be_negative": "negatif olamaz",
         "must_be_number": "sayı olmalıdır",
-        
         # Panel (Dashboard)
         "dashboard_title": "Genel Durum Paneli",
         "net_profit": "Anlık Net Kâr",
@@ -40,7 +37,6 @@ TRANSLATIONS = {
         "recent_transactions": "Son İşlemler",
         "performance_analysis": "Performans Analizi",
         "yearly_comparison": "Yıllık gelir ve gider karşılaştırması",
-        
         # Faturalar
         "invoices_title": "Fatura Yönetimi",
         "invoice_no": "Fatura No",
@@ -57,17 +53,14 @@ TRANSLATIONS = {
         "clear": "Yeni / Temizle",
         "incoming_invoices": "Gelen Faturalar (Gider)",
         "outgoing_invoices": "Giden Faturalar (Gelir)",
-        
         # Raporlar
         "reports_title": "Dönemsel ve Yıllık Gelir",
         "export_excel": "Excel Olarak İndir",
         "export_pdf": "PDF Olarak İndir",
-        
         # Mesajlar
         "app_already_running": "Excellent uygulaması zaten çalışıyor!",
         "backup_db": "Veritabanını Yedekle",
         "qr_scan": "QR Okuma / Klasör Ekle",
-        
         # Yeni eklemeler
         "default_vat": "Varsayılan (%)20",
         "optional_tcmb": "Opsiyonel (TCMB)",
@@ -77,11 +70,6 @@ TRANSLATIONS = {
         "sort_newest": "Son",
         "sort_date_desc": "Y-E",
         "sort_date_asc": "E-Y",
-        
-        "cannot_be_empty": "boş bırakılamaz",
-        "cannot_be_negative": "negatif olamaz",
-        "must_be_number": "sayı olmalıdır",
-        
         "msg_invoice_added": "✅ Fatura başarıyla eklendi!",
         "msg_invoice_add_error": "❌ Fatura eklenemedi!",
         "msg_invalid_data": "❌ Geçersiz fatura verisi! Tutar giriniz.",
@@ -99,7 +87,6 @@ TRANSLATIONS = {
         "msg_deleted_count": "✅ {} fatura silindi!",
         "msg_delete_error": "❌ Hiçbir fatura silinemedi!",
         "msg_delete_error_prefix": "❌ Silme hatası: {}",
-        
         "msg_expenses_saved": "✅ {} yılı genel giderleri kaydedildi!",
         "msg_save_error": "❌ Kaydetme işlemi başarısız!",
         "msg_error_prefix": "❌ Hata: {}",
@@ -114,7 +101,6 @@ TRANSLATIONS = {
         "title_save_excel_report": "Excel Raporunu Kaydet",
         "title_save_pdf_report": "PDF Raporunu Kaydet",
         "yearly_general_expenses": "Yıllık Genel Giderler",
-        
         "process_completed": "İşlem Tamamlandı",
         "summary_total": "Toplam Dosya: {}",
         "summary_success": "Başarılı: {}",
@@ -128,7 +114,6 @@ TRANSLATIONS = {
         "scanning_files": "📁 Dosyalar taranıyor...",
         "preparing_files": "🚀 {} dosya işlenmeye hazırlanıyor...",
         "qr_processing_complete": "✅ QR işleme tamamlandı!",
-        
         "select_date_title": "Tarih Seçin",
         "enter_date_label": "Tarih Girin:",
         "go_to_date": "Tarihe Git",
@@ -145,7 +130,6 @@ TRANSLATIONS = {
         "select_invoice_type": "Fatura Tipi Seçin",
         "income_sales_invoice": "GELİR (Satış Faturası)",
         "expense_purchase_invoice": "GİDER (Alış Faturası)",
-
         "no_transactions": "Bu tarihte işlem bulunamadı.",
         "transactions_for_date": "{} tarihli işlemler",
         "latest_entries": "En Son Girilenler",
@@ -166,7 +150,6 @@ TRANSLATIONS = {
         "item_hint": "Ürün giriniz...",
         "amount_hint": "0",
         "total_hint": "0.00",
-        
         # Tablo Başlıkları
         "col_select": "SEÇ",
         "col_invoice_no": "FATURA NO",
@@ -178,14 +161,12 @@ TRANSLATIONS = {
         "col_total_usd": "TUTAR (USD)",
         "col_total_eur": "TUTAR (EUR)",
         "col_vat": "KDV (Tutar/%)",
-        
         "col_period": "DÖNEM",
         "col_income_billed": "GELİR (Kesilen)",
         "col_expense_total": "GİDER (Gelen + Genel)",
         "col_vat_diff": "KDV FARKI",
         "col_corp_tax": "KURUMLAR VERGİSİ",
         "col_tax_payable": "ÖDENECEK VERGİ (3 Aylık)",
-        
         # Aylar
         "month_jan": "OCAK",
         "month_feb": "ŞUBAT",
@@ -199,7 +180,6 @@ TRANSLATIONS = {
         "month_oct": "EKİM",
         "month_nov": "KASIM",
         "month_dec": "ARALIK",
-        
         # Günler
         "day_mon": "Pzt",
         "day_tue": "Sal",
@@ -208,32 +188,26 @@ TRANSLATIONS = {
         "day_fri": "Cum",
         "day_sat": "Cmt",
         "day_sun": "Paz",
-        
         # İşlemler
         "op_deleted": "SİLİNDİ",
         "op_updated": "GÜNCELLENDİ",
         "op_income_added": "GELİR EKLENDİ",
         "op_expense_added": "GİDER EKLENDİ",
         "transaction_default_title": "İşlem",
-        "transactions_for_date": "{} tarihli işlemler",
         "legend_income": "Gelir",
         "legend_expense": "Gider",
         "tooltip_go_to_date": "Tarihe Göre Git",
         "btn_latest_entries": "En Son Girilenler",
         "update_available_title": "Güncelleme Mevcut",
         "update_available_msg": "Yeni bir güncelleme mevcut: {}\n\nAçıklama: {}\n\nGüncellemek için 'Evet' butonuna tıklayın.",
-        
         "qr_folder_dialog_title": "QR PDF/Resim Klasörünü Seç",
-        "qr_error_prefix": "QR okuma hatası: {}",
         "dialog_error_prefix": "Dialog hatası: {}",
         "backup_save_title": "Yedek Dosyasını Kaydet",
         "backup_error_prefix": "❌ Yedekleme hatası: {}",
         "msg_backup_error": "❌ {}",
-        
         "error_loading_data": "Veri yüklenirken hata oluştu.",
         "backup_success_title": "Yedekleme Başarılı",
         "language_changed_msg": "Dil değiştirildi. Tam etki için sayfaları gezinin veya yeniden başlatın.",
-        
         # İpuçları
         "msg_enter_date": "Lütfen bir tarih girin",
         "msg_invalid_date_format": "Geçersiz tarih! Örn: 121225 veya 12.12.2025",
@@ -253,7 +227,6 @@ TRANSLATIONS = {
         "msg_pdf_report_error": "❌ PDF raporu oluşturulamadı!",
         "msg_qr_no_files": "❌ Klasörde işlenebilir dosya bulunamadı veya işlem başarısız!",
         "msg_no_invoices_export": "❌ Dışa aktarılacak fatura bulunamadı!",
-        
         # PDF Dışa Aktarma
         "pdf_title_outgoing": "📈 GİDEN FATURALAR (GELİR) RAPORU",
         "pdf_title_incoming": "📉 GELEN FATURALAR (GİDER) RAPORU",
@@ -270,14 +243,12 @@ TRANSLATIONS = {
         "summary_total_vat": "Toplam KDV",
         "summary_average": "Ortalama Fatura",
         "unit_type": "BİRİM",
-        
         # Dosya İsimleri
         "filename_outgoing_invoices": "GelirFaturalari",
         "filename_incoming_invoices": "GiderFaturalari",
         "filename_general_expenses": "GenelGiderler",
         "filename_monthly_expenses": "GenelGiderler_Aylik",
         "filename_periodic_income": "DonemselGelir",
-        
         # Excel Dışa Aktarma
         "excel_sheet_outgoing": "Giden Faturalar",
         "excel_sheet_incoming": "Gelen Faturalar",
@@ -285,7 +256,6 @@ TRANSLATIONS = {
         "excel_col_expense_type": "GİDER TÜRÜ",
         "excel_col_description": "AÇIKLAMA",
         "excel_col_amount": "TUTAR",
-        
         # Aylar
         "month_1": "Ocak",
         "month_2": "Şubat",
@@ -299,15 +269,11 @@ TRANSLATIONS = {
         "month_10": "Ekim",
         "month_11": "Kasım",
         "month_12": "Aralık",
-        
         # Aylık Raporlar
         "report_title_suffix": "Raporu",
         "col_months": "AYLAR",
         "col_income": "GELİR",
         "col_expense": "GİDER",
-        "col_vat_diff": "KDV FARKI",
-        "col_corp_tax": "KURUMLAR VERGİSİ (%)",
-        "col_quarter_total": "ÇEYREK TOPLAM",
     },
     "en": {
         # General
@@ -319,16 +285,13 @@ TRANSLATIONS = {
         "cancel": "Cancel",
         "save": "Save",
         "ok": "OK",
-        
         # Navigation
         "nav_home": "Home",
         "nav_invoices": "Invoices",
         "nav_reports": "Reports",
-
         "cannot_be_empty": "cannot be empty",
         "cannot_be_negative": "cannot be negative",
         "must_be_number": "must be a number",
-        
         # Dashboard
         "dashboard_title": "Dashboard",
         "net_profit": "Net Profit",
@@ -338,7 +301,6 @@ TRANSLATIONS = {
         "recent_transactions": "Recent Transactions",
         "performance_analysis": "Performance Analysis",
         "yearly_comparison": "Yearly income and expense comparison",
-        
         # Invoices
         "invoices_title": "Invoice Management",
         "invoice_no": "Invoice No",
@@ -355,17 +317,14 @@ TRANSLATIONS = {
         "clear": "New / Clear",
         "incoming_invoices": "Incoming Invoices (Expense)",
         "outgoing_invoices": "Outgoing Invoices (Income)",
-        
         # Reports
         "reports_title": "Periodic & Annual Income",
         "export_excel": "Export to Excel",
         "export_pdf": "Export to PDF",
-        
         # Messages
         "app_already_running": "Excellent app is already running!",
         "backup_db": "Backup Database",
         "qr_scan": "Scan QR / Add Folder",
-        
         # New additions
         "default_vat": "Default (%)20",
         "optional_tcmb": "Optional (TCMB)",
@@ -375,7 +334,6 @@ TRANSLATIONS = {
         "sort_newest": "Newest",
         "sort_date_desc": "Date ↓",
         "sort_date_asc": "Date ↑",
-        
         "msg_invoice_added": "✅ Invoice added successfully!",
         "msg_invoice_add_error": "❌ Failed to add invoice!",
         "msg_invalid_data": "❌ Invalid invoice data! Please enter amount.",
@@ -393,7 +351,6 @@ TRANSLATIONS = {
         "msg_deleted_count": "✅ {} invoices deleted!",
         "msg_delete_error": "❌ No invoices could be deleted!",
         "msg_delete_error_prefix": "❌ Delete error: {}",
-        
         "msg_expenses_saved": "✅ {} general expenses saved!",
         "msg_save_error": "❌ Save failed!",
         "msg_error_prefix": "❌ Error: {}",
@@ -408,7 +365,6 @@ TRANSLATIONS = {
         "title_save_excel_report": "Save Excel Report",
         "title_save_pdf_report": "Save PDF Report",
         "yearly_general_expenses": "Yearly General Expenses",
-        
         "process_completed": "Process Completed",
         "summary_total": "Total Files: {}",
         "summary_success": "Success: {}",
@@ -422,7 +378,6 @@ TRANSLATIONS = {
         "scanning_files": "📁 Scanning files...",
         "preparing_files": "🚀 Preparing to process {} files...",
         "qr_processing_complete": "✅ QR processing complete!",
-
         "select_date_title": "Select Date",
         "enter_date_label": "Enter Date:",
         "go_to_date": "Go to Date",
@@ -439,7 +394,6 @@ TRANSLATIONS = {
         "select_invoice_type": "Select Invoice Type",
         "income_sales_invoice": "INCOME (Sales Invoice)",
         "expense_purchase_invoice": "EXPENSE (Purchase Invoice)",
-
         "no_transactions": "No transactions found for this date.",
         "transactions_for_date": "Transactions for {}",
         "latest_entries": "Latest Entries",
@@ -455,7 +409,6 @@ TRANSLATIONS = {
         "item_hint": "Enter item...",
         "amount_hint": "0",
         "total_hint": "0.00",
-        
         # Table Headers
         "col_select": "SELECT",
         "col_invoice_no": "INVOICE NO",
@@ -467,14 +420,12 @@ TRANSLATIONS = {
         "col_total_usd": "TOTAL (USD)",
         "col_total_eur": "TOTAL (EUR)",
         "col_vat": "VAT (Amount/%)",
-        
         "col_period": "PERIOD",
         "col_income_billed": "INCOME (Billed)",
         "col_expense_total": "EXPENSE (Total)",
         "col_vat_diff": "VAT DIFF",
         "col_corp_tax": "CORP. TAX",
         "col_tax_payable": "TAX PAYABLE (Quarterly)",
-        
         # Months
         "month_jan": "JANUARY",
         "month_feb": "FEBRUARY",
@@ -488,7 +439,6 @@ TRANSLATIONS = {
         "month_oct": "OCTOBER",
         "month_nov": "NOVEMBER",
         "month_dec": "DECEMBER",
-        
         # Days
         "day_mon": "Mon",
         "day_tue": "Tue",
@@ -497,17 +447,14 @@ TRANSLATIONS = {
         "day_fri": "Fri",
         "day_sat": "Sat",
         "day_sun": "Sun",
-        
         # Operations
         "op_deleted": "DELETED",
         "op_updated": "UPDATED",
         "op_income_added": "INCOME ADDED",
         "op_expense_added": "EXPENSE ADDED",
         "transaction_default_title": "Transaction",
-        "transactions_for_date": "Transactions for {}",
         "legend_income": "Income",
         "legend_expense": "Expense",
-
         "error_loading_data": "Error loading data.",
         "backup_success_title": "Backup Successful",
         "language_changed_msg": "Language changed. Navigate pages or restart for full effect.",
@@ -522,14 +469,11 @@ TRANSLATIONS = {
         "btn_latest_entries": "Latest Entries",
         "update_available_title": "Update Available",
         "update_available_msg": "New update available: {}\n\nDescription: {}\n\nClick 'Yes' to update.",
-        
         "qr_folder_dialog_title": "Select QR PDF/Image Folder",
-        "qr_error_prefix": "QR reading error: {}",
         "dialog_error_prefix": "Dialog error: {}",
         "backup_save_title": "Save Backup File",
         "backup_error_prefix": "❌ Backup error: {}",
         "msg_backup_error": "❌ {}",
-        
         # Hints
         "msg_enter_date": "Please enter a date",
         "msg_invalid_date_format": "Invalid date! E.g. 121225 or 12.12.2025",
@@ -541,9 +485,7 @@ TRANSLATIONS = {
         "hint_total": "0.00",
         "hint_vat": "Default (%)20",
         "hint_currency": "TL",
-
         "msg_no_invoices_export": "❌ No invoices found to export!",
-
         # PDF Export
         "pdf_title_outgoing": "📈 OUTGOING INVOICES (INCOME) REPORT",
         "pdf_title_incoming": "📉 INCOMING INVOICES (EXPENSE) REPORT",
@@ -560,14 +502,12 @@ TRANSLATIONS = {
         "summary_total_vat": "Total VAT",
         "summary_average": "Average Invoice",
         "unit_type": "UNIT",
-        
         # File Names
         "filename_outgoing_invoices": "IncomeInvoices",
         "filename_incoming_invoices": "ExpenseInvoices",
         "filename_general_expenses": "GeneralExpenses",
         "filename_monthly_expenses": "GeneralExpenses_Monthly",
         "filename_periodic_income": "PeriodicIncome",
-        
         # Excel Export
         "excel_sheet_outgoing": "Outgoing Invoices",
         "excel_sheet_incoming": "Incoming Invoices",
@@ -575,7 +515,6 @@ TRANSLATIONS = {
         "excel_col_expense_type": "EXPENSE TYPE",
         "excel_col_description": "DESCRIPTION",
         "excel_col_amount": "AMOUNT",
-        
         # Months
         "month_1": "January",
         "month_2": "February",
@@ -589,21 +528,19 @@ TRANSLATIONS = {
         "month_10": "October",
         "month_11": "November",
         "month_12": "December",
-        
         # Monthly Report
         "report_title_suffix": "Report",
         "col_months": "MONTHS",
         "col_income": "INCOME",
         "col_expense": "EXPENSE",
-        "col_vat_diff": "VAT DIFF",
-        "col_corp_tax": "CORP. TAX (%)",
         "col_quarter_total": "QUARTER TOTAL",
         "currency_tl": "TL",
         "currency_usd": "USD",
         "currency_eur": "EUR",
         "report_date": "Report Date",
-    }
+    },
 }
+
 
 def get_text(key, lang="tr"):
     """
@@ -612,6 +549,7 @@ def get_text(key, lang="tr"):
     """
     lang_dict = TRANSLATIONS.get(lang, TRANSLATIONS.get(DEFAULT_LANGUAGE))
     return lang_dict.get(key, key)
+
 
 # Alias for easier usage // Daha kolay kullanım için takma ad
 tr = get_text

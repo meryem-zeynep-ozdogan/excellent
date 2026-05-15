@@ -11,7 +11,18 @@ Temel Özellikler:
 4. Hata Toleransı: QR okunamadığında gelişmiş metin analizi (OCR benzeri) devreye girer.
 """
 
-from imports import *
+import os
+import re
+import json
+import time
+import logging
+import threading
+import shutil
+import warnings
+from datetime import datetime
+import fitz
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from imports import CONCURRENT_AVAILABLE
 from locales import get_text as tr
 
 #----- RUST ENTEGRASYONU ------
@@ -357,7 +368,7 @@ class OptimizedQRProcessor:
                     if 'rust_scan_success' in self.stats:
                         self.stats['rust_scan_success'] += 1
                     return json_data
-                except:
+                except Exception:
                     return {"_raw_data": cleaned, "_parse_error": True}
 
         except Exception as e:
@@ -558,7 +569,7 @@ class OptimizedQRProcessor:
             
             
             for row_y, row_words in rows.items():
-                row_text = ' '.join([w['text'] for w in row_words]).lower()
+        
                 
                 # Malzeme/Mal Hizmet başlığı
                 for word in row_words:
@@ -591,7 +602,7 @@ class OptimizedQRProcessor:
                     continue
                 
                 row_words = rows[row_y]
-                row_text = ' '.join([w['text'] for w in row_words])
+              #  row_text = ' '.join([w['text'] for w in row_words])
                 
                 # Malzeme sütunundan veri al (x koordinatı yakın olanlar)
                 if malzeme_col_x and not info['malzeme']:
@@ -601,10 +612,6 @@ class OptimizedQRProcessor:
                         and len(w['text']) > 3
                         and not re.match(r'^[\d\s\.\,\-\%\:]+$', w['text'])
                     ]
-                    
-                    if malzeme_candidates:
-                        cand_info = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in malzeme_candidates[:3]])
-                    
                     if malzeme_candidates:
                         # En yakın olanı al
                         malzeme_candidates.sort(key=lambda w: abs(w['x'] - malzeme_col_x))
@@ -641,9 +648,7 @@ class OptimizedQRProcessor:
                         and not re.search(r'kanun|madde|fıkra|bent|no:|sayı', w['text'], re.IGNORECASE)  # Kanun ifadelerini ele
                     ]
                     
-                    sayi_list = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in sayi_candidates])
-                    birim_list = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in birim_candidates])
-                    karma_list = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in karma_candidates])
+
                     
                     
                     miktar_result = None
@@ -664,7 +669,7 @@ class OptimizedQRProcessor:
                                 float_val = float(sayi_temiz)
                                 if 0 < float_val < 100000:  # Makul aralık
                                     miktar_result = f"{sayi_temiz} {birim_part}"
-                            except:
+                            except Exception:
                                 pass
                     
                     # ÖNCELİK 2: Sayı + yakındaki birim birleştir (ayrı kelimeler: "54.000" + "M2")  
@@ -691,7 +696,7 @@ class OptimizedQRProcessor:
                                     if x_distance < 80 and y_distance <= 15 and total_score < best_score:
                                         best_pair = (sayi_w, birim_w, total_score)
                                         best_score = total_score
-                            except:
+                            except Exception:
                                 continue
                         
                         if best_pair:
@@ -700,7 +705,7 @@ class OptimizedQRProcessor:
                             try:
                                 float_val = float(sayi_temiz)
                                 miktar_result = f"{float_val:.0f} {birim_w['text'].upper().strip()}"
-                            except:
+                            except Exception:
                                 pass
                     
                     # ÖNCELİK 3: Eğer hiç birim yoksa, sadece en yakın sayıyı al
@@ -714,7 +719,7 @@ class OptimizedQRProcessor:
                                 if 0 < float_val < 100000:  # Makul aralık
                                     miktar_result = sayi_temiz
                                     break
-                            except:
+                            except Exception:
                                 continue
                     
                     if miktar_result:
@@ -745,7 +750,7 @@ class OptimizedQRProcessor:
                         ]
                         
                         if numeric_values:
-                            nums_info = ', '.join([f"{w['text']}(x={w['x']:.0f})" for w in numeric_values[:5]])
+                             
                             
                             # Malzemeden en uzak olanı al (genelde malzeme solda, miktar sağda)
                             malzeme_x = next((w['x'] for w in row_words if w['text'] == info['malzeme']), 0)
@@ -765,7 +770,7 @@ class OptimizedQRProcessor:
                                             info['miktar'] = cleaned
                                         
                                         break
-                                except:
+                                except Exception:
                                     continue
                         
                         if info['miktar']:
@@ -875,7 +880,7 @@ class OptimizedQRProcessor:
             
             return None
             
-        except Exception as e:
+        except Exception:
             return None
     
     def _group_words_into_rows(self, words, y_tolerance=5):
@@ -920,7 +925,7 @@ class OptimizedQRProcessor:
         ]
         
         table_start_idx = None
-        header_line = None
+        
         
         for i, line in enumerate(lines):
             line_lower = line.lower().strip()
@@ -928,7 +933,7 @@ class OptimizedQRProcessor:
             # Tablo başlığını tespit et
             if any(re.search(pattern, line_lower) for pattern in malzeme_header_patterns):
                 table_start_idx = i
-                header_line = lines[i]
+               
                 break
         
         # Tablo bulunduysa, ALTINDA (sonraki satırlarda) malzeme ara
@@ -998,7 +1003,7 @@ class OptimizedQRProcessor:
         ]
         
         miktar_column_idx = None
-        miktar_header_line = None
+        
         
         for i, line in enumerate(lines):
             line_lower = line.lower().strip()
@@ -1006,7 +1011,6 @@ class OptimizedQRProcessor:
             # Miktar başlığını tespit et
             if any(re.search(pattern, line_lower) for pattern in miktar_header_patterns):
                 miktar_column_idx = i
-                miktar_header_line = lines[i]
                 break
         
         # Miktar başlığı bulunduysa, ALTINDA (sonraki satırlarda) miktar ara
@@ -1149,7 +1153,7 @@ class OptimizedQRProcessor:
                         'extracted_info': extracted_info
                     }
                 else:
-                    logging.warning(f"   ⚠️ PDF'den yeterli bilgi çıkarılamadı (firma veya tutar yok)")
+                    logging.warning("   ⚠️ PDF'den yeterli bilgi çıkarılamadı (firma veya tutar yok)")
             
             # Hiçbir bilgi çıkarılamadı
             return {
@@ -1221,7 +1225,7 @@ class OptimizedQRProcessor:
                     return date_str
         
         # Bulunamadıysa bugünün tarihi
-        logging.warning(f"   PDF'de tarih bulunamadi, bugun kullanilacak")
+        logging.warning("   PDF'de tarih bulunamadi, bugun kullanilacak")
         return datetime.now().strftime("%d.%m.%Y")
     
     def _extract_invoice_number_from_text(self, pdf_text):
@@ -1361,7 +1365,7 @@ class OptimizedQRProcessor:
                         amount = float(amount_str)
                         if amount > 1:  # Çok küçük değerleri atla
                             return amount
-                    except:
+                    except Exception:
                         continue
             return 0.0
         
@@ -1544,7 +1548,7 @@ class OptimizedQRProcessor:
         
         results = []
         completed_count = 0
-        start_time = time.time()
+        
         
         # Paralel İşleme (ThreadPoolExecutor)
         # imports.py'den ThreadPoolExecutor ve as_completed geliyor
@@ -1593,7 +1597,7 @@ class OptimizedQRProcessor:
                     if status_callback:
                         try:
                             progress = int((completed_count / len(file_paths)) * 95)
-                            elapsed = time.time() - start_time
+                            
                             
                             # Yüzdelik gösterim ekle
                             msg = tr("processing_progress", lang).format(progress, completed_count, len(file_paths))
@@ -1614,8 +1618,7 @@ class OptimizedQRProcessor:
                         'error': str(e)
                     })
         
-        total_time = time.time() - start_time
-        success_count = len([r for r in results if r.get('durum') == 'BAŞARILI'])
+      
         
         # Başarısız dosyaları taşı
         # Kullanıcı isteği: exe veya frontend.py'nin bulunduğu dizine taşı (CWD)
@@ -1700,7 +1703,6 @@ class QRInvoiceIntegrator:
             }
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        import threading
         
         if not qr_results:
             logging.warning("QR sonuçları boş!")
@@ -1723,7 +1725,7 @@ class QRInvoiceIntegrator:
         processing_details = []
         failed_files = []
         
-        type_text = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
+        #type_text = "GELİR (Satış)" if invoice_type == 'outgoing' else "GİDER (Alış)"
         
         # AŞAMA 1: Tüm faturaları parse et ve tarihleri topla
         logging.info("📋 Faturalar hazırlanıyor...")
@@ -1985,7 +1987,7 @@ class QRInvoiceIntegrator:
                 tutar_related[key] = value
         
         if not tutar_related:
-            logging.warning(f"      ⚠️ Tutar ile ilgili hiçbir alan bulunamadı!")
+            logging.warning("      ⚠️ Tutar ile ilgili hiçbir alan bulunamadı!")
         
         # Anahtar eşleme sözlüğü
         key_map = {
@@ -2121,7 +2123,7 @@ class QRInvoiceIntegrator:
             parsed['kdv_tutari'] = kdv_tutari if kdv_tutari > 0 else round(matrah * parsed['kdv_yuzdesi'] / 100, 2)
         else:
             # Hiçbiri yok - QR JSON'dan herhangi bir sayısal değer bul
-            logging.warning(f"      ⚠️ Standart tutar alanları bulunamadı, alternatif arama yapılıyor...")
+            logging.warning("      ⚠️ Standart tutar alanları bulunamadı, alternatif arama yapılıyor...")
             
             # Tüm JSON alanlarını tara, sayısal değerleri bul
             possible_amounts = []
@@ -2137,7 +2139,7 @@ class QRInvoiceIntegrator:
                             num_val = float(cleaned)
                             if num_val > 0:
                                 possible_amounts.append((key, num_val))
-                    except:
+                    except Exception:
                         pass
             
             if possible_amounts:
@@ -2149,7 +2151,7 @@ class QRInvoiceIntegrator:
                 parsed['kdv_tutari'] = round(best_amount * parsed['kdv_yuzdesi'] / 100, 2)
             else:
                 # Gerçekten hiçbir tutar yok
-                logging.error(f"      ❌ QR'da hiçbir tutar bilgisi bulunamadı!")
+                logging.error("      ❌ QR'da hiçbir tutar bilgisi bulunamadı!")
                 logging.error(f"      📋 QR JSON: {json.dumps(qr_json, indent=2, ensure_ascii=False)}")
                 parsed['toplam_tutar'] = 0.0
                 parsed['kdv_dahil'] = False
@@ -2184,7 +2186,7 @@ class QRInvoiceIntegrator:
                 value = re.sub(r'[^\d.-]', '', value)
             
             return float(value)
-        except:
+        except Exception:
             return 0.0
     
     def _extract_date_from_text(self, pdf_text):
@@ -2231,7 +2233,7 @@ class QRInvoiceIntegrator:
                     return date_str
         
         # Bulunamadıysa bugünün tarihi
-        logging.warning(f"   ⚠️ PDF'de tarih bulunamadı, bugün kullanılacak")
+        logging.warning("   ⚠️ PDF'de tarih bulunamadı, bugün kullanılacak")
         return datetime.now().strftime("%d.%m.%Y")
     
     def _extract_invoice_number_from_text(self, pdf_text):
@@ -2302,7 +2304,7 @@ class QRInvoiceIntegrator:
                                 if amount > 10:  # Mantıklı bir tutar
                                     amounts['toplam'] = amount
                                     break
-                            except:
+                            except Exception:
                                 continue
                     if amounts['toplam'] > 0:
                         break
@@ -2331,7 +2333,7 @@ class QRInvoiceIntegrator:
                                 if amount > 0:
                                     amounts['matrah'] = amount
                                     break
-                            except:
+                            except Exception:
                                 continue
                     if amounts['matrah'] > 0:
                         break
@@ -2360,7 +2362,7 @@ class QRInvoiceIntegrator:
                                 if amount > 0:
                                     amounts['kdv'] = amount
                                     break
-                            except:
+                            except Exception:
                                 continue
                     if amounts['kdv'] > 0:
                         break
