@@ -710,3 +710,4 @@ class Backend:
                     rates_cache[date_str] = rates
 
         return rates_cache
+print(tanimsiz_degisken)
