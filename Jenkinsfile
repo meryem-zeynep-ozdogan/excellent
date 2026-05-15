@@ -8,15 +8,19 @@ pipeline {
     }
 
     stages {
-        stage('1. Build (Rust Core Compilation)') {
+       stage('1. Build (Rust Core Compilation)') {
             steps {
-                echo '🏗️ BUILDRust core compiled by cargo...'
+                echo '🏗️ BUILD: Dependencies installed & Rust core compiled...'
                 bat '''
                 call %VENV%\\Scripts\\activate || (
                     "%PYTHON_PATH%" -m venv %VENV%
                     call %VENV%\\Scripts\\activate
                 )
-                pip install maturin
+                
+                echo "Test araclari ve bagimliliklar kuruluyor..."
+                python -m pip install --upgrade pip
+                pip install -r requirements.txt
+                pip install maturin pytest pytest-benchmark pytest-bdd ruff bandit pydantic
                 
                 echo "Rust modülleri Python için derleniyor (Maturin)..."
                 cd rust_db && maturin develop --release
