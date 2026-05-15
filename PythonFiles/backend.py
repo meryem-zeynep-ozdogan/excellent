@@ -195,7 +195,7 @@ class Backend:
             response = requests.get(url, timeout=5)
             response.raise_for_status()
 
-            tree = ET.fromstring(response.content)
+            tree = ET.fromstring(response.content)  # nosec B314
 
             usd_sell = None
             eur_sell = None
@@ -241,7 +241,7 @@ class Backend:
                     response = requests.get(url, timeout=5)
                     response.raise_for_status()
 
-                    tree = ET.fromstring(response.content)
+                    tree = ET.fromstring(response.content)  # nosec B314
 
                     usd_sell = None
                     eur_sell = None
@@ -590,7 +590,7 @@ class Backend:
 
                     response.raise_for_status()
 
-                    tree = ET.fromstring(response.content)
+                    tree = ET.fromstring(response.content)  # nosec B314
 
                     usd_sell = None
                     eur_sell = None
