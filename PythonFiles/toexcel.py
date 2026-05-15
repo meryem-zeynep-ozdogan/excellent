@@ -6,8 +6,13 @@ Pandas ve XlsxWriter kullanarak formatlı raporlar oluşturur.
 """
 
 # Merkezi import dosyasından gerekli modülleri al
-from imports import *
-from locales import tr
+import os
+import sys
+import logging
+from datetime import datetime
+import pandas as pd
+import xlsxwriter
+from locales import get_text as tr
 
 # ============================================================================
 # FATURA EXCEL DIŞA AKTARICI
@@ -65,12 +70,6 @@ class InvoiceExcelExporter:
                 'border': 1
             })
             
-            # Döviz kuru stili (5 ondalık basamak - hassas hesaplama için)
-            currency_format = workbook.add_format({
-                'num_format': '#,##0.00000',
-                'valign': 'top',
-                'border': 1
-            })
             
             for i, col in enumerate(df.columns):
                 # Kolon başlığının uzunluğu
@@ -143,7 +142,7 @@ class InvoiceExcelExporter:
             try:
                 year, month, day = date_str.split('-')
                 return f"{day}.{month}.{year}"
-            except:
+            except Exception:
                 return date_str
         return date_str
     
@@ -313,7 +312,7 @@ def export_monthly_general_expenses_to_excel(expense_data, year=None, file_path=
                     
                 if 1 <= month <= 12:
                     monthly_totals[month] += miktar
-            except:
+            except Exception:
                 continue
         
         # Başlık satırı (Aylar)
@@ -427,55 +426,7 @@ def export_monthly_income_to_excel(year, monthly_results, quarterly_results, sum
                 'bg_color': color_code
             })
         
-        # Toplam satırı formatı
-        total_format = workbook.add_format({
-            'bold': True,
-            'align': 'center',
-            'valign': 'vcenter',
-            'bg_color': '#E7E6E6',
-            'border': 1,
-            'font_size': 11
-        })
-        
-        total_money_format = workbook.add_format({
-            'bold': True,
-            'num_format': '#,##0.00 ₺',
-            'align': 'right',
-            'valign': 'vcenter',
-            'bg_color': '#E7E6E6',
-            'border': 1,
-            'font_size': 11
-        })
-        
-        total_kdv_format = workbook.add_format({
-            'num_format': f'"{tr("vat_label", lang)}: "#,##0.00 ₺',
-            'align': 'right',
-            'valign': 'vcenter',
-            'bg_color': '#E7E6E6',
-            'border': 1,
-            'font_size': 9,
-            'font_color': '#666666'
-        })
-        
-        # Kâr satırı formatı
-        kar_label_format = workbook.add_format({
-            'bold': True,
-            'align': 'right',
-            'valign': 'vcenter',
-            'bg_color': '#E7E6E6',
-            'border': 1,
-            'font_size': 11
-        })
-        
-        kar_value_format = workbook.add_format({
-            'bold': True,
-            'num_format': '#,##0.00 ₺',
-            'align': 'right',
-            'valign': 'vcenter',
-            'bg_color': '#E7E6E6',
-            'border': 1,
-            'font_size': 11
-        })
+       
         
         # Sütun genişlikleri
         worksheet.set_column('A:A', 14)  # AYLAR

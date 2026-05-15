@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 # -*- coding: utf-8 -*-
 """
 Merkezi Import Dosyası
@@ -18,8 +19,7 @@ import time
 # LOGGİNG YAPILANDIRMASI
 # ============================================================================
 logging.basicConfig(
-    level=logging.WARNING,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 import re
 import warnings
@@ -47,9 +47,12 @@ try:
     import win32event
     import win32api
     import winerror
+
     WIN32_AVAILABLE = True
 except ImportError:
-    logging.warning("UYARI: pywin32 kütüphanesi eksik. Windows API özellikleri çalışmayabilir.")
+    logging.warning(
+        "UYARI: pywin32 kütüphanesi eksik. Windows API özellikleri çalışmayabilir."
+    )
     win32event = None
     win32api = None
     winerror = None
@@ -66,6 +69,7 @@ import requests
 # ============================================================================
 try:
     import flet as ft
+
     FLET_AVAILABLE = True
 except ImportError:
     logging.warning("UYARI: flet kütüphanesi eksik. UI çalışmayacak.")
@@ -77,6 +81,7 @@ except ImportError:
 # ============================================================================
 try:
     import fitz  # PyMuPDF
+
     FITZ_AVAILABLE = True
 except ImportError:
     logging.warning("UYARI: PyMuPDF kütüphanesi eksik. PDF QR okuma işlevi devre dışı.")
@@ -85,6 +90,7 @@ except ImportError:
 
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
     CONCURRENT_AVAILABLE = True
 except ImportError:
     logging.warning("UYARI: concurrent.futures modülü eksik.")
@@ -100,11 +106,19 @@ try:
     from reportlab.lib import colors
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch, cm
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Table,
+        TableStyle,
+        Paragraph,
+        Spacer,
+        PageBreak,
+    )
     from reportlab.pdfgen import canvas
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+
     REPORTLAB_AVAILABLE = True
 except ImportError:
     logging.warning("UYARI: reportlab kütüphanesi eksik. PDF export işlevi devre dışı.")
@@ -115,9 +129,12 @@ except ImportError:
 # ============================================================================
 try:
     import xlsxwriter
+
     XLSXWRITER_AVAILABLE = True
 except ImportError:
-    logging.warning("UYARI: xlsxwriter kütüphanesi eksik. Excel export işlevi devre dışı.")
+    logging.warning(
+        "UYARI: xlsxwriter kütüphanesi eksik. Excel export işlevi devre dışı."
+    )
     XLSXWRITER_AVAILABLE = False
 
 # ============================================================================
@@ -134,13 +151,15 @@ EXCEL_AVAILABLE = None  # None = henüz kontrol edilmedi
 _pdf_module = None
 _excel_module = None
 
+
 def get_pdf_module():
     """PDF modülünü lazy loading ile yükler."""
     global _pdf_module, PDF_AVAILABLE
-    
+
     if PDF_AVAILABLE is None:  # İlk çağrıda kontrol et
         try:
             import topdf
+
             _pdf_module = topdf
             PDF_AVAILABLE = True
             logging.info("✅ PDF export modülü yüklendi (lazy loading)")
@@ -148,16 +167,18 @@ def get_pdf_module():
             logging.warning(f"⚠️ PDF export modülü bulunamadı: {e}")
             PDF_AVAILABLE = False
             _pdf_module = None
-    
+
     return _pdf_module
+
 
 def get_excel_module():
     """Excel modülünü lazy loading ile yükler."""
     global _excel_module, EXCEL_AVAILABLE
-    
+
     if EXCEL_AVAILABLE is None:  # İlk çağrıda kontrol et
         try:
             import toexcel
+
             _excel_module = toexcel
             EXCEL_AVAILABLE = True
             logging.info("✅ Excel export modülü yüklendi (lazy loading)")
@@ -165,8 +186,9 @@ def get_excel_module():
             logging.warning(f"⚠️ Excel export modülü bulunamadı: {e}")
             EXCEL_AVAILABLE = False
             _excel_module = None
-    
+
     return _excel_module
+
 
 # Database modülü db.py'de tanımlanmıştır
 # Backend modülü tarafından import edilir
@@ -177,35 +199,75 @@ def get_excel_module():
 # ============================================================================
 __all__ = [
     # Standart kütüphaneler
-    'sys', 'os', 'sqlite3', 'json', 'logging', 'time', 're', 'warnings', 
-    'math', 'datetime', 'timedelta', 'threading', 'subprocess', 'shutil',
-    'locale', 'calendar', 'platform', 'traceback', 'ctypes', 'ET',
-    
+    "sys",
+    "os",
+    "sqlite3",
+    "json",
+    "logging",
+    "time",
+    "re",
+    "warnings",
+    "math",
+    "datetime",
+    "timedelta",
+    "threading",
+    "subprocess",
+    "shutil",
+    "locale",
+    "calendar",
+    "platform",
+    "traceback",
+    "ctypes",
+    "ET",
     # Windows API
-    'win32event', 'win32api', 'winerror', 'WIN32_AVAILABLE',
-    
+    "win32event",
+    "win32api",
+    "winerror",
+    "WIN32_AVAILABLE",
     # Decimal (para hesaplamaları için)
-    'Decimal', 'getcontext', 'ROUND_HALF_UP',
-    
+    "Decimal",
+    "getcontext",
+    "ROUND_HALF_UP",
     # Veri işleme
-    'pd', 'requests',
-    
+    "pd",
+    "requests",
     # Flet UI
-    'ft', 'FLET_AVAILABLE',
-    
+    "ft",
+    "FLET_AVAILABLE",
     # QR kod ve görüntü işleme
-    'fitz', 'ThreadPoolExecutor', 'as_completed',
-    'FITZ_AVAILABLE', 'CONCURRENT_AVAILABLE',
-    
+    "fitz",
+    "ThreadPoolExecutor",
+    "as_completed",
+    "FITZ_AVAILABLE",
+    "CONCURRENT_AVAILABLE",
     # ReportLab
-    'A4', 'letter', 'landscape', 'colors', 'getSampleStyleSheet', 'ParagraphStyle',
-    'inch', 'cm', 'SimpleDocTemplate', 'Table', 'TableStyle', 'Paragraph',
-    'Spacer', 'PageBreak', 'canvas', 'TA_CENTER', 'TA_LEFT', 'TA_RIGHT',
-    'pdfmetrics', 'TTFont', 'REPORTLAB_AVAILABLE',
-    
+    "A4",
+    "letter",
+    "landscape",
+    "colors",
+    "getSampleStyleSheet",
+    "ParagraphStyle",
+    "inch",
+    "cm",
+    "SimpleDocTemplate",
+    "Table",
+    "TableStyle",
+    "Paragraph",
+    "Spacer",
+    "PageBreak",
+    "canvas",
+    "TA_CENTER",
+    "TA_LEFT",
+    "TA_RIGHT",
+    "pdfmetrics",
+    "TTFont",
+    "REPORTLAB_AVAILABLE",
     # Excel
-    'xlsxwriter', 'XLSXWRITER_AVAILABLE',
-    
+    "xlsxwriter",
+    "XLSXWRITER_AVAILABLE",
     # Proje modülleri - PDF & Excel (Lazy Loading)
-    'get_pdf_module', 'get_excel_module', 'PDF_AVAILABLE', 'EXCEL_AVAILABLE',
+    "get_pdf_module",
+    "get_excel_module",
+    "PDF_AVAILABLE",
+    "EXCEL_AVAILABLE",
 ]
