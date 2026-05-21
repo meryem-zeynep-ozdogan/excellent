@@ -128,7 +128,7 @@ class Backend:
         """
 
         def schedule_rate_update():
-            self.update_exchange_rates(force_refresh=True)
+            self.update_exchange_rates()
             # 5 dakika sonra tekrar çalıştır
             self.rate_update_timer = threading.Timer(300.0, schedule_rate_update)
             self.rate_update_timer.daemon = True
