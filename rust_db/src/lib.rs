@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions};
 use sqlx::Row;
 use std::sync::Arc;
@@ -31,6 +31,126 @@ fn to_display_date(date: &str) -> String {
     } else {
         date.to_string()
     }
+}
+
+// ============================================================================
+// DOĞRULAMA YARDIMCI FONKSİYONU
+// ============================================================================
+
+/// Fatura verilerini INSERT/UPDATE öncesi doğrular.
+/// Geçersiz veri (negatif tutar, boş fatura_no, vb.) varsa `PyValueError` döndürür.
+fn validate_invoice_data(data: &Bound<'_, PyDict>) -> PyResult<()> {
+    // ── fatura_no: zorunlu, boş olamaz, ≤ 512 karakter ──────────────────────
+    let fatura_no: Option<String> = data
+        .get_item("fatura_no")?
+        .map(|v| v.extract::<Option<String>>())
+        .transpose()?
+        .flatten();
+    match fatura_no.as_deref() {
+        None => {
+            return Err(PyValueError::new_err(
+                "Doğrulama hatası: fatura_no zorunludur",
+            ));
+        }
+        Some(s) => {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                return Err(PyValueError::new_err(
+                    "Doğrulama hatası: fatura_no boş veya yalnızca boşluk olamaz",
+                ));
+            }
+            if trimmed.len() > 512 {
+                return Err(PyValueError::new_err(format!(
+                    "Doğrulama hatası: fatura_no 512 karakterden uzun olamaz ({} karakter)",
+                    trimmed.len()
+                )));
+            }
+        }
+    }
+
+    // ── matrah: negatif olamaz, 32-bit işaretli tamsayı sınırını geçemez ─────────
+    if let Some(v) = data.get_item("matrah")? {
+        let maybe_n: Option<f64> = v.extract().map_err(|_| {
+            PyValueError::new_err("Doğrulama hatası: matrah sayısal (numeric) olmalıdır")
+        })?;
+        if let Some(n) = maybe_n {
+            if !n.is_finite() {
+                return Err(PyValueError::new_err(
+                    "Doğrulama hatası: matrah sonlu bir sayı olmalıdır (NaN/Inf geçersiz)",
+                ));
+            }
+            if n < 0.0 {
+                return Err(PyValueError::new_err(format!(
+                    "Doğrulama hatası: matrah negatif olamaz (alınan: {:.4})",
+                    n
+                )));
+            }
+            if n >= 2_147_483_648.0 {
+                return Err(PyValueError::new_err(format!(
+                    "Doğrulama hatası: matrah 2.147.483.647 sınırını aşamaz (alınan: {:.4})",
+                    n
+                )));
+            }
+        }
+    }
+
+    // ── negatif olamayan sayısal alanlar ─────────────────────────────────────
+    for field in &["toplam_tutar_tl", "toplam_tutar_usd", "toplam_tutar_eur", "kdv_tutari"] {
+        if let Some(v) = data.get_item(*field)? {
+            let maybe_n: Option<f64> = v.extract().map_err(|_| {
+                PyValueError::new_err(format!("Doğrulama hatası: {} sayısal olmalıdır", field))
+            })?;
+            if let Some(n) = maybe_n {
+                if !n.is_finite() {
+                    return Err(PyValueError::new_err(format!(
+                        "Doğrulama hatası: {} sonlu bir sayı olmalıdır",
+                        field
+                    )));
+                }
+                if n < 0.0 {
+                    return Err(PyValueError::new_err(format!(
+                        "Doğrulama hatası: {} negatif olamaz (alınan: {:.4})",
+                        field, n
+                    )));
+                }
+            }
+        }
+    }
+
+    // ── kdv_yuzdesi: 0–100 aralığında olmalı ────────────────────────────────
+    if let Some(v) = data.get_item("kdv_yuzdesi")? {
+        let maybe_n: Option<f64> = v.extract().map_err(|_| {
+            PyValueError::new_err("Doğrulama hatası: kdv_yuzdesi sayısal olmalıdır")
+        })?;
+        if let Some(n) = maybe_n {
+            if n < 0.0 || n > 100.0 {
+                return Err(PyValueError::new_err(format!(
+                    "Doğrulama hatası: kdv_yuzdesi 0–100 arasında olmalıdır (alınan: {:.2})",
+                    n
+                )));
+            }
+        }
+    }
+
+    // ── metin alanları: ≤ 512 karakter ──────────────────────────────────────
+    for field in &["firma", "malzeme", "birim", "irsaliye_no"] {
+        if let Some(v) = data.get_item(*field)? {
+            let maybe_s: Option<String> = v.extract().map_err(|_| {
+                PyValueError::new_err(format!("Doğrulama hatası: {} metin (string) olmalıdır", field))
+            })?;
+            if let Some(s) = maybe_s {
+                if s.len() > 512 {
+                    return Err(PyValueError::new_err(format!(
+                        "Doğrulama hatası: {} 512 karakterden uzun olamaz ({} karakter)",
+                        field,
+                        s.len()
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -138,22 +258,22 @@ impl Database {
                     r#"
                     CREATE TABLE IF NOT EXISTS income_invoices (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0),
-                        irsaliye_no TEXT,
+                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0 AND length(fatura_no) <= 512),
+                        irsaliye_no TEXT CHECK(irsaliye_no IS NULL OR length(irsaliye_no) <= 512),
                         tarih TEXT,
-                        firma TEXT,
-                        malzeme TEXT,
+                        firma TEXT CHECK(firma IS NULL OR length(firma) <= 512),
+                        malzeme TEXT CHECK(malzeme IS NULL OR length(malzeme) <= 512),
                         miktar TEXT,
-                        matrah REAL DEFAULT 0.0 CHECK(matrah >= 0 AND (typeof(matrah) = 'real' OR typeof(matrah) = 'integer' OR typeof(matrah) = 'null')),
-                        toplam_tutar_tl REAL,
-                        toplam_tutar_usd REAL,
-                        toplam_tutar_eur REAL,
-                        birim TEXT,
-                        kdv_yuzdesi REAL,
-                        kdv_tutari REAL,
-                        kdv_dahil INTEGER DEFAULT 0,
-                        usd_rate REAL,
-                        eur_rate REAL,
+                        matrah REAL DEFAULT 0.0 CHECK(matrah IS NULL OR (typeof(matrah) IN ('real','integer') AND matrah >= 0.0 AND matrah < 2147483648.0)),
+                        toplam_tutar_tl REAL CHECK(toplam_tutar_tl IS NULL OR toplam_tutar_tl >= 0.0),
+                        toplam_tutar_usd REAL CHECK(toplam_tutar_usd IS NULL OR toplam_tutar_usd >= 0.0),
+                        toplam_tutar_eur REAL CHECK(toplam_tutar_eur IS NULL OR toplam_tutar_eur >= 0.0),
+                        birim TEXT CHECK(birim IS NULL OR length(birim) <= 512),
+                        kdv_yuzdesi REAL CHECK(kdv_yuzdesi IS NULL OR (kdv_yuzdesi >= 0.0 AND kdv_yuzdesi <= 100.0)),
+                        kdv_tutari REAL CHECK(kdv_tutari IS NULL OR kdv_tutari >= 0.0),
+                        kdv_dahil INTEGER DEFAULT 0 CHECK(kdv_dahil IN (0, 1)),
+                        usd_rate REAL CHECK(usd_rate IS NULL OR usd_rate > 0.0),
+                        eur_rate REAL CHECK(eur_rate IS NULL OR eur_rate > 0.0),
                         updated_at TEXT,
                         created_at TEXT
                     )
@@ -171,22 +291,22 @@ impl Database {
                     r#"
                     CREATE TABLE IF NOT EXISTS expense_invoices (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0),
-                        irsaliye_no TEXT,
+                        fatura_no TEXT NOT NULL CHECK(length(trim(fatura_no)) > 0 AND length(fatura_no) <= 512),
+                        irsaliye_no TEXT CHECK(irsaliye_no IS NULL OR length(irsaliye_no) <= 512),
                         tarih TEXT,
-                        firma TEXT,
-                        malzeme TEXT,
+                        firma TEXT CHECK(firma IS NULL OR length(firma) <= 512),
+                        malzeme TEXT CHECK(malzeme IS NULL OR length(malzeme) <= 512),
                         miktar TEXT,
-                        matrah REAL DEFAULT 0.0 CHECK(matrah >= 0 AND (typeof(matrah) = 'real' OR typeof(matrah) = 'integer' OR typeof(matrah) = 'null')),
-                        toplam_tutar_tl REAL,
-                        toplam_tutar_usd REAL,
-                        toplam_tutar_eur REAL,
-                        birim TEXT,
-                        kdv_yuzdesi REAL,
-                        kdv_tutari REAL,
-                        kdv_dahil INTEGER DEFAULT 0,
-                        usd_rate REAL,
-                        eur_rate REAL,
+                        matrah REAL DEFAULT 0.0 CHECK(matrah IS NULL OR (typeof(matrah) IN ('real','integer') AND matrah >= 0.0 AND matrah < 2147483648.0)),
+                        toplam_tutar_tl REAL CHECK(toplam_tutar_tl IS NULL OR toplam_tutar_tl >= 0.0),
+                        toplam_tutar_usd REAL CHECK(toplam_tutar_usd IS NULL OR toplam_tutar_usd >= 0.0),
+                        toplam_tutar_eur REAL CHECK(toplam_tutar_eur IS NULL OR toplam_tutar_eur >= 0.0),
+                        birim TEXT CHECK(birim IS NULL OR length(birim) <= 512),
+                        kdv_yuzdesi REAL CHECK(kdv_yuzdesi IS NULL OR (kdv_yuzdesi >= 0.0 AND kdv_yuzdesi <= 100.0)),
+                        kdv_tutari REAL CHECK(kdv_tutari IS NULL OR kdv_tutari >= 0.0),
+                        kdv_dahil INTEGER DEFAULT 0 CHECK(kdv_dahil IN (0, 1)),
+                        usd_rate REAL CHECK(usd_rate IS NULL OR usd_rate > 0.0),
+                        eur_rate REAL CHECK(eur_rate IS NULL OR eur_rate > 0.0),
                         updated_at TEXT,
                         created_at TEXT
                     )
@@ -304,6 +424,7 @@ impl Database {
     // ============================================================================
     
     fn add_gelir_invoice(&self, data: &Bound<'_, PyDict>) -> PyResult<i64> {
+        validate_invoice_data(data)?;
         let invoices_pool = self.invoices_pool.clone();
         
         // Python sözlüğünden değerleri al
@@ -365,6 +486,7 @@ impl Database {
     }
 
     fn update_gelir_invoice(&self, invoice_id: i64, data: &Bound<'_, PyDict>) -> PyResult<bool> {
+        validate_invoice_data(data)?;
         let invoices_pool = self.invoices_pool.clone();
         
         let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
@@ -595,6 +717,7 @@ impl Database {
     // ============================================================================
     
     fn add_gider_invoice(&self, data: &Bound<'_, PyDict>) -> PyResult<i64> {
+        validate_invoice_data(data)?;
         let invoices_pool = self.invoices_pool.clone();
         
         let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();
@@ -655,6 +778,7 @@ impl Database {
     }
 
     fn update_gider_invoice(&self, invoice_id: i64, data: &Bound<'_, PyDict>) -> PyResult<bool> {
+        validate_invoice_data(data)?;
         let invoices_pool = self.invoices_pool.clone();
         
         let fatura_no: Option<String> = data.get_item("fatura_no")?.map(|v| v.extract()).transpose()?.flatten();

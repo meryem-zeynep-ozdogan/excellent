@@ -1657,6 +1657,79 @@ class OptimizedQRProcessor:
         
         return results
 
+    def process_qr_file_list(self, file_paths, max_workers=6, status_callback=None, lang="tr"):
+        """Verilen dosya listesini doğrudan işle (klasör taraması yapmaz)."""
+        ALLOWED = {'.pdf', '.jpg', '.jpeg', '.png', '.bmp'}
+        valid_paths = [fp for fp in file_paths if os.path.isfile(fp) and os.path.splitext(fp)[1].lower() in ALLOWED]
+        if not valid_paths:
+            logging.warning("⚠️ İşlenebilir dosya bulunamadı")
+            return []
+        if status_callback:
+            status_callback(tr("preparing_files", lang).format(len(valid_paths)), 1)
+        results = []
+        completed_count = 0
+        if CONCURRENT_AVAILABLE:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_file = {executor.submit(self.process_file, fp): fp for fp in valid_paths}
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                    except Exception as exc:
+                        logging.error(f"❌ Dosya işleme hatası ({os.path.basename(file_path)}): {exc}")
+                        results.append({'dosya_adi': os.path.basename(file_path), 'durum': 'HATA', 'json_data': {}, 'error': str(exc)})
+                    completed_count += 1
+                    if status_callback:
+                        try:
+                            progress = int((completed_count / len(valid_paths)) * 95)
+                            msg = tr("processing_progress", lang).format(progress, completed_count, len(valid_paths))
+                            if not status_callback(msg, progress):
+                                executor.shutdown(wait=False, cancel_futures=True)
+                                break
+                        except Exception:
+                            pass
+        else:
+            for file_path in valid_paths:
+                try:
+                    result = self.process_file(file_path)
+                    results.append(result)
+                    completed_count += 1
+                    if status_callback:
+                        try:
+                            progress = int((completed_count / len(valid_paths)) * 95)
+                            msg = tr("processing_progress", lang).format(progress, completed_count, len(valid_paths))
+                            if not status_callback(msg, progress):
+                                logging.warning("⚠️ Kullanıcı işlemi iptal etti")
+                                break
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logging.error(f"❌ Dosya işleme hatası ({os.path.basename(file_path)}): {e}")
+                    results.append({'dosya_adi': os.path.basename(file_path), 'durum': 'HATA', 'json_data': {}, 'error': str(e)})
+        # Başarısız dosyaları taşı
+        failed_dir = os.path.join(os.getcwd(), "BasarisizQRlar")
+        for result in results:
+            if result.get('durum') != 'BAŞARILI':
+                try:
+                    if not os.path.exists(failed_dir):
+                        os.makedirs(failed_dir)
+                    source_path = result.get('dosya_yolu')
+                    file_name = result.get('dosya_adi')
+                    if source_path and os.path.exists(source_path):
+                        dest_path = os.path.join(failed_dir, file_name)
+                        if os.path.exists(dest_path):
+                            base, ext = os.path.splitext(file_name)
+                            dest_path = os.path.join(failed_dir, f"{base}_{int(time.time())}{ext}")
+                        shutil.move(source_path, dest_path)
+                        result['dosya_yolu'] = dest_path
+                        result['tasindi'] = True
+                except Exception as e:
+                    logging.error(f"   ❌ Dosya taşıma hatası ({result.get('dosya_adi')}): {e}")
+        if status_callback:
+            status_callback(tr("qr_processing_complete", lang), 100)
+        return results
+
 
 # ============================================================================
 # QRInvoiceIntegrator - Backend Entegrasyonu + Otomatik Tip Tespiti
@@ -1680,6 +1753,12 @@ class QRInvoiceIntegrator:
             max_workers=max_workers,
             status_callback=status_callback,
             lang=lang
+        )
+
+    def process_qr_file_list(self, file_paths, max_workers=6, status_callback=None, lang="tr"):
+        """Verilen dosya listesini işle"""
+        return self.qr_processor.process_qr_file_list(
+            file_paths, max_workers=max_workers, status_callback=status_callback, lang=lang
         )
     
     def add_invoices_from_qr_data(self, qr_results, invoice_type):

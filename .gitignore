@@ -3,6 +3,8 @@ Database/
 *.db
 */target
 *.iss
+*seed*.py
+
 
 
 # Byte-compiled / optimized / DLL files

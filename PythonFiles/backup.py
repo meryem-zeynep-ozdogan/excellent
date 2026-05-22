@@ -1,6 +1,9 @@
 import os
 import zipfile
 import datetime
+import sqlite3
+import shutil
+import tempfile
 
 # ============================================================================
 # YEREL YEDEKLEME YÖNETİCİSİ
@@ -63,6 +66,71 @@ class LocalBackupManager:
 
         except Exception as e:
             return False, f"Yedekleme sırasında hata oluştu: {str(e)}"
+
+    def restore_backup(self, zip_path):
+        """
+        Zip yedek dosyasından veritabanını geri yükler.
+        Canlı SQLite bağlantılarıyla çakışmamak için Python'un
+        sqlite3.backup() API'sini (SQLite Online Backup API) kullanır.
+
+        Args:
+            zip_path (str): Yedek zip dosyasının tam yolu
+
+        Returns:
+            tuple: (başarı_durumu (bool), mesaj (str))
+        """
+        if not os.path.exists(zip_path):
+            return False, f"Yedek dosyası bulunamadı: {zip_path}"
+
+        if not zipfile.is_zipfile(zip_path):
+            return False, "Geçersiz yedek dosyası (zip formatında değil)"
+
+        temp_dir = None
+        try:
+            temp_dir = tempfile.mkdtemp(prefix="excellent_restore_")
+            with zipfile.ZipFile(zip_path, "r") as zipf:
+                zipf.extractall(temp_dir)
+
+            # Zip içinde "Database/" klasörü olup olmadığını kontrol et
+            extracted_db_folder = os.path.join(temp_dir, "Database")
+            if not os.path.exists(extracted_db_folder):
+                return False, "Geçersiz yedek: zip içinde 'Database' klasörü bulunamadı"
+
+            db_files = ["invoices.db", "settings.db", "history.db"]
+            found_any = False
+
+            for db_file in db_files:
+                src_path = os.path.join(extracted_db_folder, db_file)
+                dst_path = os.path.join(self.database_folder, db_file)
+
+                if not os.path.exists(src_path):
+                    continue
+
+                found_any = True
+                # Hedef klasörün var olduğundan emin ol
+                os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+
+                # SQLite Online Backup API: src -> dst (canlı bağlantıyla güvenli)
+                src_conn = sqlite3.connect(src_path)
+                dst_conn = sqlite3.connect(dst_path)
+                try:
+                    src_conn.backup(dst_conn)
+                    dst_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    dst_conn.commit()
+                finally:
+                    dst_conn.close()
+                    src_conn.close()
+
+            if not found_any:
+                return False, "Yedek dosyasında geçerli veritabanı dosyası bulunamadı"
+
+            return True, "Geri yükleme başarıyla tamamlandı"
+
+        except Exception as e:
+            return False, f"Geri yükleme sırasında hata oluştu: {str(e)}"
+        finally:
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
