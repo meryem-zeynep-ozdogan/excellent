@@ -4,6 +4,8 @@ Database/
 */target
 *.iss
 *seed*.py
+/installer
+Excellent.spec
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
