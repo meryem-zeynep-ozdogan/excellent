@@ -7,7 +7,7 @@ Database/
 /installer
 Excellent.spec
 file_version_info.txt
-
+test_stress_invoices.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .pytest_cache/

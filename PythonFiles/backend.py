@@ -26,10 +26,10 @@ else:
 # çalıştırılsın (terminal, Explorer, kurulu uygulama) fark etmesin.
 os.chdir(PROJECT_ROOT)
 # Rust tabanlı veritabanı modülü (Yüksek performanslı SQLite işlemleri için)
-import rust_db  # type: ignore
+import rust_db  # type: ignore #noqa: E402
 
 # İş mantığı modülleri
-from invoices import InvoiceProcessor, InvoiceManager, PeriodicIncomeCalculator
+from invoices import InvoiceProcessor, InvoiceManager, PeriodicIncomeCalculator  # noqa: E402
 
 
 # ============================================================================
@@ -362,11 +362,11 @@ class Backend:
 
         if from_currency == "TRY":
             rate = self.exchange_rates.get(to_currency)
-            return round(amount * rate, 5) if rate else 0.0
+            return round(amount / rate, 5) if rate else 0.0
 
         if to_currency == "TRY":
             rate = self.exchange_rates.get(from_currency)
-            return round(amount / rate, 5) if rate else 0.0
+            return round(amount * rate, 5) if rate else 0.0
 
         try_amount = self.convert_currency(amount, from_currency, "TRY")
         return round(self.convert_currency(try_amount, "TRY", to_currency), 5)
@@ -424,6 +424,7 @@ class Backend:
             return self.invoice_manager.delete_multiple_invoices(invoice_type, ids)
         except Exception as e:
             import logging
+
             logging.error(f"delete_all_invoices hatası ({invoice_type}): {e}")
             return 0
 
@@ -599,14 +600,18 @@ class Backend:
             lang=lang,
         )
 
-    def process_qr_file_list(self, file_paths, max_workers=6, status_callback=None, lang="tr"):
+    def process_qr_file_list(
+        self, file_paths, max_workers=6, status_callback=None, lang="tr"
+    ):
         """Seçilen dosya listesini işler - fromqr modülüne yönlendirir."""
+
         def combined_callback(msg, progress_val):
             if self.on_status_updated:
                 self.on_status_updated(msg, progress_val)
             if status_callback:
                 return status_callback(msg, progress_val)
             return True
+
         return self.qr_integrator.process_qr_file_list(
             file_paths,
             max_workers,
@@ -794,4 +799,3 @@ class Backend:
                     rates_cache[date_str] = rates
 
         return rates_cache
-

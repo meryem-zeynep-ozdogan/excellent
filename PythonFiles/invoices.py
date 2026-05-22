@@ -64,7 +64,9 @@ class InvoiceProcessor:
 
             # Regex sonrası boş → girilen metin sayısal içerik taşımıyor
             if not str_value or not any(c.isdigit() for c in str_value):
-                raise ValueError(f"Geçersiz sayısal değer: '{value}' bir sayıya dönüştürülemiyor")
+                raise ValueError(
+                    f"Geçersiz sayısal değer: '{value}' bir sayıya dönüştürülemiyor"
+                )
 
             # Hem virgül hem nokta varsa format belirle
             if "," in str_value and "." in str_value:
