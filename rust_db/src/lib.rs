@@ -181,15 +181,10 @@ impl Database {
     // ------------------------------------------------------------------------
 
     fn init_connections(&self) -> PyResult<()> {
-        // Database klasörünü Python çalışma dizininde oluştur
-        // Eğer PythonFiles içinden çalıştırılıyorsa bir üst dizine bak
+        // Çalışma dizini Python tarafında PROJECT_ROOT'a ayarlandığı için
+        // current_dir() her zaman doğru konumu (proje kökü veya exe dizini) döner.
         let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        
-        let db_path = if cwd.ends_with("PythonFiles") {
-            cwd.parent().unwrap_or(&cwd).join("Database")
-        } else {
-            cwd.join("Database")
-        };
+        let db_path = cwd.join("Database");
         
         if !db_path.exists() {
             fs::create_dir(&db_path).map_err(|e| PyRuntimeError::new_err(format!("Failed to create Database directory: {}", e)))?;

@@ -20,6 +20,11 @@ if getattr(sys, "frozen", False):
 else:
     PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
+# Çalışma dizinini proje köküne sabitle.
+# Rust'un init_connections() içindeki current_dir() ve diğer göreli yol
+# referansları her zaman doğru dizini göstersin; exe nerede çalıştırılırsa
+# çalıştırılsın (terminal, Explorer, kurulu uygulama) fark etmesin.
+os.chdir(PROJECT_ROOT)
 # Rust tabanlı veritabanı modülü (Yüksek performanslı SQLite işlemleri için)
 import rust_db  # type: ignore
 
