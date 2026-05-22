@@ -6,6 +6,7 @@ Database/
 *seed*.py
 /installer
 Excellent.spec
+file_version_info.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
