@@ -16,6 +16,7 @@ from imports import (
     threading,
     os,
     sys,
+    socket,
     win32event,
     win32api,
     winerror,
@@ -88,18 +89,6 @@ def on_backend_status_updated(message, duration):
         is_internet_down = any(w in message.lower() for w in ["bağlantı", "varsayılan", "önceki gün", "kaydedilen"])
         warning_widget.visible = is_internet_down
         warning_widget.update()
-        # Kurlar canlı TCMB'den alınamadığında kullanıcıya SnackBar ile de bildir
-        if is_internet_down:
-            page_ref = state.get("page")
-            if page_ref is not None:
-                lang = state.get("current_language", "tr")
-                snack_msg = get_text("msg_stale_rates_snackbar", lang)
-                page_ref.open(ft.SnackBar(
-                    content=ft.Text(snack_msg, color="#FFFFFF"),
-                    bgcolor="#FF9F43",
-                    duration=6000,
-                ))
-                page_ref.update()
     except Exception:
         pass
 
@@ -2039,6 +2028,104 @@ def currency_button(text, currency_code, current_selection, on_click_handler):
 
 
 # --- ANA UYGULAMA ---
+# ============================================================================
+# İNTERNET BAĞLANTI MONİTÖRÜ (Internet Connectivity Monitor)
+# ============================================================================
+def start_internet_monitor():
+    """Her 5 saniyede internet bağlantısını kontrol eder.
+    Kesilince üst uyarı widgetını gösterir;
+    tekrar bağlanınca hem üstten hem alttan bildirim verir.
+    """
+    _mon_state = {"prev_online": None}  # None = ilk kontrol henüz yapılmadı
+
+    def _is_online():
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3)
+            s.connect(("8.8.8.8", 53))
+            s.close()
+            return True
+        except Exception:
+            return False
+
+    def _monitor():
+        while True:
+            time.sleep(5)
+            online = _is_online()
+            page_ref = state.get("page")
+            warning = state.get("internet_warning")
+            reconnected = state.get("internet_reconnected_widget")
+
+            if page_ref is None or warning is None:
+                continue
+
+            prev = _mon_state["prev_online"]
+
+            if not online and prev is not False:
+                # İnternet kesildi
+                _mon_state["prev_online"] = False
+                try:
+                    warning.visible = True
+                    warning.update()
+                except Exception:
+                    pass
+                # Alt snackbar - internet kesildi
+                try:
+                    lang = state.get("current_language", "tr")
+                    msg = get_text("no_internet_warning", lang)
+                    page_ref.open(ft.SnackBar(
+                        content=ft.Text("⚠️ " + msg, color="#FFFFFF"),
+                        bgcolor=col_danger,
+                        duration=4000,
+                    ))
+                    page_ref.update()
+                except Exception:
+                    pass
+
+            elif online and prev is False:
+                # İnternet geri geldi
+                _mon_state["prev_online"] = True
+                try:
+                    warning.visible = False
+                    warning.update()
+                except Exception:
+                    pass
+                # Üst yeşil bant
+                if reconnected is not None:
+                    try:
+                        reconnected.visible = True
+                        reconnected.update()
+                    except Exception:
+                        pass
+
+                    def _hide_reconnected(widget=reconnected):
+                        time.sleep(4)
+                        try:
+                            widget.visible = False
+                            widget.update()
+                        except Exception:
+                            pass
+                    threading.Thread(target=_hide_reconnected, daemon=True).start()
+                # Alt snackbar
+                try:
+                    lang = state.get("current_language", "tr")
+                    msg = get_text("internet_reconnected", lang)
+                    page_ref.open(ft.SnackBar(
+                        content=ft.Text("✅ " + msg, color="#FFFFFF"),
+                        bgcolor=col_success,
+                        duration=4000,
+                    ))
+                    page_ref.update()
+                except Exception:
+                    pass
+
+            elif online and prev is None:
+                # İlk kontrol - bağlı, sessiz geç
+                _mon_state["prev_online"] = True
+
+    threading.Thread(target=_monitor, daemon=True).start()
+
+
 # ============================================================================
 # ANA UYGULAMA (Main Application)
 # ============================================================================
@@ -5167,11 +5254,29 @@ def main(page: ft.Page):
     )
     state["internet_warning"] = internet_warning_widget
 
+    # Internet Reconnected Widget (top-right, yeşil)
+    internet_reconnected_widget = ft.Container(
+        content=ft.Row(
+            [
+                ft.Icon(ft.Icons.WIFI_ROUNDED, color=col_success, size=14),
+                ft.Text(tr("internet_reconnected"), color=col_success, size=11, weight="bold"),
+            ],
+            spacing=4,
+        ),
+        visible=False,
+        padding=ft.padding.symmetric(horizontal=8, vertical=4),
+        border_radius=6,
+        bgcolor="#224CD964",
+        border=ft.border.all(1, col_success),
+    )
+    state["internet_reconnected_widget"] = internet_reconnected_widget
+
     # Top Bar Container
     _tb_logo_con = ft.Container(content=logo_area, width=220)
     _tb_right_con = ft.Container(
         content=ft.Row([
             internet_warning_widget,
+            internet_reconnected_widget,
             dynamic_controls_container,
             lang_btn,
             theme_btn,
@@ -6095,6 +6200,9 @@ def main(page: ft.Page):
 
     layout = ft.Column([top_bar, content_area], expand=True, spacing=0)
     page.add(layout)
+
+    # İnternet bağlantı monitörünü başlat
+    start_internet_monitor()
 
     def start_animations():
         time.sleep(0.5)

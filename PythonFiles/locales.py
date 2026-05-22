@@ -318,6 +318,7 @@ TRANSLATIONS = {
         "msg_stale_rates_snackbar": "⚠️ İnternet bağlantısı yok! TCMB döviz kurları güncellenemedi. Önbellekteki eski kurlar kullanılıyor.",
         "msg_stale_rates_invoice": "⚠️ Fatura kaydedildi. Ancak {}-TL dönüşümünde canlı TCMB kuru alınamadı; önbellekteki kur kullanıldı. Lütfen kuru doğrulayın.",
         "no_internet_warning": "İnternet bağlantısı yok",
+        "internet_reconnected": "İnternete tekrar bağlandınız",
     },
     "en": {
         # General
@@ -879,6 +880,7 @@ TRANSLATIONS = {
         "msg_stale_rates_snackbar": "⚠️ No internet connection! Exchange rates could not be updated. Using cached rates.",
         "msg_stale_rates_invoice": "⚠️ Invoice saved. Live TCMB rate for {} was unavailable; cached rate was used. Please verify.",
         "no_internet_warning": "No internet connection",
+        "internet_reconnected": "Internet connection restored",
     },
 }
 

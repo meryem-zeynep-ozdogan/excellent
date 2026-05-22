@@ -31,6 +31,7 @@ import locale
 import calendar
 import platform
 import traceback
+import socket
 import ctypes
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
