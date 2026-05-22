@@ -88,6 +88,18 @@ def on_backend_status_updated(message, duration):
         is_internet_down = any(w in message.lower() for w in ["bağlantı", "varsayılan", "önceki gün", "kaydedilen"])
         warning_widget.visible = is_internet_down
         warning_widget.update()
+        # Kurlar canlı TCMB'den alınamadığında kullanıcıya SnackBar ile de bildir
+        if is_internet_down:
+            page_ref = state.get("page")
+            if page_ref is not None:
+                lang = state.get("current_language", "tr")
+                snack_msg = get_text("msg_stale_rates_snackbar", lang)
+                page_ref.open(ft.SnackBar(
+                    content=ft.Text(snack_msg, color="#FFFFFF"),
+                    bgcolor="#FF9F43",
+                    duration=6000,
+                ))
+                page_ref.update()
     except Exception:
         pass
 
@@ -480,12 +492,12 @@ def create_vertical_input(
             bgcolor="transparent",
             content_padding=ft.padding.only(left=10, bottom=5),
             hint_text=hint,
-            hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+            hint_style=ft.TextStyle(color="onSurfaceVariant", size=12),
         )
     else:
         input_control = ft.TextField(
             hint_text=hint,
-            hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+            hint_style=ft.TextStyle(color="onSurfaceVariant", size=12),
             text_size=13,
             color="onBackground",
             border_color="transparent",
@@ -525,6 +537,8 @@ def create_invoice_table_content(
     invoice_list=None,
     theme_mode=None,
     container_width=None,
+    limit=100,
+    offset=0,
 ):
     """Backend'den fatura verilerini çekerek DataTable oluşturur."""
     _CHECKBOX_W = 18
@@ -587,8 +601,8 @@ def create_invoice_table_content(
             invoices = backend_instance.handle_invoice_operation(
                 operation="get",
                 invoice_type=db_type,
-                limit=100,
-                offset=0,
+                limit=limit,
+                offset=offset,
                 order_by=order_by,
             )
 
@@ -786,12 +800,12 @@ def create_invoice_table_content(
                     alignment=ft.alignment.center,
                     content=ft.Column(
                         [
-                            ft.Icon(ft.Icons.RECEIPT_LONG_OUTLINED, size=56, color="#555577"),
+                            ft.Icon(ft.Icons.RECEIPT_LONG_OUTLINED, size=56, color="onSurfaceVariant"),
                             ft.Text(
                                 tr("table_empty_title"),
                                 size=15,
                                 weight="bold",
-                                color="#666688",
+                                color="onSurfaceVariant",
                             ),
 
                         ],
@@ -1436,7 +1450,7 @@ def create_grid_expenses(page):
         """Genel giderleri Excel'e aktar - Aylık format"""
         print("DEBUG: export_general_expenses_excel (Topbar) clicked")
         try:
-            expenses = backend_instance.handle_genel_gider_operation("get", limit=1000)
+            expenses = backend_instance.handle_genel_gider_operation("get")
             print(f"DEBUG: expenses count={len(expenses) if expenses else 0}")
 
             if not expenses:
@@ -1517,7 +1531,7 @@ def create_grid_expenses(page):
         """Genel giderleri PDF'e aktar - Aylık format"""
         print("DEBUG: export_general_expenses_pdf (Topbar) clicked")
         try:
-            expenses = backend_instance.handle_genel_gider_operation("get", limit=1000)
+            expenses = backend_instance.handle_genel_gider_operation("get")
             print(f"DEBUG: expenses count={len(expenses) if expenses else 0}")
 
             if not expenses:
@@ -2032,6 +2046,7 @@ def main(page: ft.Page):
     page.title = "Excellent"
     page.padding = 0
     page.bgcolor = "background"
+    state["page"] = page  # SnackBar gibi sayfa düzeyi işlemleri için global erişim
     
     # Pencere Boyutları ve Davranışı
     page.window.width = 1280
@@ -2928,9 +2943,11 @@ def main(page: ft.Page):
             if e.path:
                 file_path = e.path
                 selected_year = int(year_dropdown.value)
-                # Verileri topla
+                # Verileri topla (tarih filtresi varsa uygula)
+                start_date = report_filter_state.get("start")
+                end_date = report_filter_state.get("end")
                 monthly_results, quarterly_results, summary = calculate_periodic_data(
-                    selected_year
+                    selected_year, start_date=start_date, end_date=end_date
                 )
 
                 # Export
@@ -2977,9 +2994,11 @@ def main(page: ft.Page):
             if e.path:
                 file_path = e.path
                 selected_year = int(year_dropdown.value)
-                # Verileri topla
+                # Verileri topla (tarih filtresi varsa uygula)
+                start_date = report_filter_state.get("start")
+                end_date = report_filter_state.get("end")
                 monthly_results, quarterly_results, summary = calculate_periodic_data(
-                    selected_year
+                    selected_year, start_date=start_date, end_date=end_date
                 )
 
                 # Export
@@ -3033,6 +3052,10 @@ def main(page: ft.Page):
             width=140,
             text_size=12,
             height=40,
+            bgcolor="surface",
+            border_color="outline",
+            focused_border_color="primary",
+            border_radius=8,
         )
 
         def pick_report_start_date(e):
@@ -3047,6 +3070,10 @@ def main(page: ft.Page):
             width=140,
             text_size=12,
             height=40,
+            bgcolor="surface",
+            border_color="outline",
+            focused_border_color="primary",
+            border_radius=8,
         )
 
         def pick_report_end_date(e):
@@ -3078,10 +3105,18 @@ def main(page: ft.Page):
         )
 
         report_export_format = {"format": "excel"}
+        report_filter_state = {"start": None, "end": None}
 
         def execute_report_export(use_filter=False):
             report_export_dialog.open = False
             page.update()
+
+            if use_filter:
+                report_filter_state["start"] = report_export_start_date.value if report_export_start_date.value else None
+                report_filter_state["end"] = report_export_end_date.value if report_export_end_date.value else None
+            else:
+                report_filter_state["start"] = None
+                report_filter_state["end"] = None
             
             selected_year = int(year_dropdown.value)
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
@@ -3178,7 +3213,7 @@ def main(page: ft.Page):
             """Dönemsel gelir raporunu PDF'e aktar"""
             open_report_export_dialog("pdf")
 
-        def calculate_periodic_data(year):
+        def calculate_periodic_data(year, start_date=None, end_date=None):
             """Dönemsel veriler için hesaplama yap"""
             # Backend'den verileri çek
             income_invoices = (
@@ -3189,6 +3224,23 @@ def main(page: ft.Page):
             )
             general_expenses = backend_instance.db.get_yearly_expenses(year) or {}
             corporate_tax_data = backend_instance.db.get_corporate_tax(year) or {}
+
+            # Tarih aralığı filtresi uygula (varsa)
+            if start_date and end_date:
+                try:
+                    start_dt = datetime.strptime(start_date, "%d.%m.%Y")
+                    end_dt = datetime.strptime(end_date, "%d.%m.%Y")
+
+                    def _in_range(tarih):
+                        try:
+                            return start_dt <= datetime.strptime(tarih, "%d.%m.%Y") <= end_dt
+                        except ValueError:
+                            return False
+
+                    income_invoices = [inv for inv in income_invoices if _in_range(inv.get("tarih", ""))]
+                    expense_invoices = [inv for inv in expense_invoices if _in_range(inv.get("tarih", ""))]
+                except ValueError:
+                    pass
 
             # Aylık hesaplamalar
             monthly_income = [0.0] * 12
@@ -3413,7 +3465,7 @@ def main(page: ft.Page):
                 )
 
                 invoices = backend_instance.handle_invoice_operation(
-                    operation="get", invoice_type=db_type, limit=1000
+                    operation="get", invoice_type=db_type
                 )
                 
                 invoices = filter_invoices(invoices)
@@ -3437,7 +3489,7 @@ def main(page: ft.Page):
                 db_type = "outgoing" if current_invoice_type == "income" else "incoming"
 
                 invoices = backend_instance.handle_invoice_operation(
-                    operation="get", invoice_type=db_type, limit=1000
+                    operation="get", invoice_type=db_type
                 )
                 
                 invoices = filter_invoices(invoices)
@@ -3480,7 +3532,8 @@ def main(page: ft.Page):
             if len(parts) > 2 or not parts[0].isdigit():
                 return None, tr("msg_enter_valid_amount")
             if len(parts) == 2:
-                if not parts[1].isdigit() or len(parts[1]) == 0 or len(parts[1]) > 2:
+                decimal_part = parts[1]
+                if not decimal_part.isdigit() or len(decimal_part) > 4:
                     return None, tr("msg_enter_valid_amount")
 
             try:
@@ -3488,13 +3541,13 @@ def main(page: ft.Page):
             except ValueError:
                 return None, tr("msg_enter_valid_amount")
 
-            if amount_value < 1 or amount_value >= 1000000:
+            if amount_value < 1 or amount_value >= 2147483648:
                 return None, tr("msg_enter_valid_amount")
 
-            return round(amount_value, 2), None
+            return round(amount_value, 4), None
 
         def format_invoice_amount(amount_value):
-            return f"{amount_value:.2f}".replace(".", ",")
+            return f"{amount_value:.4f}".replace(".", ",")
 
         def schedule_invoice_error_reset(duration_ms):
             invoice_error_reset_state["token"] += 1
@@ -3598,7 +3651,7 @@ def main(page: ft.Page):
                 return None, tr("msg_enter_valid_quantity")
             return value, None
 
-        def normalize_positive_decimal(raw_value, *, min_value=None, max_value=None, max_decimals=2):
+        def normalize_positive_decimal(raw_value, *, min_value=None, max_value=None, max_decimals=4):
             normalized = (raw_value or "").strip().replace(" ", "")
             if not normalized:
                 return None, tr("msg_fill_required_fields")
@@ -3609,8 +3662,10 @@ def main(page: ft.Page):
             parts = normalized.split(".")
             if len(parts) > 2 or not parts[0].isdigit():
                 return None, tr("msg_enter_valid_amount")
-            if len(parts) == 2 and (not parts[1].isdigit() or len(parts[1]) == 0 or len(parts[1]) > max_decimals):
-                return None, tr("msg_enter_valid_amount")
+            if len(parts) == 2:
+                decimal_part = parts[1]
+                if not decimal_part.isdigit() or len(decimal_part) > max_decimals:
+                    return None, tr("msg_enter_valid_amount")
 
             try:
                 value = float(normalized)
@@ -3994,7 +4049,7 @@ def main(page: ft.Page):
             usd_rate = float(invoice.get("usd_rate", 0))
             eur_rate = float(invoice.get("eur_rate", 0))
             if matrah and matrah > 0:
-                input_tutar.value = str(round(float(matrah), 5))
+                input_tutar.value = format_invoice_amount(round(float(matrah), 4))
             else:
                 kdv_tutari_tl = float(invoice.get("kdv_tutari", 0))
                 if birim == "TL":
@@ -4002,17 +4057,23 @@ def main(page: ft.Page):
                     tutar = toplam_tutar - kdv_tutari_tl
                 elif birim == "USD":
                     toplam_tutar = round(float(invoice.get("toplam_tutar_usd", 0)), 5)
-                    tutar = toplam_tutar - (kdv_tutari_tl / usd_rate) if usd_rate > 0 else toplam_tutar / (1 + kdv_yuzdesi / 100)
+                    if usd_rate > 0:
+                        tutar = toplam_tutar - (kdv_tutari_tl / usd_rate)
+                    else:
+                        tutar = toplam_tutar / (1 + kdv_yuzdesi / 100)
                 elif birim == "EUR":
                     toplam_tutar = round(float(invoice.get("toplam_tutar_eur", 0)), 5)
-                    tutar = toplam_tutar - (kdv_tutari_tl / eur_rate) if eur_rate > 0 else toplam_tutar / (1 + kdv_yuzdesi / 100)
+                    if eur_rate > 0:
+                        tutar = toplam_tutar - (kdv_tutari_tl / eur_rate)
+                    else:
+                        tutar = toplam_tutar / (1 + kdv_yuzdesi / 100)
                 else:
                     toplam_tutar = round(float(invoice.get("toplam_tutar_tl", 0)), 5)
                     tutar = toplam_tutar - kdv_tutari_tl
-                input_tutar.value = str(round(tutar, 5)) if tutar else "0"
-            input_kdv.value = str(round(kdv_yuzdesi, 5))
-            input_usd_kur.value = str(round(usd_rate, 5)) if usd_rate and usd_rate > 0 else ""
-            input_eur_kur.value = str(round(eur_rate, 5)) if eur_rate and eur_rate > 0 else ""
+                input_tutar.value = format_invoice_amount(round(tutar, 4)) if tutar else "0"
+            input_kdv.value = format_invoice_amount(round(kdv_yuzdesi, 4))
+            input_usd_kur.value = format_invoice_amount(round(usd_rate, 4)) if usd_rate and usd_rate > 0 else ""
+            input_eur_kur.value = format_invoice_amount(round(eur_rate, 4)) if eur_rate and eur_rate > 0 else ""
             for ctrl in [input_fatura_no, input_tarih, input_firma, input_malzeme,
                          input_miktar, input_tutar, input_para_birimi, input_kdv,
                          input_usd_kur, input_eur_kur]:
@@ -4035,17 +4096,40 @@ def main(page: ft.Page):
             except Exception:
                 pass
 
-        initial_table_content = create_invoice_table_content("newest", state.get("invoice_type", "income"), on_select_changed=update_selected_count, theme_mode=page.theme_mode, container_width=page.width - 40)
+        INVOICE_PAGE_SIZE = 25
+        invoice_pagination = {"page": 0, "total": 0}
 
+        initial_table_content = create_invoice_table_content("newest", state.get("invoice_type", "income"), on_select_changed=update_selected_count, theme_mode=page.theme_mode, container_width=page.width - 40, limit=INVOICE_PAGE_SIZE, offset=0)
+
+        _initial_empty = getattr(initial_table_content, "data", {}).get("row_count", 0) == 0
         table_container = ft.Container(
             border_radius=12,
             shadow=ft.BoxShadow(blur_radius=15, color="#1A000000", offset=ft.Offset(0, 5)),
             bgcolor="surface",
-            height=310 if getattr(initial_table_content, "data", {}).get("row_count", 0) == 0 else 430,
+            height=310 if _initial_empty else None,
             content=initial_table_content,
         )
 
-        def update_invoice_table(sort_option=None):
+        _page_label = ft.Text("", size=12, color=col_text_light)
+        _prev_page_btn = ft.IconButton(
+            icon=ft.Icons.CHEVRON_LEFT_ROUNDED,
+            icon_size=20,
+            disabled=True,
+            tooltip="Önceki sayfa",
+        )
+        _next_page_btn = ft.IconButton(
+            icon=ft.Icons.CHEVRON_RIGHT_ROUNDED,
+            icon_size=20,
+            disabled=True,
+            tooltip="Sonraki sayfa",
+        )
+        _pagination_bar = ft.Row(
+            [_prev_page_btn, _page_label, _next_page_btn],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=4,
+        )
+
+        def update_invoice_table(sort_option=None, reset_page=False):
             if state["current_page"] != "invoices" and state["current_page"] != "faturalar":
                 return
             if sort_option is None:
@@ -4062,25 +4146,60 @@ def main(page: ft.Page):
             expense_btn.content.controls[1].color = col_white if is_expense else col_text_light
 
             general_expenses_section.visible = is_expense
-            
+
+            # Sayfalama hesapla
+            if reset_page:
+                invoice_pagination["page"] = 0
+            db_type = "outgoing" if current_invoice_type == "income" else "incoming"
+            try:
+                total = backend_instance.get_invoice_count(db_type)
+            except Exception:
+                total = 0
+            invoice_pagination["total"] = total
+            total_pages = max(1, (total + INVOICE_PAGE_SIZE - 1) // INVOICE_PAGE_SIZE)
+            cur_page = min(invoice_pagination["page"], total_pages - 1)
+            invoice_pagination["page"] = cur_page
+            offset = cur_page * INVOICE_PAGE_SIZE
+
             # Tabloyu yenile
-            table_container.content = create_invoice_table_content(sort_option, current_invoice_type, on_select_changed=update_selected_count, theme_mode=page.theme_mode, container_width=page.width - 40)
-            table_container.height = 310 if getattr(table_container.content, "data", {}).get("row_count", 0) == 0 else 430
+            table_container.content = create_invoice_table_content(sort_option, current_invoice_type, on_select_changed=update_selected_count, theme_mode=page.theme_mode, container_width=page.width - 40, limit=INVOICE_PAGE_SIZE, offset=offset)
+            _is_empty = getattr(table_container.content, "data", {}).get("row_count", 0) == 0
+            table_container.height = 310 if _is_empty else None
+
+            # Sayfalama barını güncelle
+            _page_label.value = f"{tr('pagination_page_of').format(cur_page + 1, total_pages)}  •  {tr('pagination_records').format(total)}"
+            _prev_page_btn.disabled = cur_page == 0
+            _next_page_btn.disabled = cur_page >= total_pages - 1
 
             if income_btn.page: income_btn.update()
             if expense_btn.page: expense_btn.update()
             if general_expenses_section.page: general_expenses_section.update()
             if table_container.page: table_container.update()
+            if _pagination_bar.page: _pagination_bar.update()
             page.update()
 
         state["update_callbacks"]["invoice_page"] = update_invoice_table
 
+        def _go_prev_invoice_page(e):
+            if invoice_pagination["page"] > 0:
+                invoice_pagination["page"] -= 1
+                update_invoice_table()
+
+        def _go_next_invoice_page(e):
+            total_pages = max(1, (invoice_pagination["total"] + INVOICE_PAGE_SIZE - 1) // INVOICE_PAGE_SIZE)
+            if invoice_pagination["page"] < total_pages - 1:
+                invoice_pagination["page"] += 1
+                update_invoice_table()
+
+        _prev_page_btn.on_click = _go_prev_invoice_page
+        _next_page_btn.on_click = _go_next_invoice_page
+
         def on_sort_change(e):
-            update_invoice_table(e.control.value)
+            update_invoice_table(e.control.value, reset_page=True)
 
         def set_invoice_type(inv_type):
             state["invoice_type"] = inv_type
-            update_invoice_table(state.get("invoice_sort_option", "newest"))
+            update_invoice_table(state.get("invoice_sort_option", "newest"), reset_page=True)
 
         initial_is_expense = state.get("invoice_type", "income") == "expense"
         
@@ -4163,22 +4282,41 @@ def main(page: ft.Page):
                     "kdv_yuzdesi": float(input_kdv.value.replace(",", ".")) if input_kdv.value else 20.0,
                 }
                 if input_usd_kur.value and input_usd_kur.value.strip():
-                    try: invoice_data["manual_usd_rate"] = float(input_usd_kur.value.replace(",", "."))
-                    except ValueError: pass
+                    try:
+                        invoice_data["manual_usd_rate"] = float(
+                            input_usd_kur.value.replace(",", ".")
+                        )
+                    except ValueError:
+                        pass
                 if input_eur_kur.value and input_eur_kur.value.strip():
-                    try: invoice_data["manual_eur_rate"] = float(input_eur_kur.value.replace(",", "."))
-                    except ValueError: pass
+                    try:
+                        invoice_data["manual_eur_rate"] = float(
+                            input_eur_kur.value.replace(",", ".")
+                        )
+                    except ValueError:
+                        pass
 
                 processed_data = process_invoice(invoice_data)
                 if processed_data:
                     invoice_type = "incoming" if state["invoice_type"] == "expense" else "outgoing"
                     result = backend_instance.handle_invoice_operation("add", invoice_type, processed_data)
                     if result:
-                        update_invoice_table(state.get("invoice_sort_option", "newest"))
+                        update_invoice_table(state.get("invoice_sort_option", "newest"), reset_page=True)
                         clear_inputs(force=True, show_message=False)
                         if state["update_callbacks"]["home_page"]: state["update_callbacks"]["home_page"]()
                         if state["update_callbacks"]["transaction_history"]: state["update_callbacks"]["transaction_history"]()
-                        show_invoice_snackbar(tr("msg_invoice_added"), col_success)
+                        # Döviz faturalarında eski/önbellekte kur kullanıldıysa ekstra uyarı
+                        birim = invoice_data.get("birim", "TL")
+                        rates_src = getattr(backend_instance, "rates_source", "live")
+                        manual_key = "manual_usd_rate" if birim == "USD" else "manual_eur_rate"
+                        used_manual_rate = manual_key in invoice_data
+                        if birim in ("USD", "EUR") and rates_src in ("cache", "default") and not used_manual_rate:
+                            show_invoice_snackbar(
+                                get_text("msg_stale_rates_invoice", state.get("current_language", "tr")).format(birim),
+                                "#FF9F43",
+                            )
+                        else:
+                            show_invoice_snackbar(tr("msg_invoice_added"), col_success)
                     else:
                         show_invoice_snackbar(tr("msg_invoice_add_error"))
             except Exception as ex:
@@ -4194,7 +4332,10 @@ def main(page: ft.Page):
                     show_invoice_snackbar(tr("msg_select_one"))
                     return
 
-                invoice_id = selected_rows[0].data.get("id") if isinstance(selected_rows[0].data, dict) else selected_rows[0].data
+                row_data = selected_rows[0].data
+                invoice_id = (
+                    row_data.get("id") if isinstance(row_data, dict) else row_data
+                )
                 editing_id = state.get("editing_invoice_id")
 
                 if editing_id != invoice_id:
@@ -4218,9 +4359,28 @@ def main(page: ft.Page):
                     "birim": input_para_birimi.value or "TL",
                     "kdv_yuzdesi": float(input_kdv.value.replace(",", ".")) if input_kdv.value else 20.0,
                 }
+                if input_usd_kur.value and input_usd_kur.value.strip():
+                    try:
+                        invoice_data["manual_usd_rate"] = float(
+                            input_usd_kur.value.replace(",", ".")
+                        )
+                    except ValueError:
+                        pass
+                if input_eur_kur.value and input_eur_kur.value.strip():
+                    try:
+                        invoice_data["manual_eur_rate"] = float(
+                            input_eur_kur.value.replace(",", ".")
+                        )
+                    except ValueError:
+                        pass
                 if processed_data := process_invoice(invoice_data):
-                    invoice_type = "incoming" if state["invoice_type"] == "expense" else "outgoing"
-                    if backend_instance.handle_invoice_operation("update", invoice_type, processed_data, record_id=invoice_id):
+                    invoice_type = (
+                        "incoming" if state["invoice_type"] == "expense" else "outgoing"
+                    )
+                    updated = backend_instance.handle_invoice_operation(
+                        "update", invoice_type, processed_data, record_id=invoice_id
+                    )
+                    if updated:
                         state["editing_invoice_id"] = None
                         update_invoice_table()
                         # Kaydedilen satırı tekrar seç ve formu güncel veriyle doldur
@@ -4243,8 +4403,76 @@ def main(page: ft.Page):
             except Exception as ex:
                 show_invoice_snackbar(tr("msg_update_error_prefix").format(str(ex)))
 
+        def show_delete_all_dialog():
+            """Sağ tık ile tetiklenir — mevcut türdeki TÜM faturaları siler."""
+            try:
+                current_invoice_type = state.get("invoice_type", "income")
+                db_type = "outgoing" if current_invoice_type == "income" else "incoming"
+                total_count = backend_instance.get_invoice_count(db_type)
+                if total_count == 0:
+                    show_invoice_snackbar(tr("msg_select_to_delete"))
+                    return
+
+                dlg_all = None
+
+                def close_dlg_all(e):
+                    dlg_all.open = False
+                    page.update()
+
+                def confirm_delete_all(e):
+                    dlg_all.open = False
+                    page.update()
+                    original_callback = backend_instance.on_data_updated
+                    backend_instance.on_data_updated = None
+                    deleted = backend_instance.delete_all_invoices(db_type)
+                    backend_instance.on_data_updated = original_callback
+                    update_invoice_table(reset_page=True)
+                    clear_inputs(force=True, show_message=False)
+                    if original_callback:
+                        original_callback()
+                    if state["update_callbacks"]["home_page"]:
+                        state["update_callbacks"]["home_page"]()
+                    if state["update_callbacks"]["transaction_history"]:
+                        state["update_callbacks"]["transaction_history"]()
+                    show_invoice_snackbar(
+                        tr("delete_all_success").format(deleted), col_success
+                    )
+
+                dlg_all = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Row([
+                        ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=col_danger, size=22),
+                        ft.Container(width=8),
+                        ft.Text(tr("delete_all_confirm_title"), color=col_danger, weight="bold"),
+                    ]),
+                    content=ft.Text(
+                        tr("delete_all_confirm_msg").format(total_count),
+                        size=14,
+                    ),
+                    actions=[
+                        ft.ElevatedButton(
+                            tr("yes"),
+                            on_click=confirm_delete_all,
+                            bgcolor=col_danger,
+                            color=col_white,
+                        ),
+                        ft.ElevatedButton(
+                            tr("no"),
+                            on_click=close_dlg_all,
+                            bgcolor="surfaceVariant",
+                        ),
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                )
+                page.overlay.append(dlg_all)
+                dlg_all.open = True
+                page.update()
+            except Exception as ex:
+                show_invoice_snackbar(tr("msg_delete_error_prefix").format(str(ex)))
+
         def delete_invoice(e):
             try:
+                # ── Sadece seçili satırlar ──
                 selected_rows = get_selected_invoice_rows()
                 if not selected_rows:
                     show_invoice_snackbar(tr("msg_select_to_delete"))
@@ -4294,36 +4522,81 @@ def main(page: ft.Page):
 
         def process_qr_folder(e):
             try:
-                def on_folder_selected(e: ft.FilePickerResultEvent):
-                    if not e.path: return
-                    folder_path = e.path
+                def on_files_selected(e: ft.FilePickerResultEvent):
+                    if not e.files:
+                        return
+                    file_paths = [f.path for f in e.files if f.path]
+                    if not file_paths:
+                        return
+
+                    progress_text = ft.Text(tr("reading_qr_codes"), size=13, color="onBackground")
+                    progress_bar = ft.ProgressBar(value=None, color="#3498DB", bgcolor="surfaceVariant", width=340)
+                    progress_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Row([
+                            ft.Icon(ft.Icons.QR_CODE_SCANNER, color="#3498DB", size=22),
+                            ft.Container(width=8),
+                            ft.Text(tr("qr_processing_title"), color="onBackground", size=16, weight="bold"),
+                        ]),
+                        content=ft.Container(
+                            width=340,
+                            content=ft.Column([
+                                progress_bar,
+                                ft.Container(height=8),
+                                progress_text,
+                            ], tight=True),
+                        ),
+                        bgcolor="surface",
+                    )
+
+                    def show_progress():
+                        page.open(progress_dlg)
+
+                    def hide_progress():
+                        progress_dlg.open = False
+                        page.update()
+
+                    def status_callback(msg, progress_val):
+                        progress_text.value = msg
+                        progress_bar.value = (progress_val / 100.0) if progress_val else None
+                        page.update()
+                        return True
+
                     def process_in_thread(selected_type):
                         try:
                             time.sleep(0.1)
-                            results = backend_instance.process_qr_files_in_folder(folder_path, max_workers=8, lang=state.get("current_language", "tr"))
+                            results = backend_instance.process_qr_file_list(
+                                file_paths, max_workers=8,
+                                status_callback=status_callback,
+                                lang=state.get("current_language", "tr"),
+                            )
                             if not results:
+                                hide_progress()
                                 page.open(ft.SnackBar(content=ft.Text(tr("msg_qr_no_files"), color=col_white), bgcolor=col_danger))
                                 page.update()
                                 return
-                            summary = backend_instance.add_invoices_from_qr_data(results, selected_type)
-                            update_invoice_table()
+                            backend_instance.add_invoices_from_qr_data(results, selected_type)
+                            hide_progress()
+                            update_invoice_table(reset_page=True)
                             page.open(ft.SnackBar(content=ft.Text(tr("process_completed"), color=col_white), bgcolor=col_success))
                             page.update()
                         except Exception as ex:
+                            hide_progress()
                             page.open(ft.SnackBar(content=ft.Text(tr("qr_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger))
                             page.update()
 
                     def on_type_selected(invoice_type, bs_ref):
                         bs_ref.open = False
                         page.update()
+                        show_progress()
                         threading.Thread(target=process_in_thread, args=(invoice_type,), daemon=True).start()
 
                     bs = ft.BottomSheet(
                         content=ft.Container(
                             padding=20,
-                            bgcolor="#1A1D1F",
+                            bgcolor="surface",
                             content=ft.Column([
-                                ft.Text(tr("select_invoice_type"), size=20, weight="bold", color=col_white),
+                                ft.Text(tr("select_invoice_type"), size=20, weight="bold", color="onBackground"),
                                 ft.Container(height=10),
                                 ft.ElevatedButton(tr("income_sales_invoice"), on_click=lambda _: on_type_selected("outgoing", bs), bgcolor=col_success, width=300, height=50),
                                 ft.Container(height=10),
@@ -4335,10 +4608,14 @@ def main(page: ft.Page):
                     page.overlay.append(bs)
                     page.update()
 
-                file_picker = ft.FilePicker(on_result=on_folder_selected)
+                file_picker = ft.FilePicker(on_result=on_files_selected)
                 page.overlay.append(file_picker)
                 page.update()
-                file_picker.get_directory_path()
+                file_picker.pick_files(
+                    dialog_title=tr("qr_folder_dialog_title"),
+                    allow_multiple=True,
+                    allowed_extensions=["pdf", "jpg", "jpeg", "png", "bmp"],
+                )
             except Exception as ex:
                 page.open(ft.SnackBar(content=ft.Text(tr("qr_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger))
                 page.update()
@@ -4361,6 +4638,65 @@ def main(page: ft.Page):
                 page.open(ft.SnackBar(content=ft.Text(tr("backup_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger))
                 page.update()
 
+        def restore_database(e):
+            try:
+                from backup import LocalBackupManager
+                manager = LocalBackupManager(database_folder=os.path.join(PROJECT_ROOT, "Database"))
+
+                def do_restore(zip_path):
+                    success, msg = manager.restore_backup(zip_path)
+                    if success:
+                        reinit_ok = backend_instance.reinitialize_db()
+                        if reinit_ok:
+                            for cb in state["update_callbacks"].values():
+                                if cb:
+                                    try:
+                                        cb()
+                                    except Exception:
+                                        pass
+                        page.open(ft.SnackBar(content=ft.Text(tr("restore_success"), color=col_white), bgcolor=col_success))
+                    else:
+                        page.open(ft.SnackBar(content=ft.Text(tr("restore_error_prefix").format(msg), color=col_white), bgcolor=col_danger))
+                    page.update()
+
+                def on_confirm(zip_path, dlg_ref):
+                    dlg_ref.open = False
+                    page.update()
+                    threading.Thread(target=do_restore, args=(zip_path,), daemon=True).start()
+
+                def on_file_selected(e: ft.FilePickerResultEvent):
+                    if not e.files:
+                        return
+                    zip_path = e.files[0].path if e.files and e.files[0].path else None
+                    if not zip_path:
+                        return
+                    confirm_dlg = ft.AlertDialog(
+                        modal=True,
+                        title=ft.Text(tr("restore_confirm_title"), color="onBackground", weight="bold"),
+                        content=ft.Text(tr("restore_confirm_msg"), color="onSurfaceVariant", size=13),
+                        bgcolor="surface",
+                        actions=[
+                            ft.TextButton(tr("yes"), on_click=lambda _: on_confirm(zip_path, confirm_dlg),
+                                          style=ft.ButtonStyle(color=col_danger)),
+                            ft.TextButton(tr("no"), on_click=lambda _: setattr(confirm_dlg, "open", False) or page.update(),
+                                          style=ft.ButtonStyle(color="onSurface")),
+                        ],
+                        actions_alignment=ft.MainAxisAlignment.END,
+                    )
+                    page.open(confirm_dlg)
+
+                open_picker = ft.FilePicker(on_result=on_file_selected)
+                page.overlay.append(open_picker)
+                page.update()
+                open_picker.pick_files(
+                    dialog_title=tr("restore_select_zip"),
+                    allow_multiple=False,
+                    allowed_extensions=["zip"],
+                )
+            except Exception as ex:
+                page.open(ft.SnackBar(content=ft.Text(tr("restore_error_prefix").format(str(ex)), color=col_white), bgcolor=col_danger))
+                page.update()
+
         # --- EXPORT DIALOG AND FILTERING ---
         export_start_date = ft.TextField(
             hint_text=tr("date_hint"),
@@ -4368,6 +4704,10 @@ def main(page: ft.Page):
             width=140,
             text_size=12,
             height=40,
+            bgcolor="surface",
+            border_color="outline",
+            focused_border_color="primary",
+            border_radius=8,
         )
 
         def pick_export_start_date(e):
@@ -4382,6 +4722,10 @@ def main(page: ft.Page):
             width=140,
             text_size=12,
             height=40,
+            bgcolor="surface",
+            border_color="outline",
+            focused_border_color="primary",
+            border_radius=8,
         )
 
         def pick_export_end_date(e):
@@ -4483,8 +4827,9 @@ def main(page: ft.Page):
 
         def open_export_dialog(fmt):
             export_current_format["format"] = fmt
-            export_start_date.value = ""
-            export_end_date.value = ""
+            # Önceki filtre değerlerini koru; yoksa boş bırak
+            export_start_date.value = export_filter_state.get("start") or ""
+            export_end_date.value = export_filter_state.get("end") or ""
             if export_dialog not in page.overlay:
                 page.overlay.append(export_dialog)
             export_dialog.open = True
@@ -4499,13 +4844,51 @@ def main(page: ft.Page):
         btn_clear = AestheticButton(tr("clear"), "refresh", "#7F8C8D", width=145, on_click=clear_inputs)
         btn_add = AestheticButton(tr("add"), "add", col_success, width=110, on_click=add_invoice)
         btn_update = AestheticButton(tr("update"), "update", col_blue_donut, width=125, on_click=update_invoice)
-        btn_delete_row = ft.Row([AestheticButton(tr("delete"), "delete", col_danger, width=110, on_click=delete_invoice), selected_count_text], spacing=5)
+        _delete_btn = AestheticButton(tr("delete"), "delete", col_danger, width=110)
+        _delete_gesture = ft.GestureDetector(
+            content=_delete_btn,
+            on_tap=delete_invoice,
+            on_secondary_tap=lambda e: show_delete_all_dialog(),
+            mouse_cursor=ft.MouseCursor.CLICK,
+        )
+        btn_delete_row = ft.Row([_delete_gesture, selected_count_text], spacing=5)
         operation_buttons = ft.Row([btn_clear, btn_add, btn_update, btn_delete_row], spacing=20)
 
         btn_qr = create_styled_icon_button(ft.Icons.QR_CODE_SCANNER, "#3498DB", tr("qr_scan"), process_qr_folder)
         btn_excel = create_styled_icon_button(ft.Icons.TABLE_VIEW, "#217346", tr("export_excel"), export_to_excel)
         btn_pdf = create_styled_icon_button(ft.Icons.PICTURE_AS_PDF, "#D32F2F", tr("export_pdf"), export_to_pdf)
         btn_backup = create_styled_icon_button(ft.Icons.BACKUP, "#8E44AD", tr("backup_db"), backup_database)
+        btn_restore = create_styled_icon_button(ft.Icons.CLOUD_DOWNLOAD, "#8E44AD", tr("restore_db"), restore_database)
+
+        btn_backup_menu = ft.PopupMenuButton(
+            tooltip=tr("backup_db"),
+            content=ft.Container(
+                bgcolor="#8E44AD",
+                border_radius=8,
+                width=42,
+                height=42,
+                alignment=ft.alignment.center,
+                border=ft.border.all(1, "#22FFFFFF"),
+                shadow=ft.BoxShadow(blur_radius=10, color="#808E44AD", offset=ft.Offset(0, 4)),
+                content=ft.Icon(ft.Icons.STORAGE_ROUNDED, color=col_white, size=18),
+            ),
+            items=[
+                ft.PopupMenuItem(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.BACKUP_ROUNDED, color="#8E44AD", size=18),
+                        ft.Text(tr("backup_db"), size=13),
+                    ], spacing=10),
+                    on_click=backup_database,
+                ),
+                ft.PopupMenuItem(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.CLOUD_DOWNLOAD_ROUNDED, color="#8E44AD", size=18),
+                        ft.Text(tr("restore_db"), size=13),
+                    ], spacing=10),
+                    on_click=restore_database,
+                ),
+            ],
+        )
 
         sort_dropdown = ft.Container(
             padding=ft.padding.only(left=20),
@@ -4518,7 +4901,7 @@ def main(page: ft.Page):
         controls_row = ft.Row(
             [
                 sort_dropdown,
-                btn_backup,
+                ft.Row([btn_backup_menu], spacing=4),
                 ft.Container(expand=True),
                 ft.Container(
                     padding=ft.padding.only(right=18),
@@ -4576,6 +4959,7 @@ def main(page: ft.Page):
                 
                 # Tablo Alanı ve Diğerleri
                 table_container,
+                _pagination_bar,
                 ft.Container(height=12),
                 general_expenses_section,
                 ft.Container(height=20),
@@ -4684,6 +5068,9 @@ def main(page: ft.Page):
         btn_home.update()
         btn_faturalar.update()
         btn_raporlar.update()
+        internet_warning_text.value = tr("no_internet_warning")
+        if internet_warning_widget.visible:
+            internet_warning_widget.update()
 
         # Recreate pages
         # Fatura formu değerlerini koru (dil değişimi sırasında)
@@ -4763,11 +5150,12 @@ def main(page: ft.Page):
     dynamic_controls_container = ft.Row(spacing=10, scroll=ft.ScrollMode.AUTO)
 
     # Internet Warning Widget (top-right)
+    internet_warning_text = ft.Text(tr("no_internet_warning"), color=col_danger, size=11, weight="bold")
     internet_warning_widget = ft.Container(
         content=ft.Row(
             [
                 ft.Icon(ft.Icons.WIFI_OFF_ROUNDED, color=col_danger, size=14),
-                ft.Text("İnternet bağlantısı yok", color=col_danger, size=11, weight="bold"),
+                internet_warning_text,
             ],
             spacing=4,
         ),
@@ -4831,7 +5219,7 @@ def main(page: ft.Page):
             # Giden faturalar (Gelir)
             income_invoices = (
                 backend_instance.handle_invoice_operation(
-                    operation="get", invoice_type="outgoing", limit=1000, offset=0
+                    operation="get", invoice_type="outgoing"
                 )
                 or []
             )
@@ -4839,7 +5227,7 @@ def main(page: ft.Page):
             # Gelen faturalar (Gider)
             expense_invoices = (
                 backend_instance.handle_invoice_operation(
-                    operation="get", invoice_type="incoming", limit=1000, offset=0
+                    operation="get", invoice_type="incoming"
                 )
                 or []
             )
@@ -5279,9 +5667,10 @@ def main(page: ft.Page):
         # Özel Türkçe tarih seçici dialog
         date_input_field = ft.TextField(
             hint_text=tr("date_hint"),
-            hint_style=ft.TextStyle(color="#D0D0D0", size=12),
+            hint_style=ft.TextStyle(color="onSurfaceVariant", size=12),
             text_size=14,
             color="onBackground",
+            bgcolor="surface",
             border_color="outline",
             focused_border_color=col_primary,
             border_radius=8,
@@ -5611,6 +6000,9 @@ def main(page: ft.Page):
             border_radius=10,
             text_size=13,
             content_padding=10,
+            bgcolor="surface",
+            border_color="outline",
+            focused_border_color="primary",
         )
 
         chart_container = ft.Container(

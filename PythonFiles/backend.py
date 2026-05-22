@@ -101,9 +101,45 @@ class Backend:
         # Döviz kurları önbelleği
         self.exchange_rates = {"USD": 0.0, "EUR": 0.0}
         self.using_default_rates = False
+        # Kurların kaynağı: "live" | "prev_day" | "cache" | "default" | "none"
+        self.rates_source = "none"
 
         # Başlangıçta kurları güncelle
         self.update_exchange_rates()
+
+    # ------------------------------------------------------------------------
+    # VERİTABANI YENİDEN BAŞLATMA (GERİ YÜKLEME SONRASI)
+    # ------------------------------------------------------------------------
+    def reinitialize_db(self):
+        """
+        Rust veritabanı bağlantısını tamamen yeniden başlatır.
+        Geri yükleme sonrası dosyalar değiştiğinde yeni bağlantıların
+        güncel verileri görmesi için çağrılır.
+
+        Returns:
+            bool: Başarı durumu
+        """
+        try:
+            self.db = rust_db.Database()  # type: ignore
+            self.db.init_connections()
+            self.db.create_tables()
+            self.settings = self.db.get_all_settings()
+            # Kurumlar vergisi ayarını yeniden yükle
+            if "kurumlar_vergisi_yuzdesi" in self.settings:
+                try:
+                    self.settings["kurumlar_vergisi_yuzdesi"] = float(
+                        self.settings["kurumlar_vergisi_yuzdesi"]
+                    )
+                except (ValueError, TypeError):
+                    self.settings["kurumlar_vergisi_yuzdesi"] = 22.0
+            else:
+                self.settings["kurumlar_vergisi_yuzdesi"] = 22.0
+            # QR modülünü sıfırla (yeni db bağlantısını kullanması için)
+            self._qr_integrator = None
+            return True
+        except Exception as e:
+            logging.error(f"❌ Veritabanı yeniden başlatma hatası: {e}")
+            return False
 
     # ------------------------------------------------------------------------
     # QR MODÜLÜ (LAZY LOADING)
@@ -181,6 +217,7 @@ class Backend:
         )
         self.exchange_rates = {"USD": 0.030, "EUR": 0.028}
         self.using_default_rates = True
+        self.rates_source = "default"
         if self.on_status_updated:
             self.on_status_updated(
                 "İnternet bağlantısı yok! Varsayılan kurlar kullanılıyor.", 5000
@@ -218,6 +255,7 @@ class Backend:
                 eur_rate = 1.0 / eur_sell
                 self.exchange_rates = {"USD": usd_rate, "EUR": eur_rate}
                 self.using_default_rates = False
+                self.rates_source = "live"
                 self._save_rates_to_db()  # Kurları veritabanına kaydet
                 if self.on_status_updated:
                     self.on_status_updated("TCMB döviz kurları güncellendi.", 3000)
@@ -262,6 +300,7 @@ class Backend:
                         eur_rate = 1.0 / eur_sell
                         self.exchange_rates = {"USD": usd_rate, "EUR": eur_rate}
                         self.using_default_rates = False
+                        self.rates_source = "prev_day"
                         self._save_rates_to_db()
                         logging.info(
                             f"TCMB önceki gün kurları ({prev_date.strftime('%d.%m.%Y')} - BanknoteSelling): 1 USD = {usd_sell:.4f} TL, 1 EUR = {eur_sell:.4f} TL"
@@ -290,6 +329,7 @@ class Backend:
             if usd_rate > 0 or eur_rate > 0:
                 self.exchange_rates = {"USD": usd_rate, "EUR": eur_rate}
                 self.using_default_rates = False
+                self.rates_source = "cache"
                 logging.info(f"Veritabanından yüklenen kurlar: {self.exchange_rates}")
                 return True
         except Exception as e:
@@ -365,6 +405,23 @@ class Backend:
         """Çoklu fatura silme - InvoiceManager'a yönlendirir."""
         return self.invoice_manager.delete_multiple_invoices(invoice_type, invoice_ids)
 
+    def delete_all_invoices(self, invoice_type):
+        """Belirtilen türdeki tüm faturaları siler. invoice_type: 'outgoing' veya 'incoming'"""
+        try:
+            all_invoices = self.invoice_manager.handle_invoice_operation(
+                "get", invoice_type, limit=None
+            )
+            if not all_invoices:
+                return 0
+            ids = [inv["id"] for inv in all_invoices if "id" in inv]
+            if not ids:
+                return 0
+            return self.invoice_manager.delete_multiple_invoices(invoice_type, ids)
+        except Exception as e:
+            import logging
+            logging.error(f"delete_all_invoices hatası ({invoice_type}): {e}")
+            return 0
+
     # ============================================================================
     # DÖNEMSEL GELİR HESAPLAMALARI (Periodic Income Calculations)
     # ============================================================================
@@ -384,6 +441,13 @@ class Backend:
     def get_yearly_summary(self, year):
         """Belirli bir yıl için yıllık özet - PeriodicIncomeCalculator'a yönlendirir."""
         return self.periodic_calculator.get_yearly_summary(year)
+
+    def get_invoice_count(self, invoice_type):
+        """Fatura sayısını döndürür. invoice_type: 'outgoing' (gelir) veya 'incoming' (gider)"""
+        if invoice_type == "outgoing":
+            return self.db.get_gelir_invoice_count()
+        else:
+            return self.db.get_gider_invoice_count()
 
     # ============================================================================
     # İŞLEM GEÇMİŞİ YÖNETİMİ (History Management)
@@ -525,6 +589,21 @@ class Backend:
         # QR entegratörüne callback'i geçir
         return self.qr_integrator.process_qr_files_in_folder(
             folder_path,
+            max_workers,
+            status_callback=combined_callback if status_callback else None,
+            lang=lang,
+        )
+
+    def process_qr_file_list(self, file_paths, max_workers=6, status_callback=None, lang="tr"):
+        """Seçilen dosya listesini işler - fromqr modülüne yönlendirir."""
+        def combined_callback(msg, progress_val):
+            if self.on_status_updated:
+                self.on_status_updated(msg, progress_val)
+            if status_callback:
+                return status_callback(msg, progress_val)
+            return True
+        return self.qr_integrator.process_qr_file_list(
+            file_paths,
             max_workers,
             status_callback=combined_callback if status_callback else None,
             lang=lang,
