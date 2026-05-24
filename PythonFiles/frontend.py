@@ -1277,21 +1277,57 @@ def create_grid_expenses(page):
         "aralik",
     ]
 
-    # Yıl seçenekleri
+    # Yıl seçenekleri - veritabanındaki tüm yıllar + mevcut yıl
     current_year = datetime.now().year
-    year_options = [
-        ft.dropdown.Option(str(y)) for y in range(current_year - 2, current_year + 2)
-    ]
 
-    year_dropdown = ft.Dropdown(
-        options=year_options,
+    def get_expense_years():
+        years = set()
+        # Mevcut yıldan 10 yıl geriye, 5 yıl ileriye kadar her zaman göster
+        for y in range(current_year - 10, current_year + 6):
+            years.add(y)
+        try:
+            all_exp = backend_instance.db.get_all_yearly_expenses() or []
+            for exp in all_exp:
+                if exp and "yil" in exp:
+                    try:
+                        years.add(int(exp["yil"]))
+                    except (ValueError, TypeError):
+                        pass
+            income = backend_instance.handle_invoice_operation("get", "outgoing") or []
+            for inv in income:
+                tarih = inv.get("tarih", "")
+                if tarih:
+                    parts = tarih.split(".")
+                    if len(parts) == 3:
+                        try:
+                            years.add(int(parts[2]))
+                        except ValueError:
+                            pass
+            expense = backend_instance.handle_invoice_operation("get", "incoming") or []
+            for inv in expense:
+                tarih = inv.get("tarih", "")
+                if tarih:
+                    parts = tarih.split(".")
+                    if len(parts) == 3:
+                        try:
+                            years.add(int(parts[2]))
+                        except ValueError:
+                            pass
+        except Exception:
+            pass
+        return sorted(years, reverse=True)
+
+    year_field = ft.TextField(
         value=str(current_year),
-        text_size=12,
-        content_padding=10,
-        width=95,
+        text_size=13,
+        text_align=ft.TextAlign.CENTER,
+        width=70,
+        height=38,
+        content_padding=ft.padding.symmetric(horizontal=6, vertical=4),
         bgcolor="surface",
         border_color="outline",
         border_radius=8,
+        keyboard_type=ft.KeyboardType.NUMBER,
     )
 
     # Para birimi seçenekleri
@@ -1316,6 +1352,31 @@ def create_grid_expenses(page):
     expense_fields = {}
     expense_cards = []
 
+    _invalid_dlg = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(tr("warning"), weight="bold"),
+        content=ft.Text(tr("invalid_expense_value")),
+        actions=[ft.ElevatedButton(tr("ok"), on_click=lambda e: (setattr(_invalid_dlg, "open", False), page.update()))],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(_invalid_dlg)
+
+    def validate_expense_field(e):
+        val = e.control.value.strip() if e.control.value else ""
+        try:
+            num = float(val)
+            if num < 0:
+                raise ValueError
+        except ValueError:
+            e.control.value = "0"
+            e.control.border_color = col_danger
+            e.control.update()
+            _invalid_dlg.open = True
+            page.update()
+            return
+        e.control.border_color = "outline"
+        e.control.update()
+
     for i, m in enumerate(months):
         text_field = ft.TextField(
             value="0",
@@ -1329,6 +1390,7 @@ def create_grid_expenses(page):
             content_padding=5,
             bgcolor="surface",
             prefix_text="₺ ",
+            on_blur=validate_expense_field,
         )
         expense_fields[month_keys[i]] = text_field
 
@@ -1360,7 +1422,10 @@ def create_grid_expenses(page):
     # Seçili yılın verilerini yükle
     def load_year_data(year=None):
         if year is None:
-            year = int(year_dropdown.value)
+            try:
+                year = int(year_field.value)
+            except (ValueError, TypeError):
+                year = current_year
         yearly_data = backend_instance.db.get_yearly_expenses(year)
 
         current_curr = currency_dropdown.value
@@ -1402,9 +1467,62 @@ def create_grid_expenses(page):
 
     # Yıl değiştiğinde verileri yükle
     def on_year_change(e):
-        load_year_data(int(e.control.value))
+        val = e.control.value.strip() if e.control.value else ""
+        try:
+            selected = int(val)
+            if selected < 1900 or selected > 2100:
+                raise ValueError
+        except (ValueError, TypeError):
+            year_field.value = str(current_year)
+            year_field.update()
+            return
+        if selected == current_year:
+            load_year_data(selected)
+            return
 
-    year_dropdown.on_change = on_year_change
+        # Farklı yıl seçildi - onay diyaloğu göster
+        def confirm_year_change(ev):
+            year_confirm_dialog.open = False
+            page.update()
+            load_year_data(selected)
+
+        def cancel_year_change(ev):
+            year_confirm_dialog.open = False
+            year_field.value = str(current_year)
+            year_field.update()
+            page.update()
+
+        year_confirm_dialog.title = ft.Text(
+            tr("year_change_confirm_title"), weight="bold"
+        )
+        year_confirm_dialog.content = ft.Text(
+            tr("year_change_confirm_body").format(selected)
+        )
+        year_confirm_dialog.actions = [
+            ft.TextButton(
+                tr("cancel"),
+                on_click=cancel_year_change,
+                style=ft.ButtonStyle(color="onSurfaceVariant"),
+            ),
+            ft.ElevatedButton(
+                tr("yes_continue"),
+                on_click=confirm_year_change,
+            ),
+        ]
+        year_confirm_dialog.open = True
+        page.update()
+
+    year_confirm_dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text(""),
+        content=ft.Text(""),
+        actions=[],
+        actions_alignment=ft.MainAxisAlignment.END,
+    )
+    page.overlay.append(year_confirm_dialog)
+
+    year_field.on_submit = on_year_change
+    year_field.on_blur = on_year_change
 
     # Para birimi değiştiğinde verileri yükle
     def on_currency_change(e):
@@ -1416,7 +1534,7 @@ def create_grid_expenses(page):
     def save_expenses(e):
         """Genel giderleri database'e kaydet"""
         try:
-            selected_year = int(year_dropdown.value)
+            selected_year = int(year_field.value)
             current_curr = currency_dropdown.value
             monthly_data = {}
 
@@ -1484,27 +1602,33 @@ def create_grid_expenses(page):
             )
             page.update()
 
+    def _build_expense_records_from_fields():
+        """Ekrandaki alanlardan export için sentetik kayıtlar oluşturur"""
+        month_nums = {
+            "ocak": 1, "subat": 2, "mart": 3, "nisan": 4,
+            "mayis": 5, "haziran": 6, "temmuz": 7, "agustos": 8,
+            "eylul": 9, "ekim": 10, "kasim": 11, "aralik": 12,
+        }
+        sel_year = year_field.value or str(current_year)
+        records = []
+        for mk, field in expense_fields.items():
+            mn = month_nums.get(mk, 1)
+            try:
+                amount = float(field.value) if field.value else 0.0
+            except ValueError:
+                amount = 0.0
+            records.append({"tarih": f"01.{mn:02d}.{sel_year}", "miktar": amount})
+        return records
+
     def export_general_expenses_excel(e):
         """Genel giderleri Excel'e aktar - Aylık format"""
-        print("DEBUG: export_general_expenses_excel (Topbar) clicked")
         try:
-            expenses = backend_instance.handle_genel_gider_operation("get")
-            print(f"DEBUG: expenses count={len(expenses) if expenses else 0}")
-
-            if not expenses:
-                page.open(
-                    ft.SnackBar(
-                        content=ft.Text(tr("msg_no_expenses_export"), color=col_white),
-                        bgcolor=col_danger,
-                    )
-                )
-                page.update()
-                return
+            expenses = _build_expense_records_from_fields()
 
             def on_save_result(e: ft.FilePickerResultEvent):
                 if e.path:
                     file_path = e.path
-                    selected_year = int(year_dropdown.value)
+                    selected_year = int(year_field.value)
 
                     # Aylık formatta Excel'e aktar
                     from toexcel import export_monthly_general_expenses_to_excel
@@ -1552,7 +1676,7 @@ def create_grid_expenses(page):
                         page.update()
 
             # Dosya yolu oluştur
-            selected_year = int(year_dropdown.value)
+            selected_year = int(year_field.value)
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
             state.get("current_language", "tr")
             filename = (
@@ -1583,25 +1707,13 @@ def create_grid_expenses(page):
 
     def export_general_expenses_pdf(e):
         """Genel giderleri PDF'e aktar - Aylık format"""
-        print("DEBUG: export_general_expenses_pdf (Topbar) clicked")
         try:
-            expenses = backend_instance.handle_genel_gider_operation("get")
-            print(f"DEBUG: expenses count={len(expenses) if expenses else 0}")
-
-            if not expenses:
-                page.open(
-                    ft.SnackBar(
-                        content=ft.Text(tr("msg_no_expenses_export"), color=col_white),
-                        bgcolor=col_danger,
-                    )
-                )
-                page.update()
-                return
+            expenses = _build_expense_records_from_fields()
 
             def on_save_result(e: ft.FilePickerResultEvent):
                 if e.path:
                     file_path = e.path
-                    selected_year = int(year_dropdown.value)
+                    selected_year = int(year_field.value)
 
                     # Aylık formatta PDF'e aktar
                     from topdf import export_monthly_general_expenses_to_pdf
@@ -1649,7 +1761,7 @@ def create_grid_expenses(page):
                         page.update()
 
             # Dosya yolu oluştur
-            selected_year = int(year_dropdown.value)
+            selected_year = int(year_field.value)
             timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
             state.get("current_language", "tr")
             filename = (
@@ -1681,10 +1793,66 @@ def create_grid_expenses(page):
     load_year_data()
 
     # Dinamik güncelleme için callback oluştur
+    def build_history_table():
+        all_data = backend_instance.db.get_all_yearly_expenses() or []
+        # Sadece en az bir ayda değer girilmiş yılları göster
+        all_data = [r for r in all_data if any((r.get(mk) or 0) > 0 for mk in month_keys)]
+        month_abbrs = [
+            tr("month_jan")[:3], tr("month_feb")[:3], tr("month_mar")[:3],
+            tr("month_apr")[:3], tr("month_may")[:3], tr("month_jun")[:3],
+            tr("month_jul")[:3], tr("month_aug")[:3], tr("month_sep")[:3],
+            tr("month_oct")[:3], tr("month_nov")[:3], tr("month_dec")[:3],
+        ]
+        if not all_data:
+            return ft.Text(tr("no_history_data"), color="onSurfaceVariant", size=13, italic=True)
+        cols = [ft.DataColumn(ft.Text(tr("year_col"), size=11, weight="bold"))] + [
+            ft.DataColumn(ft.Text(a, size=11, weight="bold")) for a in month_abbrs
+        ] + [ft.DataColumn(ft.Text(tr("total"), size=11, weight="bold"))]
+        rows = []
+        for rec in all_data:
+            yr = rec.get("yil", "?")
+            vals = [rec.get(mk, 0) or 0 for mk in month_keys]
+            total = sum(vals)
+            cells = [ft.DataCell(ft.Container(ft.Text(str(yr), size=11, weight="bold", color=col_primary), width=50))]
+            cells += [ft.DataCell(ft.Container(ft.Text(f"{v:,.0f}" if v else "—", size=11), width=80)) for v in vals]
+            cells += [ft.DataCell(ft.Container(ft.Text(f"{total:,.0f}", size=11, weight="bold"), width=90))]
+            rows.append(ft.DataRow(cells=cells))
+        table = ft.DataTable(
+            columns=cols, rows=rows,
+            border=ft.border.all(1, "outlineVariant"),
+            border_radius=8, column_spacing=20,
+            heading_row_color="#10000000", data_row_max_height=36,
+        )
+        return ft.Row(controls=[table], scroll=ft.ScrollMode.AUTO)
+
+    history_expanded = [False]
+    history_content = ft.Container(content=ft.Column([], tight=True), visible=False, padding=ft.padding.only(top=8))
+
+    def toggle_history(e):
+        history_expanded[0] = not history_expanded[0]
+        if history_expanded[0]:
+            history_content.content = ft.Column([build_history_table()], tight=True)
+        history_content.visible = history_expanded[0]
+        toggle_btn.icon = ft.Icons.EXPAND_LESS if history_expanded[0] else ft.Icons.EXPAND_MORE
+        history_content.update()
+        toggle_btn.update()
+
+    toggle_btn = ft.IconButton(
+        icon=ft.Icons.EXPAND_MORE,
+        icon_color=col_primary,
+        icon_size=20,
+        on_click=toggle_history,
+        tooltip=tr("show_history"),
+    )
+
     def refresh_general_expenses():
         """Genel giderleri yeniden yükle"""
         try:
             load_year_data()
+            if history_expanded[0]:
+                history_content.content = ft.Column([build_history_table()], tight=True)
+                if hasattr(history_content, "page") and history_content.page:
+                    history_content.update()
         except Exception:
             pass
 
@@ -1713,7 +1881,7 @@ def create_grid_expenses(page):
         padding=ft.padding.only(right=40, top=8, bottom=6),
         content=ft.Row(
             [
-                ft.Container(height=35, content=year_dropdown),
+                ft.Container(height=38, content=year_field),
                 ft.Container(height=35, content=currency_dropdown),
                 btn_save,
                 btn_excel,
@@ -1755,6 +1923,26 @@ def create_grid_expenses(page):
                         spacing=15,
                         run_spacing=15,
                         alignment=ft.MainAxisAlignment.CENTER,
+                    ),
+                ),
+                ft.Container(height=8),
+                ft.Container(
+                    border=ft.border.all(1, "outlineVariant"),
+                    border_radius=10,
+                    padding=ft.padding.symmetric(horizontal=12, vertical=6),
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(tr("past_years"), size=14, weight="bold", color="onSurfaceVariant"),
+                                    toggle_btn,
+                                ],
+                                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            history_content,
+                        ],
+                        tight=True, spacing=0,
                     ),
                 ),
             ],
@@ -2271,6 +2459,17 @@ def main(page: ft.Page):
     )
     page.theme_mode = ft.ThemeMode.SYSTEM
     state["page"] = page
+
+    # Sayfa locale'ini mevcut dile göre ayarla (takvim vb. widget'lar için)
+    def _apply_locale(lang_code):
+        locale = ft.Locale(lang_code, "TR" if lang_code == "tr" else "US")
+        page.locale_configuration = ft.LocaleConfiguration(
+            supported_locales=[ft.Locale("tr", "TR"), ft.Locale("en", "US")],
+            current_locale=locale,
+        )
+        page.update()
+
+    _apply_locale(state.get("current_language", "tr"))
     backend_instance.start_timers()
 
     # ------------------------------------------------------------------------
@@ -2349,9 +2548,8 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-        # Eğer hiç yıl bulunamadıysa mevcut yılı ekle
-        if not years:
-            years.add(datetime.now().year)
+        # Mevcut yıl her zaman listede olsun
+        years.add(datetime.now().year)
 
         return sorted(years, reverse=True)
 
@@ -2936,11 +3134,11 @@ def main(page: ft.Page):
     # DÖNEMSEL GELİR SAYFASI
     # ------------------------------------------------------------------------
     def create_donemsel_page():
-        # Yıl dropdown'ı için seçenekler
+        # Yıl dropdown'ı için seçenekler - veritabanındaki tüm yıllar
         current_year = datetime.now().year
         year_options = [
             ft.dropdown.Option(str(y))
-            for y in range(current_year - 2, current_year + 2)
+            for y in get_all_available_years()
         ]
 
         year_dropdown = ft.Dropdown(
@@ -3045,6 +3243,15 @@ def main(page: ft.Page):
                 # Sadece dönemsel sayfadayken güncelle
                 if state["current_page"] != "donemsel":
                     return
+
+                # Yıl dropdown seçeneklerini güncelle
+                updated_years = get_all_available_years()
+                year_dropdown.options = [
+                    ft.dropdown.Option(str(y)) for y in updated_years
+                ]
+                # Seçili yıl artık listede yoksa mevcut yıla dön
+                if year_dropdown.value not in [str(y) for y in updated_years]:
+                    year_dropdown.value = str(datetime.now().year)
 
                 selected_year = int(year_dropdown.value)
 
@@ -3271,7 +3478,13 @@ def main(page: ft.Page):
                 report_export_start_date.value = e.control.value.strftime("%d.%m.%Y")
                 report_export_start_date.update()
 
-            page.open(ft.DatePicker(on_change=on_change))
+            _lang = state.get("current_language", "tr")
+            page.open(ft.DatePicker(
+                on_change=on_change,
+                help_text=tr("date_picker_help"),
+                cancel_text=tr("cancel"),
+                confirm_text=tr("ok"),
+            ))
 
         report_export_end_date = ft.TextField(
             hint_text=tr("date_hint"),
@@ -3290,7 +3503,12 @@ def main(page: ft.Page):
                 report_export_end_date.value = e.control.value.strftime("%d.%m.%Y")
                 report_export_end_date.update()
 
-            page.open(ft.DatePicker(on_change=on_change))
+            page.open(ft.DatePicker(
+                on_change=on_change,
+                help_text=tr("date_picker_help"),
+                cancel_text=tr("cancel"),
+                confirm_text=tr("ok"),
+            ))
 
         report_export_format = {"format": "excel"}
         report_filter_state = {"start": None, "end": None}
@@ -4216,7 +4434,12 @@ def main(page: ft.Page):
                 input_tarih.border_color = "outline"
                 input_tarih.update()
 
-            page.open(ft.DatePicker(on_change=on_date_change))
+            page.open(ft.DatePicker(
+                on_change=on_date_change,
+                help_text=tr("date_picker_help"),
+                cancel_text=tr("cancel"),
+                confirm_text=tr("ok"),
+            ))
 
         date_label = form_label(
             tr("date"),
@@ -5280,7 +5503,12 @@ def main(page: ft.Page):
                 export_start_date.value = e.control.value.strftime("%d.%m.%Y")
                 export_start_date.update()
 
-            page.open(ft.DatePicker(on_change=on_change))
+            page.open(ft.DatePicker(
+                on_change=on_change,
+                help_text=tr("date_picker_help"),
+                cancel_text=tr("cancel"),
+                confirm_text=tr("ok"),
+            ))
 
         export_end_date = ft.TextField(
             hint_text=tr("date_hint"),
@@ -5299,7 +5527,12 @@ def main(page: ft.Page):
                 export_end_date.value = e.control.value.strftime("%d.%m.%Y")
                 export_end_date.update()
 
-            page.open(ft.DatePicker(on_change=on_change))
+            page.open(ft.DatePicker(
+                on_change=on_change,
+                help_text=tr("date_picker_help"),
+                cancel_text=tr("cancel"),
+                confirm_text=tr("ok"),
+            ))
 
         export_current_format = {"format": "excel"}
         export_filter_state = {"start": None, "end": None}
@@ -5728,6 +5961,9 @@ def main(page: ft.Page):
         nonlocal faturalar_page, donemsel_page
         new_lang = "en" if state["current_language"] == "tr" else "tr"
         state["current_language"] = new_lang
+
+        # Takvim ve diğer Flutter widget'ları için sayfa locale'ini güncelle
+        _apply_locale(new_lang)
 
         # Update button text
         lang_btn.text = "TR" if new_lang == "en" else "EN"
@@ -6428,22 +6664,6 @@ def main(page: ft.Page):
                 date_dialog_error.visible = True
                 page.update()
 
-        # Türkçe ay isimleri ile takvim görünümü için basit bir seçici
-        TURKISH_MONTHS = [
-            "Ocak",
-            "Şubat",
-            "Mart",
-            "Nisan",
-            "Mayıs",
-            "Haziran",
-            "Temmuz",
-            "Ağustos",
-            "Eylül",
-            "Ekim",
-            "Kasım",
-            "Aralık",
-        ]
-
         current_cal_year = datetime.now().year
         current_cal_month = datetime.now().month
 
@@ -6477,7 +6697,18 @@ def main(page: ft.Page):
             current_cal_year = year
             current_cal_month = month
 
-            month_year_text.value = f"{TURKISH_MONTHS[month - 1]} {year}"
+            # Ay ve gün isimleri - her açılışta mevcut dili kullan
+            MONTH_NAMES = [
+                tr("month_jan"), tr("month_feb"), tr("month_mar"), tr("month_apr"),
+                tr("month_may"), tr("month_jun"), tr("month_jul"), tr("month_aug"),
+                tr("month_sep"), tr("month_oct"), tr("month_nov"), tr("month_dec"),
+            ]
+            DAY_HEADERS = [
+                tr("day_mon"), tr("day_tue"), tr("day_wed"), tr("day_thu"),
+                tr("day_fri"), tr("day_sat"), tr("day_sun"),
+            ]
+
+            month_year_text.value = f"{MONTH_NAMES[month - 1]} {year}"
 
             calendar_grid.controls.clear()
 
@@ -6496,7 +6727,7 @@ def main(page: ft.Page):
                         ),
                         alignment=ft.alignment.center,
                     )
-                    for d in ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+                    for d in DAY_HEADERS
                 ],
                 alignment=ft.MainAxisAlignment.CENTER,
                 spacing=2,
@@ -6646,7 +6877,7 @@ def main(page: ft.Page):
             page.update()
 
         def reset_transactions(e):
-            update_transactions(None)
+            update_transactions(datetime.now())
 
         transactions_list_content = ft.Column(
             [
@@ -6696,9 +6927,7 @@ def main(page: ft.Page):
         year_dropdown_options = [
             ft.dropdown.Option(str(year)) for year in available_years
         ]
-        default_year = (
-            str(available_years[0]) if available_years else str(datetime.now().year)
-        )
+        default_year = str(datetime.now().year)
 
         # Dropdown'ı değişkene ata (refresh fonksiyonunda kullanmak için)
         year_dropdown_ref = ft.Dropdown(
