@@ -32,6 +32,7 @@ import calendar
 import platform
 import traceback
 import ctypes
+import socket
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext, ROUND_HALF_UP
